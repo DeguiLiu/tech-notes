@@ -55,11 +55,12 @@ interview/           -- 嵌入式面试准备
 | [zynq7000_rtthread_mmu_smp.md](architecture/zynq7000_rtthread_mmu_smp.md) | Zynq-7000 上 RT-Thread 的 MMU 与 SMP 优势分析 |
 | [rk3506j_rtos_vs_linux.md](architecture/rk3506j_rtos_vs_linux.md) | RK3506J 架构选型: RT-Thread SMP vs Linux |
 
-### interview/ -- 面试
+### interview/ -- 面试 (2 篇)
 
 | 文件 | 主题 |
 |------|------|
 | [SeniorEmbeddedSoftwareEngineerInterviewQuestions.md](interview/SeniorEmbeddedSoftwareEngineerInterviewQuestions.md) | 高级嵌入式软件工程师面试题集 |
+| [c_language_interview_questions.md](interview/c_language_interview_questions.md) | 中高级软件工程师的 C 语言面试题 (30 题) |
 
 ## 关联项目
 
