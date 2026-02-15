@@ -20,27 +20,52 @@
 - **数据面 (Data Plane)**: 只有 PL -> PS 的单向高带宽数据流，采用 **共享内存零拷贝**。
 - **控制面 (Control Plane)**: 状态机、配置、低频遥测，采用 **newosp AsyncBus (MPSC)**。
 
-### 2.1 零拷贝数据通道 (PL-PS ShmRing)
+### 2.1 软硬协同架构图 (ASCII)
+
+```text
++---------------------+      +-----------------------------+      +------------------------------+
+|  PL (FPGA Logic)    |      |  DDR3 Memory (CMA Region)   |      |  PS (Dual Core Cortex-A9)    |
+|                     |      |                             |      |                              |
+|  [Lidar Protocol]   |      |  +-----------------------+  |      |  +------------------------+  |
+|         |           |      |  | ShmRingBuffer (SPSC)  |  |      |  | Core 1 (Isolated)      |  |
+|         v           |      |  |                       |  |      |  | [RealtimeExecutor]     |  |
+|  [Data Packer]      |      |  | [Block 0] [Block 1]...|<--------|--| [LidarNode]            |  |
+|         |           |      |  |           ^           |  | ACP/ |  |    | (Zero-Copy Read)  |  |
+|         v           | AXI  |  +-----------|-----------+  | HP   |  |    v                   |  |
+|      [AXI DMA]      |----->|              |              | Port |  | [Algorithm / NEON]     |  |
+|     (Writer)        | Write|              |              |      |  +------------------------+  |
++---------------------+      +--------------|--------------+      |                              |
+                                            |                     |  +------------------------+  |
+                                            |                     |  | Core 0 (Linux System)  |  |
+                                            +---------------------|--| [WorkerPool]           |  |
+                                                (Tail Update)     |  | [Logging / Network]    |  |
+                                                                  |  +------------------------+  |
+                                                                  +------------------------------+
+```
+
+### 2.2 零拷贝数据通道 (PL-PS ShmRing)
 
 利用 Zynq 的 **ACP (Accelerator Coherency Port)** 或 **HP (High Performance)** 接口实现硬件一致性的共享内存环形缓冲。
 
 ```mermaid
 graph LR
-    Lidar[激光雷达] -->|光电信号| PL_FPGA
     subgraph PL [Programmable Logic]
-        PL_FPGA -->|解析/校正| AXI_DMA
+        direction TB
+        Lidar[激光雷达] -->|光电信号| PL_Logic[FPGA Logic]
+        PL_Logic -->|解析/校正| AXI_DMA[AXI DMA Controller]
     end
 
-    subgraph RAM [DDR3 Memory (CMA Region)]
-        RingBuffer[ShmRingBuffer<PointBlock, 1024>]
+    subgraph RAM [DDR3 Memory CMA]
+        RingBuffer[ShmRingBuffer PointBlock]
     end
 
-    subgraph PS [Processing System / newosp]
-        RingBuffer -.->|Direct Access| Reader[ShmTransport Reader]
-        Reader -->|span<Point>| Algorithm[PointPillars/Filter]
+    subgraph PS [Processing System]
+        direction TB
+        Reader[ShmTransport Reader] -->|span Point| Algorithm[PointPillars/Filter]
     end
 
     AXI_DMA -->|AXI Write| RingBuffer
+    RingBuffer -.->|Direct Access| Reader
 ```
 
 **关键技术点**:
@@ -48,7 +73,7 @@ graph LR
 2.  **定长块管理**: 将点云切分为固定大小的 `PointBlock` (如 1KB 或 100点)，避免处理单点的函数调用开销，也不像全帧处理那样导致巨大的延迟。
 3.  **零拷贝语义**: 消费者直接获得环形缓冲区内的指针 `const Point*` 进行 NEON 处理，处理完后仅更新 `tail` 指针，全程 **Zero Copy**。
 
-### 2.2 实时调度模型 (Realtime Executor)
+### 2.3 实时调度模型 (Realtime Executor)
 
 使用 `newosp::RealtimeExecutor` 替代普通的线程池，确保算法线程的确定性。
 
@@ -133,21 +158,7 @@ class LidarNode : public osp::Node {
 2.  **定点化计算**: 激光雷达数据通常在 100m 范围内，精度需求 1cm。使用 `int16_t` (范围 +/- 327.67m) 替代 `float`，NEON 并行度从 4 (float32) 提升到 8 (int16)，理论算力翻倍。
 3.  **循环展开**: 手动展开循环，掩盖指令流水线延迟。
 
-## 4. 性能与资源评估 (基于 newosp Benchmark)
-
-基于 `newosp` 在类似 ARM 平台 (RK3506/Zynq) 的基准测试数据推演：
-
-| 指标 | 原方案 (memcpy + kernel) | 改进方案 (newosp Zero-Copy) | 提升幅度 |
-| :--- | :--- | :--- | :--- |
-| **单点处理延迟** | > 50 μs (含中断上下文切换) | < 5 μs (Polling/Wait-free) | **10x** |
-| **CPU 占用率** | 40% (数据搬运占一半) | 15% (仅计算) | **60% 降幅** |
-| **L2 Cache Miss** | 高 (频繁内存换入换出) | 低 (RingBuffer 甚至可常驻 L2) | **显著改善** |
-| **最大吞吐量** | ~150k pts/s | > 800k pts/s | **5x** |
-
-**FPGA 资源占用**:
-由于移除了复杂的 "Crosstalk 剔除" 等逻辑到 CPU (利用 CPU 闲置算力)，PL 仅需负责 `UART/SPI -> AXI Stream -> AXI DMA` 的数据封包，资源占用极低 (< 5% XC7Z020)，可选用更低成本的 XC7Z010。
-
-## 5. 结论
+## 4. 结论
 
 通过引入 `newosp` 架构，我们在 Zynq-7000 上实现了 "软硬协同" 的最优解：
 
