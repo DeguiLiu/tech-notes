@@ -3,10 +3,11 @@
 > 源码仓库: [gitee.com/liudegui/ztask-cpp](https://gitee.com/liudegui/ztask-cpp)
 > 设计文档: [docs/design.md](https://gitee.com/liudegui/ztask-cpp/blob/main/docs/design.md)
 
-> 在裸机 MCU 和轻量 RTOS 项目中，合作式任务调度器是比操作系统线程更轻量的执行抽象。
+> 在轻量 RTOS 项目和嵌入式Linux中，合作式任务调度器是比操作系统线程更轻量的执行抽象。
 
 
 ## 1. 设计决策
+本文的设计是参考与对比[tomzbj/ztask](https://github.com/tomzbj/ztask)
 
 | 决策 | 理由 |
 |------|------|
@@ -428,24 +429,6 @@ int main(void) {
   }
 }
 ```
-
-
-### 9.2 CMake 集成
-
-```cmake
-include(FetchContent)
-FetchContent_Declare(
-  ztask-cpp
-  GIT_REPOSITORY https://gitee.com/liudegui/ztask-cpp.git
-  GIT_TAG        v1.0.0
-)
-FetchContent_MakeAvailable(ztask-cpp)
-
-target_link_libraries(my_app PRIVATE ztask::ztask)
-```
-
-
-
 
 
 ---
