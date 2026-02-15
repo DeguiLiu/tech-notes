@@ -2,25 +2,24 @@
 
 > 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/150849448)
 >
-> **摘要**: 针对 Zynq-7000 (双核 Cortex-A9) 处理 30 万点/秒激光雷达数据的挑战，本文指出原方案在内存带宽和调度确定性上的不足，并基于 `newosp` 基础设施库提出了一套 **零拷贝 (Zero-Copy) + 无锁 (Lock-free) + 实时调度 (Realtime Scheduling)** 的改进架构。通过 PL-PS 共享环形缓冲、SCHED_FIFO 实时调度器和 NEON SIMD 优化，实现了从 FPGA 数据采集到 CPU 算法处理的全链路低延迟。
+> **摘要**: 针对 Zynq-7000 (双核 Cortex-A9) 处理 30 万点/秒激光雷达数据的挑战，本文基于 `newosp` 基础设施库提出了一套 **零拷贝 (Zero-Copy) + 无锁 (Lock-free) + 实时调度 (Realtime Scheduling)** 的架构。通过 PL-PS 共享环形缓冲、SCHED_FIFO 实时调度器和 NEON SIMD 优化，实现了从 FPGA 数据采集到 CPU 算法处理的全链路低延迟。
 
-## 1. 原方案痛点分析
+## 1. 方案思想
+设计方案避免以下问题
 
-原方案主要依赖 "RT-Thread SMP 任务绑定" 和 "NEON 加速"，但在高吞吐场景（300k points/s, ~5MB/s payload, ~20MB/s expanded）下存在架构缺陷：
-
-1.  **内存拷贝开销大**: 原始方案隐含了 `PL DMA -> Kernel Buffer -> User Buffer -> Algorithm Buffer` 的多次拷贝。在 Cortex-A9 上，memcpy 吞吐量受限于 L2 Cache (512KB) 和 DDR3 带宽，频繁拷贝会显著挤占算法算力。
+1.  **内存拷贝开销大**: 避免 `PL DMA -> Kernel Buffer -> User Buffer -> Algorithm Buffer` 的多次拷贝。在 Cortex-A9 上，memcpy 吞吐量受限于 L2 Cache (512KB) 和 DDR3 带宽，频繁拷贝会显著挤占算法算力。
 2.  **调度抖动**: 简单的 SMP 绑定无法屏蔽 Linux 内核态干扰（如中断、软中断、页错误）。
 3.  **缺乏流水线设计**: 单纯的双核分工（接收/处理）若无高效的 IPC 机制，容易因锁竞争（Mutex/Spinlock）导致 "生产者-消费者" 瓶颈。
 4.  **堆内存碎片**: 长期运行的点云系统若使用 `std::vector` 动态扩容，在内存受限的嵌入式系统上极易导致碎片化引发 OOM。
 
-## 2. 改进架构: 基于 newosp 的数据流设计
+## 2. 基于 newosp 的数据流设计
 
 我们采用 **控制面与数据面分离** 的设计原则：
 
 - **数据面 (Data Plane)**: 只有 PL -> PS 的单向高带宽数据流，采用 **共享内存零拷贝**。
 - **控制面 (Control Plane)**: 状态机、配置、低频遥测，采用 **newosp AsyncBus (MPSC)**。
 
-### 2.1 软硬协同架构图 (ASCII)
+### 2.1 软硬协同架构图 [TODO：使用mermaid重新绘制]
 
 ```text
 +---------------------+      +-----------------------------+      +------------------------------+
@@ -75,7 +74,7 @@ graph LR
 
 ### 2.3 实时调度模型 (Realtime Executor)
 
-使用 `newosp::RealtimeExecutor` 替代普通的线程池，确保算法线程的确定性。
+使用 `newosp::RealtimeExecutor` 确保算法线程的确定性。
 
 ```cpp
 // 核心 1 独占用于点云处理
@@ -166,4 +165,4 @@ class LidarNode : public osp::Node {
 2.  **CPU (Core 1)** 专注复杂逻辑运算，利用 `RealtimeExecutor` 和 `SpscRingBuffer` 消除数据拷贝和调度延迟。
 3.  **CPU (Core 0)** 处理 Linux 系统服务和低速 I/O。
 
-该方案不仅验证了 30 万点/秒的可行性，更为处理 100 万点/秒 (如 64 线雷达) 留出了算力余量。
+该方案应该满足30 万点/秒的可行性，更为处理 100 万点/秒 (如 64 线雷达) 留出了算力余量。
