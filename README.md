@@ -54,7 +54,7 @@ interview/           -- 嵌入式面试准备
 | [eventpp_Optimization_Report.md](architecture/eventpp_Optimization_Report.md) | eventpp ARM-Linux 优化报告 |
 | [eventpp_processQueueWith_design.md](architecture/eventpp_processQueueWith_design.md) | eventpp processQueueWith 零开销访问者分发设计 |
 | [zynq7000_lidar_feasibility.md](architecture/zynq7000_lidar_feasibility.md) | Zynq-7000 处理30万点/秒激光雷达点云可行性分析 |
-| [zynq7000_rtthread_mmu_smp.md](architecture/zynq7000_rtthread_mmu_smp.md) | Zynq-7000 上 RT-Thread 的 MMU 与 SMP 优势分析 |
+| [zynq7000_rtthread_mmu_smp.md](architecture/zynq7000_rtthread_mmu_smp.md) | Zynq-7000 上 RT-Thread MMU + SMP 工程设计方案 |
 | [rk3506j_rtos_vs_linux.md](architecture/rk3506j_rtos_vs_linux.md) | RK3506J 架构选型: RT-Thread SMP vs Linux |
 
 ### interview/ -- 面试 (2 篇)
