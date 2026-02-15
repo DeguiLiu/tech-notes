@@ -204,7 +204,7 @@ while(running) {
 - 非整型事件 ID (std::string)
 - 复杂参数 (多参数、移动语义)
 
-**测试结果**: 10/10 全部通过 (220 test cases, 1980 assertions)
+**测试结果**: 10/10 全部通过 (218 test cases, 1216 assertions)
 
 ## 7. Benchmark 结果
 

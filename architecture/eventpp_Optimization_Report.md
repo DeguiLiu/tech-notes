@@ -1,6 +1,6 @@
 # eventpp 性能优化技术报告
 
-> 仓库: [gitee.com/liudegui/eventpp](https://gitee.com/liudegui/eventpp) v0.2.0
+> 仓库: [gitee.com/liudegui/eventpp](https://gitee.com/liudegui/eventpp) v0.4.0
 > 基准版本: eventpp v0.1.3 (wqking/eventpp)
 > 平台: 跨平台 (ARM + x86) | C++14
 
@@ -21,30 +21,50 @@
 
 ---
 
-## 二、优化方案 (OPT-1 ~ OPT-8)
+## 二、优化方案 (OPT-1 ~ OPT-15)
 
-### OPT-1: SpinLock CPU Hint [Batch 1]
+### OPT-1/11: SpinLock 指数退避 [Batch 1 → Batch 5]
 
-添加平台特定的 CPU hint，降低自旋功耗：
+v0.2.0 初版添加 CPU hint (OPT-1)，v0.4.0 升级为指数退避 (OPT-11)，高竞争场景下显著降低总线流量：
 
 ```cpp
 void lock() {
+    // Fast path: no contention
+    if(!locked.test_and_set(std::memory_order_acquire)) {
+        return;
+    }
+    // Slow path: exponential backoff
+    unsigned backoff = 1;
     while(locked.test_and_set(std::memory_order_acquire)) {
+        for(unsigned i = 0; i < backoff; ++i) {
 #if defined(__aarch64__) || defined(__arm__)
-        __asm__ __volatile__("yield");
+            __asm__ __volatile__("yield");
 #elif defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
-        __builtin_ia32_pause();
+            __builtin_ia32_pause();
 #endif
+        }
+        if(backoff < kMaxBackoff) {
+            backoff <<= 1;  // 1 → 2 → 4 → ... → 64
+        }
     }
 }
+static constexpr unsigned kMaxBackoff = 64;
 ```
 
-### OPT-6: Cache-Line 对齐 [Batch 1]
+### OPT-6/10: Cache-Line 对齐 [Batch 1 → Batch 5]
 
-对 EventQueue 热成员进行 cache-line 隔离，消除 false sharing：
+对 EventQueue 热成员进行 cache-line 隔离，消除 false sharing。v0.2.0 初版硬编码 64B (OPT-6)，v0.4.0 升级为平台自适应 (OPT-10)：
 
 ```cpp
-#define EVENTPP_ALIGN_CACHELINE alignas(64)
+// OPT-10: 平台自适应 cache-line 大小
+#ifndef EVENTPP_CACHELINE_SIZE
+    #if defined(__APPLE__) && defined(__aarch64__)
+        #define EVENTPP_CACHELINE_SIZE 128   // Apple Silicon (M1/M2/M3)
+    #else
+        #define EVENTPP_CACHELINE_SIZE 64    // x86 / Cortex-A
+    #endif
+#endif
+#define EVENTPP_ALIGN_CACHELINE alignas(EVENTPP_CACHELINE_SIZE)
 
 EVENTPP_ALIGN_CACHELINE mutable ConditionVariable queueListConditionVariable;
 EVENTPP_ALIGN_CACHELINE mutable Mutex queueListMutex;
@@ -101,29 +121,35 @@ using SharedMutex = std::shared_timed_mutex;  // C++14
 
 ### OPT-4: doEnqueue try_lock [Batch 4]
 
-`freeListMutex` 改为 `try_lock`，竞争时跳过回收直接分配新节点，不阻塞热路径：
+`freeListMutex` 改为 `try_lock`，竞争时跳过回收直接分配新节点，不阻塞热路径。外层无锁预检查避免不必要的锁操作：
 
 ```cpp
-std::unique_lock<Mutex> lock(freeListMutex, std::try_to_lock);
-if(lock.owns_lock() && !freeList.empty()) {
-    tempList.splice(tempList.end(), freeList, freeList.begin());
+if(! freeList.empty()) {  // 无锁预检查
+    std::unique_lock<Mutex> lock(freeListMutex, std::try_to_lock);
+    if(lock.owns_lock() && !freeList.empty()) {
+        tempList.splice(tempList.end(), freeList, freeList.begin());
+    }
 }
 ```
 
 ### OPT-8: waitFor 自适应 Spin [Batch 4]
 
-三阶段等待：快速检查 → 短暂 spin (128 次) → 回退到 futex。减少系统调用开销：
+四阶段等待：快速检查 → CPU hint spin (128 次) → 让出时间片 (16 次) → 回退到 CV wait：
 
 ```cpp
 if(doCanProcess()) return true;           // Phase 1: 快速检查
-for(int i = 0; i < 128; ++i) {           // Phase 2: spin
+for(int i = 0; i < 128; ++i) {           // Phase 2: spin + CPU hint (~0.5-2μs)
     if(doCanProcess()) return true;
     /* yield / pause */
 }
-return cv.wait_for(lock, duration, ...);  // Phase 3: futex
+for(int i = 0; i < 16; ++i) {            // Phase 3: 让出时间片 (~2-20μs)
+    if(doCanProcess()) return true;
+    std::this_thread::yield();
+}
+return cv.wait_for(lock, duration, ...);  // Phase 4: CV wait (futex)
 ```
 
-### OPT-5: PoolAllocator 池化分配器 [Batch 5]
+### OPT-5/9: PoolAllocator 池化分配器 [Batch 5]
 
 静态 per-type 池化分配器，通过 Policy 机制 opt-in。保留 `splice()` 兼容性（14 处调用）：
 
@@ -135,7 +161,22 @@ struct MyPolicies {
 eventpp::EventQueue<int, void(const Payload&), MyPolicies> queue;
 ```
 
-关键设计：静态单例池 → `operator==` 恒 true → `splice()` 安全；池耗尽时透明回退到堆分配。
+关键设计：静态单例池 → `operator==` 恒 true → `splice()` 安全；多 slab 动态增长 (OPT-9a)，无锁 CAS free list (OPT-9b)，仅 `grow()` 冷路径使用 SpinLock。
+
+```cpp
+// OPT-14: 一站式高性能策略预设
+struct HighPerfPolicy {
+    template <typename T>
+    using QueueList = eventpp::PoolQueueList<T, 8192>;
+    using Threading = eventpp::GeneralThreading<SpinLock>;
+};
+eventpp::EventQueue<int, void(const Payload&), HighPerfPolicy> queue;
+```
+
+### OPT-15: processQueueWith 零开销访问者分发 [Batch 6]
+
+绕过 EventDispatcher 全部基础设施 (shared_lock + map.find + CallbackList + std::function)，
+Visitor 直接调用，编译器可内联。详见 [processQueueWith 设计文档](eventpp_processQueueWith_design.md)。
 
 ---
 
@@ -182,7 +223,7 @@ eventpp::EventQueue<int, void(const Payload&), MyPolicies> queue;
 |------|------|------|
 | OPT-2: 快照 vs 批量预取 | 批量预取 (8 节点) | 快照破坏重入 append 语义 |
 | OPT-3: shared_mutex vs 无锁 map | shared_mutex | 改动小，C++14 兼容 |
-| OPT-5: Ring Buffer vs Pool Allocator | Pool Allocator | Ring Buffer 不支持 splice()（14 处调用） |
+| OPT-5/9: Ring Buffer vs Pool Allocator | Pool Allocator + 多 slab + CAS | Ring Buffer 不支持 splice()（14 处调用）；CAS 无锁 free list 消除热路径锁竞争 |
 
 ---
 
@@ -190,13 +231,13 @@ eventpp::EventQueue<int, void(const Payload&), MyPolicies> queue;
 
 | 文件 | 涉及 OPT |
 |------|----------|
-| `include/eventpp/eventpolicies.h` | OPT-1, OPT-3, OPT-6 |
+| `include/eventpp/eventpolicies.h` | OPT-1, OPT-3, OPT-6, OPT-10, OPT-11 |
 | `include/eventpp/callbacklist.h` | OPT-2 |
 | `include/eventpp/eventdispatcher.h` | OPT-3 |
 | `include/eventpp/hetereventdispatcher.h` | OPT-3 |
-| `include/eventpp/eventqueue.h` | OPT-4, OPT-6, OPT-8 |
+| `include/eventpp/eventqueue.h` | OPT-4, OPT-6, OPT-8, OPT-14, OPT-15 |
 | `include/eventpp/internal/eventqueue_i.h` | OPT-7 |
-| `include/eventpp/internal/poolallocator_i.h` | OPT-5 (新增) |
+| `include/eventpp/internal/poolallocator_i.h` | OPT-5, OPT-9 (新增) |
 
 ---
 
@@ -205,7 +246,7 @@ eventpp::EventQueue<int, void(const Payload&), MyPolicies> queue;
 | 验证项 | 方法 | 通过标准 |
 |--------|------|----------|
 | 编译 | `cmake --build . --target unittest` | 零错误 |
-| 功能 | `ctest` (209 个测试用例) | 209/209 PASS |
+| 功能 | `ctest` (410 个测试用例) | 410/410 PASS |
 | 线程安全 | `-fsanitize=thread` | 无新增 data race |
 | 内存安全 | `-fsanitize=address` + `detect_leaks=1` | 零错误零泄漏 |
 | 性能 | `eventpp_raw_benchmark` | 无回退 >5% |
