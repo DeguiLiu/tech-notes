@@ -10,6 +10,15 @@
 
 针对日志系统典型的多线程写入、单线程落盘场景，采用多生产者单消费者（MPSC）模型是最优选择。
 
+```mermaid
+graph LR
+    P1[Producer Thread 1] -->|CAS atomic push| RB[Lock-Free Ring Buffer]
+    P2[Producer Thread 2] -->|CAS atomic push| RB
+    P3[Producer Thread N] -->|CAS atomic push| RB
+    RB -->|Batch Write| FL[Log Flusher]
+    FL -->|Sequential I/O| ST[Flash / eMMC]
+```
+
 ## 2. 存储选型：为何摒弃链表？
 
 在设计日志缓冲区时，基于定长数组的环形缓冲区（Ring Buffer）在高性能场景下全面优于动态链表。链表在长期运行的系统中存在以下三大缺陷：
@@ -80,6 +89,7 @@ ARM 架构采用弱内存模型。简单的原子自增不足以保证多核之�
 
 typedef struct {
     char data[LOG_ENTRY_SIZE];
+    atomic_bool committed;  // 生产者写入完成标志，解决 CAS-vsnprintf 竞态
 } LogEntry;
 
 typedef struct {
@@ -90,6 +100,8 @@ typedef struct {
     _Alignas(64) atomic_size_t head;
     _Alignas(64) atomic_size_t tail;
 
+    atomic_size_t dropped_count;  // 缓冲区满时的丢弃计数
+
     atomic_bool running;
     int fd;
 } AsyncLogger;
@@ -97,12 +109,26 @@ typedef struct {
 // 初始化日志系统
 AsyncLogger* logger_create(int fd) {
     AsyncLogger* logger = (AsyncLogger*)aligned_alloc(64, sizeof(AsyncLogger));
+    if (logger == NULL) return NULL;
+
     logger->buffer = (LogEntry*)aligned_alloc(64, sizeof(LogEntry) * RING_BUFFER_SIZE);
+    if (logger->buffer == NULL) {
+        free(logger);
+        return NULL;
+    }
+
     logger->capacity = RING_BUFFER_SIZE;
     logger->fd = fd;
     atomic_init(&logger->head, 0);
     atomic_init(&logger->tail, 0);
+    atomic_init(&logger->dropped_count, 0);
     atomic_init(&logger->running, true);
+
+    // 初始化所有 slot 的 committed 标志
+    for (size_t i = 0; i < RING_BUFFER_SIZE; i++) {
+        atomic_init(&logger->buffer[i].committed, false);
+    }
+
     return logger;
 }
 
@@ -119,7 +145,10 @@ bool logger_write(AsyncLogger* logger, const char* format, ...) {
         h = atomic_load_explicit(&logger->head, memory_order_acquire);
         next = (t + 1) & (logger->capacity - 1);
 
-        if (next == h) return false; // 缓冲区溢出处理
+        if (next == h) {
+            atomic_fetch_add_explicit(&logger->dropped_count, 1, memory_order_relaxed);
+            return false; // 缓冲区满，丢弃并计数
+        }
 
     } while (!atomic_compare_exchange_weak_explicit(&logger->tail, &t, next,
                                                     memory_order_acq_rel, memory_order_relaxed));
@@ -129,6 +158,9 @@ bool logger_write(AsyncLogger* logger, const char* format, ...) {
     va_start(args, format);
     vsnprintf(logger->buffer[t].data, LOG_ENTRY_SIZE, format, args);
     va_end(args);
+
+    // 3. 标记 slot 写入完成，消费者可安全读取
+    atomic_store_explicit(&logger->buffer[t].committed, true, memory_order_release);
 
     return true;
 }
@@ -147,7 +179,13 @@ void* logger_consumer(void* arg) {
 
         size_t count = 0;
         while (h != t && count < 64) {
+            // 等待生产者完成写入 (committed 标志)
+            if (!atomic_load_explicit(&logger->buffer[h].committed, memory_order_acquire))
+                break;  // slot 尚未提交，停止本轮批处理
+
             memcpy(&batch[count], &logger->buffer[h], sizeof(LogEntry));
+            // 重置 committed 标志，供下一轮复用
+            atomic_store_explicit(&logger->buffer[h].committed, false, memory_order_relaxed);
             h = (h + 1) & (logger->capacity - 1);
             count++;
         }
@@ -182,6 +220,6 @@ void* logger_consumer(void* arg) {
 
 ## 6. 结论
 
-通过引入无锁环形缓冲区与零拷贝设计，异步日志库能有效消除多核并发下的锁竞争。针对 ARM 架构的 Cache Line 对齐进一步提升了多核心协作效率。实验数据表明，在高并发压力下，该方案相比传统的同步 `printf` 模式，响应延迟降低了 90% 以上，是 ARM Linux 嵌入式生产环境下的工业级优选方案。
+通过引入无锁环形缓冲区与零拷贝设计，异步日志库能有效消除多核并发下的锁竞争。针对 ARM 架构的 Cache Line 对齐进一步提升了多核心协作效率。相比传统的同步 `printf` 模式，该方案理论上可显著降低延迟，是 ARM Linux 嵌入式生产环境下的工业级优选方案。
 
 > 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/156543372)

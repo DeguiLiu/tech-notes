@@ -6,14 +6,16 @@
 
 ## 1. 概要
 
+> 注: 文中 `std::atomic_flag` 实际是基于其实现的自旋锁（spinlock），并非直接用 atomic_flag 做队列同步。
+
 测试目标：
 1. 比较 `std::mutex` 和 `std::atomic_flag` 的性能差异
 2. 测试多线程环境下的 [concurrentqueue](https://github.com/cameron314/concurrentqueue) 队列性能
 3. 测试单线程环境下的 [readerwriterqueue](https://github.com/cameron314/readerwriterqueue) 性能
 
 结论：
-- 对于小型数据结构的多线程操作，推荐使用 `std::atomic_flag` 替代 `std::mutex`
-- 对于较大的数据结构，`std::mutex` 在保证线程安全的同时提供了更好的性能
+- Linux 平台上，基于 `std::atomic_flag` 的自旋锁在小数据 push 场景下优于 `std::mutex`，但 pop 性能不稳定；Windows 平台上 `std::mutex` 反而更优
+- 数据量增大后，`ConcurrentQueue` 的 pop 性能持续领先；`std::atomic_flag` 自旋锁因长时间持锁导致性能下降
 - 新的业务代码可以根据需求适当使用无锁队列 `ConcurrentQueue`
 
 ## 2. 性能测试结果

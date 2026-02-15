@@ -1,6 +1,6 @@
 # 全局锁策略：通过有序获取与超时保护构建无死锁系统
 
-> 在多任务并发任务中，不当的锁管理是导致系统死锁或永久阻塞的罪魁祸首。本文聚焦于"全局锁获取顺序"与"锁超时与回退"两大技术手段，破坏死锁必要条件，从设计层面借鉴多锁竞争引发的稳定性问题。
+> 在多任务并发任务中，不当的锁管理是导致系统死锁或永久阻塞的罪魁祸首。本文聚焦于"全局锁获取顺序"与"锁超时与回退"两大技术手段，破坏死锁必要条件，从设计层面规避多锁竞争引发的稳定性问题。
 
 ## 1. 死锁原理与应对策略
 
@@ -80,9 +80,9 @@ static void sort_locks_by_id(OrderedLock_t *arr[], int n) {
 void lock_multiple(OrderedLock_t *locks[], int count) {
     OrderedLock_t *local_locks[count];
     memcpy(local_locks, locks, sizeof(OrderedLock_t*) * count);
-    sort_locks_by_id(locks, count);
+    sort_locks_by_id(local_locks, count);
     for (int i = 0; i < count; i++) {
-        mutex_lock(&locks[i]->mtx);
+        mutex_lock(&local_locks[i]->mtx);
     }
 }
 
@@ -95,7 +95,7 @@ void unlock_multiple(OrderedLock_t *locks[], int count) {
     memcpy(local_locks, locks, sizeof(OrderedLock_t*) * count);
     sort_locks_by_id(local_locks, count);
     for (int i = count - 1; i >= 0; i--) {
-        mutex_unlock(&locks[i]->mtx);
+        mutex_unlock(&local_locks[i]->mtx);
     }
 }
 ```
@@ -131,13 +131,13 @@ bool try_lock_with_timeout(OrderedLock_t *lock, uint32_t timeout_ms) {
 bool lock_multiple_with_timeout(OrderedLock_t *locks[], int count, uint32_t timeout_ms) {
     OrderedLock_t *local_locks[count];
     memcpy(local_locks, locks, sizeof(OrderedLock_t*) * count);
-    sort_locks_by_id(locks, count);
+    sort_locks_by_id(local_locks, count);
 
     for (int i = 0; i < count; i++) {
-        if (!try_lock_with_timeout(locks[i], timeout_ms)) {
+        if (!try_lock_with_timeout(local_locks[i], timeout_ms)) {
             // 获取失败，执行回退
             for (int j = i - 1; j >= 0; j--) {
-                mutex_unlock(&locks[j]->mtx);
+                mutex_unlock(&local_locks[j]->mtx);
             }
             return false;
         }

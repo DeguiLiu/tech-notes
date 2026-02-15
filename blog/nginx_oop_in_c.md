@@ -115,7 +115,7 @@ Nginx 引入了内存池（`ngx_pool_t`）机制。该机制将与特定上下�
 
 ### 4.1 模拟继承与多层配置上下文
 
-Nginx HTTP 配置的层级��构（Main -> Server -> Location）体现了继承和组合思想。
+Nginx HTTP 配置的层级结构（Main -> Server -> Location）体现了继承和组合思想。
 
 ```c
 typedef struct {
@@ -159,7 +159,7 @@ typedef struct {
 } ngx_http_phase_handler_t;
 ```
 
-核心引擎驱动责任链：
+核心引擎驱动责任链（简化伪代码，实际 Nginx 使用 checker 函数和以 `r->phase_handler` 为索引的扁平 handler 数组）：
 
 ```c
 ngx_int_t ngx_http_process_request(ngx_http_request_t *r) {
@@ -168,10 +168,12 @@ ngx_int_t ngx_http_process_request(ngx_http_request_t *r) {
         ngx_http_phase_handler_t *ph = ngx_http_top_filter_handlers[i];
         while (ph->handler) {
             ngx_int_t rc = ph->handler(r);
-            if (rc == NGX_OK || rc == NGX_DECLINED) {
-                ph++;
+            if (rc == NGX_OK) {
+                return NGX_OK;  // request handled, stop chain
+            } else if (rc == NGX_DECLINED) {
+                ph++;  // handler declined, try next
             } else {
-                return rc;
+                return rc;  // error or async
             }
         }
     }

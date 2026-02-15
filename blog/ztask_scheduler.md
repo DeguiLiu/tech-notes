@@ -137,6 +137,8 @@ int32_t zt_init(void * const zt_mem, const uint32_t size)
     return (int32_t)num_tasks;
 }
 
+// 注意: volatile 仅防止编译器优化，ticks++ 在多数 ARM 单核 MCU 上是安全的
+// （单条 STR 指令），但在多核平台上应使用 atomic_uint32_t。
 void zt_tick(void) { g_ztask_ctx.ticks++; }
 uint32_t zt_get_ticks(void) { return g_ztask_ctx.ticks; }
 
@@ -203,10 +205,11 @@ uint32_t zt_ticks_to_next_task(void)
 {
     if (g_ztask_ctx.active_tasks != NULL) {
         const uint32_t now = g_ztask_ctx.ticks;
-        if (g_ztask_ctx.active_tasks->next_schedule > now) {
-            return g_ztask_ctx.active_tasks->next_schedule - now;
+        const uint32_t diff = g_ztask_ctx.active_tasks->next_schedule - now;
+        if (diff < (UINT32_MAX / 2U)) {
+            return diff;  // task is in the future
         }
-        return 0U;
+        return 0U;  // task is overdue
     }
     return UINT32_MAX;
 }
@@ -215,6 +218,9 @@ uint32_t zt_ticks_to_next_task(void)
 ## 6. 典型应用
 
 ```c
+#define MAX_TASKS 10
+static uint8_t zt_mem[MAX_TASKS * sizeof(struct zt_task_s)] __attribute__((aligned(4)));
+
 int main(void) {
     zt_init(zt_mem, sizeof(zt_mem));
     setup_timer_for_ztick(); // 配置1ms定时器中断调用 zt_tick()
