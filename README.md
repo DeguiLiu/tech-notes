@@ -27,6 +27,7 @@ interview/           -- 嵌入式面试准备
 | [deadlock_prevention.md](blog/deadlock_prevention.md) | 全局锁策略: 有序获取与超时保护构建无死锁系统 |
 | [nginx_oop_in_c.md](blog/nginx_oop_in_c.md) | C 语言面向对象范式: Nginx 模块化架构的设计分析 |
 | [ztask_scheduler.md](blog/ztask_scheduler.md) | ztask 轻量级合作式任务调度器 |
+| [ztask_cpp_modernization.md](blog/ztask_cpp_modernization.md) | ztask-cpp: 嵌入式合作式任务调度器的 C++14 现代化重写 |
 | [embedded_cli_msh.md](blog/embedded_cli_msh.md) | 嵌入式 Linux 上用 Embedded CLI 打造 MSH 风格调试命令 |
 | [neon_crc32_analysis.md](blog/neon_crc32_analysis.md) | NEON 指令集 CRC32 加速分析 |
 | [lock_contention_benchmark.md](blog/lock_contention_benchmark.md) | 锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue |
@@ -72,6 +73,7 @@ interview/           -- 嵌入式面试准备
 | eventpp (fork) | [Gitee](https://gitee.com/liudegui/eventpp) | eventpp ARM-Linux 优化分支 |
 | message_bus | [Gitee](https://gitee.com/liudegui/message_bus) | C++11 非阻塞消息总线 |
 | lock-contention-benchmark | [Gitee](https://gitee.com/liudegui/lock-contention-benchmark) | 锁竞争基准测试 (Spinlock/Mutex/ConcurrentQueue) |
+| ztask-cpp | [Gitee](https://gitee.com/liudegui/ztask-cpp) | C++14 Header-Only 合作式任务调度器 |
 
 ## 技术栈
 
