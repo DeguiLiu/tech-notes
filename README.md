@@ -13,7 +13,7 @@ interview/           -- 嵌入式面试准备
 
 ## 文章索引
 
-### blog/ -- 技术博客 (13 篇)
+### blog/ -- 技术博客 (14 篇)
 
 | 文件 | 主题 |
 |------|------|
@@ -30,6 +30,7 @@ interview/           -- 嵌入式面试准备
 | [embedded_cli_msh.md](blog/embedded_cli_msh.md) | 嵌入式 Linux 上用 Embedded CLI 打造 MSH 风格调试命令 |
 | [neon_crc32_analysis.md](blog/neon_crc32_analysis.md) | NEON 指令集 CRC32 加速分析 |
 | [lock_contention_benchmark.md](blog/lock_contention_benchmark.md) | 锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue |
+| [loghelper_pluggable_backend.md](blog/loghelper_pluggable_backend.md) | C++14 嵌入式日志库设计: 从 Boost.Log 到可插拔后端架构 |
 
 ### mccc/ -- 消息总线 (5 篇)
 
