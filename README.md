@@ -13,7 +13,7 @@ interview/           -- 嵌入式面试准备
 
 ## 文章索引
 
-### blog/ -- 技术博客 (12 篇)
+### blog/ -- 技术博客 (13 篇)
 
 | 文件 | 主题 |
 |------|------|
@@ -29,6 +29,7 @@ interview/           -- 嵌入式面试准备
 | [ztask_scheduler.md](blog/ztask_scheduler.md) | ztask 轻量级合作式任务调度器 |
 | [embedded_cli_msh.md](blog/embedded_cli_msh.md) | 嵌入式 Linux 上用 Embedded CLI 打造 MSH 风格调试命令 |
 | [neon_crc32_analysis.md](blog/neon_crc32_analysis.md) | NEON 指令集 CRC32 加速分析 |
+| [lock_contention_benchmark.md](blog/lock_contention_benchmark.md) | 锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue |
 
 ### mccc/ -- 消息总线 (5 篇)
 
@@ -38,7 +39,6 @@ interview/           -- 嵌入式面试准备
 | [MCCC_Competitive_Analysis.md](mccc/MCCC_Competitive_Analysis.md) | 竞品对标报告 (vs eventpp/EnTT/sigslot/ZeroMQ/QP-C++) |
 | [mccc_bus_cpp17_practice.md](mccc/mccc_bus_cpp17_practice.md) | MCCC Bus C++17 工程实践总结 |
 | [mccc_bus_api_reference.md](mccc/mccc_bus_api_reference.md) | MCCC Bus API 参考文档 |
-| [lockfree_queue_benchmark.md](mccc/lockfree_queue_benchmark.md) | 多线程性能测试: ConcurrentQueue vs atomic_flag vs mutex |
 | [cpp11_message_bus.md](mccc/cpp11_message_bus.md) | C++11 非阻塞消息总线 message_bus |
 
 ### architecture/ -- 架构与性能 (8 篇)
@@ -70,7 +70,7 @@ interview/           -- 嵌入式面试准备
 | mccc-bus | [Gitee](https://gitee.com/liudegui/mccc-bus) | 高性能无锁消息总线 |
 | eventpp (fork) | [Gitee](https://gitee.com/liudegui/eventpp) | eventpp ARM-Linux 优化分支 |
 | message_bus | [Gitee](https://gitee.com/liudegui/message_bus) | C++11 非阻塞消息总线 |
-| lock_test | [Gitee](https://gitee.com/liudegui/lock_test) | 无锁队列性能测试 |
+| lock-contention-benchmark | [Gitee](https://gitee.com/liudegui/lock-contention-benchmark) | 锁竞争基准测试 (Spinlock/Mutex/ConcurrentQueue) |
 
 ## 技术栈
 
