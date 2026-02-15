@@ -153,14 +153,6 @@ telsh> exit
 Bye.
 ```
 
-## 总结
-
-这次重构的核心收获：
-
-1. 嵌入式场景下，boost 往往是过度设计。POSIX socket API 足够简洁，不需要 asio 的抽象层。
-2. `void* ctx` + 函数指针是嵌入式 C++ 中替代 `std::function` + 类型擦除的实用模式，零开销且类型安全。
-3. 固定容量数组 + 编译期确定的资源上限，比动态分配更适合嵌入式环境。
-4. Header-only 设计让模块可以在项目间自由复用，不需要链接库。
 
 项目地址：
 - Gitee: https://gitee.com/liudegui/telsh
