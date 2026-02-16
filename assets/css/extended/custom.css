@@ -1,0 +1,41 @@
+/* academic style for Chinese content */
+
+body {
+  font-family: "Noto Serif SC", "Source Han Serif CN", "Songti SC", serif;
+}
+
+code, pre {
+  font-family: "JetBrains Mono", "Fira Code", "Source Code Pro", monospace;
+}
+
+.post-content {
+  line-height: 1.8;
+}
+
+.post-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+.post-content th,
+.post-content td {
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  text-align: left;
+}
+
+.post-content tr:nth-child(even) {
+  background: var(--code-bg);
+}
+
+.post-content th {
+  background: var(--code-bg);
+  font-weight: 600;
+}
+
+/* mermaid diagram styling */
+.mermaid {
+  text-align: center;
+  margin: 1em 0;
+}
