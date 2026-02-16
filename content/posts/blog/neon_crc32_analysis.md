@@ -1,10 +1,10 @@
 ---
-title: "ARMv8 CRC32 硬件指令加速明显，但 NEON 在简单 CRC 校验和计算中反而造成性能下降的分析"
+title: "ARMv8 CRC 性能实测: 硬件指令快 8 倍, NEON 反而更慢"
 date: 2026-02-15
 draft: false
 categories: ["blog"]
 tags: ["ARM", "CRC", "lock-free", "performance", "scheduler"]
-summary: "本文比较了两组实验: (1) 使用 NEON (Advanced SIMD) 指令和简单 C 循环实现字节累加 CRC 校验和; (2) 使用 ARMv8 CRC32 扩展指令 (`crc32cx`) 和软件查表法实现 CRC32。结果表明，CRC32 硬件指令比软件查表快 8 倍以上，而 NEON 手写的字节累加 CRC 在 -O2 下反而比编译器自动优化的标量代码慢。"
+summary: "对比两组实验: ARMv8 CRC32 硬件指令 (crc32cx) vs 软件查表法，以及 NEON SIMD vs 简单 C 循环的字节累加校验和。结果表明 CRC32 硬件指令比查表快 8 倍以上，而 NEON 手写的字节累加在 -O2 下反而比编译器自动优化的标量代码慢。"
 ShowToc: true
 TocOpen: true
 ---

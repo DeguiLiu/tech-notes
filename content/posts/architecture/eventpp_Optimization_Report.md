@@ -1,10 +1,10 @@
 ---
-title: "eventpp 性能优化技术报告"
+title: "eventpp 性能优化实战: 6 个瓶颈定位与 5 倍吞吐提升"
 date: 2026-02-15
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "C++14", "callback", "lock-free", "message-bus", "performance"]
-summary: "基准版本: eventpp v0.1.3 (wqking/eventpp)"
+summary: "通过逐行阅读 eventpp v0.1.3 核心代码，定位到回调遍历加锁、双锁入队、排他锁查 map 等 6 个性能瓶颈。逐一实施优化后，Active Object 吞吐量从 1.5 M/s 提升至 8.5 M/s，改善幅度超过 5 倍。"
 ShowToc: true
 TocOpen: true
 ---

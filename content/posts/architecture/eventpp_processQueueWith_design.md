@@ -1,10 +1,10 @@
 ---
-title: "processQueueWith -- 零开销编译期访问者分发"
+title: "零开销事件分发: 用编译期 Visitor 替代 5 层间接调用"
 date: 2026-02-15
 draft: false
 categories: ["architecture"]
 tags: ["C++14", "C++17", "callback", "heterogeneous", "lock-free", "message-bus", "newosp", "performance"]
-summary: "eventpp `EventQueue::process()` 的分发热路径经过 5 层间接调用:"
+summary: "eventpp EventQueue::process() 的分发热路径经过 mutex 读锁、map 查找、shared_ptr 遍历、std::function 类型擦除共 5 层间接调用。processQueueWith 通过编译期 Visitor 模式绕过全部中间层，让编译器将整条分发路径内联为零间接调用。"
 ShowToc: true
 TocOpen: true
 ---

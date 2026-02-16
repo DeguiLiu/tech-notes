@@ -1,5 +1,5 @@
 ---
-title: "使用 C++11 实现的消息总线 message_bus"
+title: "用 C++11 从零实现一个线程安全消息总线"
 date: 2026-02-15
 draft: false
 categories: ["mccc"]

@@ -4,7 +4,7 @@ date: 2026-02-15
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "C++17", "DMA", "LiDAR", "MCCC", "callback", "embedded", "message-bus", "newosp", "performance"]
-summary: "基于 MCCC (Multi-Component Communication Controller) 消息总线的优化实践"
+summary: "从 MCCC 消息总线项目中提炼的零堆分配优化模式: FixedFunction SBO 替代 std::function、Envelope 内嵌 Ring Buffer、编译期类型索引替代 unordered_map、批处理减少原子操作。每个模式附带问题场景、解决方案和性能数据。"
 ShowToc: true
 TocOpen: true
 ---

@@ -1,10 +1,10 @@
 ---
-title: "MCCC API 参考文档"
+title: "MCCC 消息总线 API 全参考: 类型、接口与配置"
 date: 2026-02-15
 draft: false
 categories: ["mccc"]
 tags: ["C++14", "C++17", "MCCC", "callback", "embedded", "lock-free", "message-bus", "performance", "zero-copy"]
-summary: "**MCCC** (Message-Centric Component Communication) — 面向安全关键嵌入式系统的 Lock-free MPSC 消息总线"
+summary: "MCCC (Message-Centric Component Communication) 消息总线的完整 API 参考，涵盖 FixedString/FixedVector 容器、MessageEnvelope 消息封装、AsyncBus 总线接口、StaticComponent 编译期组件、优先级与背压配置，每个接口附带签名、参数说明和使用示例。"
 ShowToc: true
 TocOpen: true
 ---

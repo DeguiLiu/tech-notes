@@ -1,10 +1,10 @@
 ---
-title: "Zynq-7000 激光雷达点云处理概要设计"
+title: "Zynq-7000 激光雷达点云处理: FPGA + 双核 ARM 的架构设计与性能分析"
 date: 2026-02-15
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "CRC", "DMA", "FPGA", "LiDAR", "lock-free", "logging", "message-bus", "newosp", "performance", "scheduler", "serial", "state-machine", "zero-copy"]
-summary: "[newosp 激光雷达性能评估](docs/performance_analysis_lidar_zh.md)"
+summary: "在 Zynq-7000 (双核 Cortex-A9 @ 667 MHz) 上处理 30 万点/秒激光雷达数据流。PL (FPGA) 负责传感器接口和 DMA 搬运，PS (ARM) 运行 Linux 处理点云算法和网络输出，目标端到端延迟 P99 < 5 ms。"
 ShowToc: true
 TocOpen: true
 ---

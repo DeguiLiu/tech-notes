@@ -4,7 +4,7 @@ date: 2026-02-15
 draft: false
 categories: ["blog"]
 tags: ["ARM", "C++17", "LiDAR", "MISRA", "RTOS", "callback", "embedded", "lock-free", "memory-pool", "message-bus", "newosp", "serial", "state-machine"]
-summary: "工业嵌入式系统 (激光雷达、机器人控制器、边缘计算) 在开发和部署的不同阶段, 调试环境差异很大:"
+summary: "工业嵌入式系统在实验室、早期调试、现场部署、CI 测试等不同阶段，调试环境差异巨大。newosp 的 DebugShell 原本只支持 TCP telnet，本文介绍如何将其扩展为 TCP/串口/stdin/管道四后端统一架构，一套命令在所有环境下可用。"
 ShowToc: true
 TocOpen: true
 ---

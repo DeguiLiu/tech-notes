@@ -4,7 +4,7 @@ date: 2026-02-15
 draft: false
 categories: ["blog"]
 tags: ["ARM", "C++11", "C++14", "embedded", "lock-free", "logging", "performance"]
-summary: "在嵌入式 ARM Linux 项目中，日志系统是最基础的基础设施之一。然而许多项目仍在使用基于 Boost.Log 的重量级方案，每条日志创建临时对象、使用 std::regex 解析占位符、依赖动态链接库。本文以一个真实项目 loghelper 的重构为例，详细阐述如何将其改造为 C++14 header-only 架构，支持 spdlog/zlog/fallback 三后端编译期切换，实现 1"
+summary: "在嵌入式 ARM Linux 项目中，基于 Boost.Log 的日志方案因临时对象创建、std::regex 解析和动态链接依赖而成为性能瓶颈。本文以 loghelper 的重构为例，将其改造为 C++14 header-only 架构，支持 spdlog/zlog/fallback 三后端编译期切换，实现 10-100 倍性能提升。"
 ShowToc: true
 TocOpen: true
 ---

@@ -4,7 +4,7 @@ date: 2026-02-15
 draft: false
 categories: ["blog"]
 tags: ["ARM", "C++17", "RTOS", "callback", "deadlock", "embedded", "lock-free", "message-bus", "newosp", "performance", "scheduler", "serial"]
-summary: "**场景模拟: 死锁是如何发生的?**"
+summary: "死锁是嵌入式多线程系统中最隐蔽的故障之一。本文从一个典型的双锁死锁场景出发，逐步演示有序锁、lock_guard、try_lock、无锁队列四种防御策略，分析各方案在嵌入式实时系统中的工程权衡。"
 ShowToc: true
 TocOpen: true
 ---

@@ -1,10 +1,10 @@
 ---
-title: "工业嵌入式流式数据处理架构概要设计"
+title: "工业嵌入式流式数据处理架构设计: 从传感器采集到网络输出的全链路"
 date: 2026-02-15
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "C++17", "CRC", "DMA", "LiDAR", "MISRA", "behavior-tree", "callback", "embedded", "lock-free", "logging", "memory-pool", "message-bus", "newosp", "performance", "scheduler", "serial", "state-machine", "zero-copy"]
-summary: "目标平台: ARM-Linux (Cortex-A53/A72/A7) | C++17, Header-only"
+summary: "面向激光雷达、工业视觉、机器人等 ARM-Linux 场景，设计一套 C++17 header-only 的流式数据处理架构。覆盖数据流 (10-100 Hz 大块帧) 与控制流 (低频高可靠消息) 的分离处理、零堆分配内存管理、多级流水线调度，基于 newosp 基础设施库实现。"
 ShowToc: true
 TocOpen: true
 ---

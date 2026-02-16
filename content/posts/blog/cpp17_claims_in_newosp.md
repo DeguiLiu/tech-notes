@@ -1,10 +1,10 @@
 ---
-title: "C 语言做不到的 C++17 特性在 newosp 中的体现"
+title: "newosp 源码中的 C++17 实践: C11 无法实现的能力清单"
 date: 2026-02-15
 draft: false
 categories: ["blog"]
 tags: ["ARM", "C++17", "CRC", "callback", "lock-free", "newosp"]
-summary: "筛选标准：只保留 C11 在语言层面**无法实现**的能力。"
+summary: "从 newosp v0.2.0 源码中提炼 C11 在语言层面无法实现的 C++17 能力: 编译期类型校验、variant 类型路由、constexpr 编译期计算、RAII 资源管理、模板参数化策略选择。每项附带具体代码位置和 C 语言对比。"
 ShowToc: true
 TocOpen: true
 ---

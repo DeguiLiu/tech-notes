@@ -1,10 +1,10 @@
 ---
-title: "性能基准测试报告"
+title: "MCCC 消息总线性能实测: 吞吐量、延迟与优先级背压验证"
 date: 2026-02-15
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "C++17", "MCCC", "MISRA", "callback", "embedded", "lock-free", "message-bus", "performance", "scheduler"]
-summary: "**MCCC Lock-free 提供优先级保护和背压控制，同时保持高性能。**"
+summary: "MCCC Lock-free MPSC 消息总线在 BARE_METAL 模式下达到 18.7 M/s (54 ns/msg)，FULL_FEATURED 生产模式 5.8 M/s (172 ns/msg)，HIGH 优先级消息在背压测试中实现零丢失，E2E P99 延迟仅 449 ns。本文从对比层级、功能开销分解、端到端延迟分位数三个维度展示完整测试数据。"
 ShowToc: true
 TocOpen: true
 ---

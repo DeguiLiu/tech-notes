@@ -1,10 +1,10 @@
 ---
-title: "RK3506J 异构多核部署概要设计"
+title: "RK3506J 三核异构设计: 当 RTOS 与 Linux 跑在同一芯片上"
 date: 2026-02-15
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "CRC", "DMA", "LiDAR", "RTOS", "heterogeneous", "lock-free", "logging", "message-bus", "newosp", "performance", "scheduler", "serial", "state-machine", "zero-copy"]
-summary: "适用场景: 激光雷达、工业视觉、机器人控制器、边缘传感器融合"
+summary: "RK3506J 集成三核 Cortex-A7 (1.0 GHz) + Cortex-M0，支持 Linux + RTOS 异构部署。本文分析 AMP 架构下的核间通信 (RPMsg/共享内存)、实时性保障 (硬件定时器 + 中断隔离)、资源分区策略，面向激光雷达和工业控制器的部署方案。"
 ShowToc: true
 TocOpen: true
 ---

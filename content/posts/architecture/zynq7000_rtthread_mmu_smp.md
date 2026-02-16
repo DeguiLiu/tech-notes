@@ -1,10 +1,10 @@
 ---
-title: "Zynq-7000 双核 Cortex-A9 RT-Thread SMP 概要设计"
+title: "在 Zynq-7000 双核 ARM 上跑 RT-Thread SMP: MMU、Cache 与调度实战"
 date: 2026-02-15
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "CRC", "DMA", "FPGA", "LiDAR", "RTOS", "lock-free", "logging", "performance", "scheduler", "state-machine"]
-summary: "带宽不是瓶颈。CPU 处理延迟和调度抖动是端到端延迟的主导因素。"
+summary: "将 RT-Thread SMP 移植到 Zynq-7000 双核 Cortex-A9 平台，解决 MMU 页表配置、L1/L2 Cache 一致性、双核调度器初始化三个核心问题。实测表明带宽不是瓶颈，CPU 处理延迟和调度抖动才是端到端延迟的主导因素。"
 ShowToc: true
 TocOpen: true
 ---

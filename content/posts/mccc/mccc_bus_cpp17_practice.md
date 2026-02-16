@@ -1,10 +1,10 @@
 ---
-title: "mccc-bus 中 C 语言做不到的 C++17 实践"
+title: "mccc-bus 源码中的 C++17 实践: C 语言无法实现的能力剖析"
 date: 2026-02-15
 draft: false
 categories: ["mccc"]
 tags: ["C++17", "MCCC", "callback", "deadlock", "lock-free", "message-bus", "zero-copy"]
-summary: "从 mccc-bus 项目（约 1200 行 header-only）中提炼 C 语言在语言层面无法实现的能力。"
+summary: "从 mccc-bus 项目 (约 1200 行 header-only) 中提炼 C11 无法实现的 C++17 能力: variant 编译期类型路由、FixedFunction 栈上类型擦除、constexpr if 编译期分支、RAII 自动资源管理、模板约束与 static_assert 编译期校验。"
 ShowToc: true
 TocOpen: true
 ---

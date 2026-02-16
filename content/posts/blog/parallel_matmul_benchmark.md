@@ -4,7 +4,7 @@ date: 2026-02-15
 draft: false
 categories: ["blog"]
 tags: ["C++17", "DMA", "callback", "embedded", "heterogeneous", "lock-free", "message-bus", "newosp", "performance", "scheduler", "zero-copy"]
-summary: "项目地址: [https://gitee.com/liudegui/zmq_parallel_tasks](https://gitee.com/liudegui/zmq_parallel_tasks)"
+summary: "以 512x512 矩阵乘法为载体，基于 newosp 基础设施库实测对比单线程、线程池、消息总线、多进程共享内存四种并行方案的性能差异，分析各方案在嵌入式 Linux 平台上的架构取舍与加速比。"
 ShowToc: true
 TocOpen: true
 ---

@@ -4,7 +4,7 @@ date: 2026-02-15
 draft: false
 categories: ["blog"]
 tags: ["C++17", "callback", "embedded", "lock-free", "message-bus", "newosp", "zero-copy"]
-summary: "C++17 的模板、variant、constexpr、RAII、强类型系统让编译器在编译期捕获类型不匹配、"
+summary: "C++17 的模板、variant、constexpr、RAII、强类型系统让编译器在编译期捕获类型不匹配、内存越界、资源泄漏等问题，同时生成比手写 C 更优的机器码。基于 newosp 工业嵌入式库的实践，逐项对比 C11 无法实现的语言级能力。"
 ShowToc: true
 TocOpen: true
 ---

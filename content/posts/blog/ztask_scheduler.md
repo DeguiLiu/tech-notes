@@ -1,5 +1,5 @@
 ---
-title: "ztask 轻量级合作式任务调度器"
+title: "ztask: 零动态分配的裸机合作式任务调度器设计分析"
 date: 2026-02-15
 draft: false
 categories: ["blog"]
