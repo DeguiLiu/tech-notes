@@ -1,5 +1,5 @@
 ---
-title: "从 C++03 到 C++14: 数据库抽象层的现代化重写实践"
+title: "数据库抽象层的 C++14 重写: 从手动内存管理到 RAII"
 date: 2026-02-16
 draft: false
 categories: ["blog"]

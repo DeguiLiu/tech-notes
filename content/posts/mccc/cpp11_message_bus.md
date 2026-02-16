@@ -1,5 +1,5 @@
 ---
-title: "用 C++11 从零实现一个线程安全消息总线"
+title: "C++11 线程安全消息总线: 从零实现 Pub/Sub 模型"
 date: 2026-02-15
 draft: false
 categories: ["mccc"]

@@ -1,5 +1,5 @@
 ---
-title: "ztask-cpp: 嵌入式合作式任务调度器的 C++14 现代化重写"
+title: "ztask 调度器的 C++14 重写: 类型安全、RAII 与模板化改造"
 date: 2026-02-15
 draft: false
 categories: ["blog"]

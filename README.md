@@ -74,7 +74,7 @@ interview/           -- 嵌入式面试准备
 
 ## 技术栈
 
-- C++17, `-fno-exceptions -fno-rtti`
+- C++17, `-fno-exceptions -fno-rtti`, C11
 - Lock-free (CAS, SPSC wait-free)
-- MISRA C++ 合规
-- ARM-Linux 嵌入式平台 (Zynq-7000, RK3506J, Cortex-A 系列)
+- MISRA C++/C 合规
+- ARM-Linux /RTOS 嵌入式平台 (Zynq-7000, RK3506J, Cortex-A, Cortex-M 系列)

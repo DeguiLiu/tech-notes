@@ -1,5 +1,5 @@
 ---
-title: "LMDB 嵌入式 Linux 选型与实践指南"
+title: "LMDB 在嵌入式 Linux 上的实践: 零拷贝读取与内存映射 I/O"
 date: 2026-02-17
 draft: false
 categories: ["blog"]

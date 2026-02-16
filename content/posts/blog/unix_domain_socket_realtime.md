@@ -1,5 +1,5 @@
 ---
-title: "嵌入式 ARM-Linux 进程间通信实时性优化: Unix Domain Socket 全链路调优"
+title: "Unix Domain Socket 实时性优化: 嵌入式 IPC 全链路调优"
 date: 2026-02-16
 draft: false
 categories: ["blog"]

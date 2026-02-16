@@ -1,5 +1,5 @@
 ---
-title: "C语言面向对象范式：Nginx模块化架构的设计分析"
+title: "C 语言如何实现面向对象: Nginx 模块化架构源码解读"
 date: 2026-02-15
 draft: false
 categories: ["blog"]

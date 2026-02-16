@@ -1,5 +1,5 @@
 ---
-title: "C/C++ 系统级性能优化: 从编译器到架构的实战技巧"
+title: "C/C++ 性能优化实战: 内存布局、分支预测与编译器调优"
 date: 2026-02-16
 draft: false
 categories: ["blog"]

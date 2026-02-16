@@ -1,5 +1,5 @@
 ---
-title: "newosp: 一个面向工业嵌入式的 C++17 Header-Only 基础设施库"
+title: "newosp: 面向工业嵌入式的 C++17 Header-Only 基础设施库"
 date: 2026-02-17
 draft: false
 categories: ["blog"]

@@ -1,5 +1,5 @@
 ---
-title: "锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue"
+title: "ARM-Linux 锁竞争性能实测: Spinlock/Mutex/ConcurrentQueue 对比"
 date: 2026-02-15
 draft: false
 categories: ["blog"]

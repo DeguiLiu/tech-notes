@@ -1,5 +1,5 @@
 ---
-title: "newosp 嵌入式并发架构: 事件驱动消息总线 + 固定线程预算 + 可移植 I/O"
+title: "如何设计嵌入式并发架构: newosp 的事件驱动 + 固定线程池方案"
 date: 2026-02-17
 draft: false
 categories: ["blog"]

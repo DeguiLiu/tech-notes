@@ -1,5 +1,5 @@
 ---
-title: "telsh: 从 boost::asio 到纯 POSIX -- 嵌入式 Telnet 调试 Shell 的重构实践"
+title: "嵌入式 Telnet 调试 Shell 重构: 纯 POSIX 轻量化实现"
 date: 2026-02-15
 draft: false
 categories: ["blog"]

@@ -1,5 +1,5 @@
 ---
-title: "C++17 vs C 编译产物体积：工业嵌入式场景的实测与分析"
+title: "C++17 vs C 二进制体积: 嵌入式场景的实测与分析"
 date: 2026-02-15
 draft: false
 categories: ["blog"]
