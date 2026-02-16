@@ -14,7 +14,7 @@ TocOpen: true
 > 本文基于 newosp v0.2.0，1114 test cases (26085 assertions)，ASan/TSan/UBSan 全部通过。
 >
 > 相关文章:
-> - [newosp 嵌入式并发与 I/O 架构](../newosp_concurrency_io_architecture/) -- 线程模型、Executor、WorkerPool、IoPoller 详解
+> - [嵌入式并发的第四条路: 为什么多线程、协程和 epoll 都不够用](../newosp_concurrency_io_architecture/) -- 三条并发路径的局限与事件驱动方案
 > - [无锁编程核心原理: 从 CAS 到三种队列模式](../lockfree_programming_fundamentals/) -- AsyncBus 底层的无锁原理
 > - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- newosp SPSC 的逐行代码分析
 > - [共享内存进程间通信](../shm_ipc_newosp/) -- ShmRingBuffer 的工程实践

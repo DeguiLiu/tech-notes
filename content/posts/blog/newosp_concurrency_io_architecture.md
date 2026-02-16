@@ -1,108 +1,237 @@
 ---
-title: "newosp 嵌入式并发与 I/O 架构: 从线程/协程/IO多路复用到事件驱动消息总线"
+title: "嵌入式并发的第四条路: 为什么多线程、协程和 epoll 都不够用"
 date: 2026-02-17
 draft: false
 categories: ["blog"]
-tags: ["newosp", "C++17", "concurrency", "I/O", "epoll", "poll", "coroutine", "thread-pool", "event-driven", "lock-free", "MPSC", "SPSC", "embedded", "ARM-Linux", "zero-allocation", "WorkerPool", "Executor"]
-summary: "嵌入式并发有三条经典路径: 多线程+协程、I/O 多路复用、异步 I/O。它们各自解决了部分问题，但在资源受限的 ARM-Linux 嵌入式场景中，线程数不可控、协程生态碎片化、epoll 不可移植、aio 仅限块设备等问题依然突出。newosp 选择了第四条路: 事件驱动消息总线 (无锁 MPSC AsyncBus) + 固定线程预算 (Executor/WorkerPool) + 可移植 I/O 抽象 (IoPoller poll/epoll 双后端)，在 4-8 个线程内实现确定性微秒级延迟和零堆分配热路径。本文从传统并发与 I/O 模型的局限出发，逐层剖析 newosp 的线程架构、消息流水线和 I/O 集成设计，展示嵌入式系统如何用事件驱动替代阻塞并发。"
+tags: ["C++17", "concurrency", "I/O", "epoll", "poll", "select", "coroutine", "state-threads", "aio", "io_uring", "event-driven", "embedded", "ARM-Linux", "newosp"]
+summary: "嵌入式 ARM-Linux 系统需要同时处理传感器、协议、控制、网络等并发任务。业界有三条经典路径: 多线程+协程、I/O 多路复用、异步 I/O。本文逐一分析它们在嵌入式场景中的局限: 协程的栈内存不可控与 -fno-exceptions 冲突、epoll 的 Linux 专有与回调耦合、异步 I/O 仅限块设备。在此基础上，提出嵌入式并发的第四条路: 事件驱动消息总线 + 固定线程预算 + 可移植 I/O 抽象，并以 newosp 架构为例展示这一方案如何在 4-8 个线程内实现零堆分配和微秒级确定性延迟。"
 ShowToc: true
 TocOpen: true
 ---
 
 > 配套代码: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp) -- header-only C++17 嵌入式基础设施库
 >
-> 设计文档: [design_zh.md](https://github.com/DeguiLiu/newosp/blob/main/docs/design_zh.md)
->
 > 相关文章:
-> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- AsyncBus/Node/HSM 核心架构
-> - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- WorkerPool 内部的 SPSC 队列
-> - [无锁编程核心原理: 从 CAS 到三种队列模式](../lockfree_programming_fundamentals/) -- AsyncBus 底层的无锁原理
+> - [工业传感器数据流水线: newosp C++17 零堆分配事件驱动架构实战](../newosp_event_driven_architecture/) -- AsyncBus/HSM/SPSC 核心实现详解
+> - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- newosp SPSC 的逐行代码分析
+> - [无锁编程核心原理: 从 CAS 到三种队列模式](../lockfree_programming_fundamentals/) -- CAS/MPSC/SPSC 原理
 > - [共享内存进程间通信](../shm_ipc_newosp/) -- ShmRingBuffer I/O 集成
-> - [嵌入式线程间消息传递重构: MCCC 无锁消息总线](../mccc_message_passing/) -- newosp AsyncBus 的前身
-> - [newosp ospgen: YAML 驱动的 C++17 零堆消息代码生成](../newosp_ospgen_codegen/) -- 消息类型自动生成
 >
-> CSDN 原文: [newosp 嵌入式并发与 I/O 架构](https://blog.csdn.net/stallion5632)
+> CSDN 原文:
+> - [C++ 多线程与协程优化阻塞型任务](https://blog.csdn.net/stallion5632/article/details/143887766)
+> - [Linux I/O 多路复用与异步 I/O 对比](https://blog.csdn.net/stallion5632/article/details/143675999)
 
-## 1. 问题: 嵌入式并发的三条路和它们的局限
+## 1. 问题: 嵌入式并发的三条路
 
-嵌入式 ARM-Linux 系统 (激光雷达、机器人、边缘计算) 需要同时处理传感器采集、协议解析、控制逻辑、网络通信等多个并发任务。业界有三条经典路径:
+嵌入式 ARM-Linux 系统 (激光雷达、机器人、边缘计算) 需要同时处理传感器采集、协议解析、控制逻辑、网络通信等并发任务。业界有三条经典路径，它们各解决了部分问题，但都留下了嵌入式特有的缺口。
 
 ### 1.1 路径一: 多线程 + 协程
 
-**多线程** 是最直观的并发模型: 每个任务一个线程，阻塞等待 I/O 或计算。但线程创建/销毁和上下文切换的开销在嵌入式场景中不可忽视:
+#### 多线程的代价
+
+多线程是最直观的并发模型: 每个任务一个线程，阻塞等待 I/O 或计算。但线程创建/销毁的开销和上下文切换的不确定性在嵌入式场景中不可接受:
 
 ```cpp
 // 传统多线程: 每个传感器一个线程
 void sensor_thread(int sensor_id) {
-  while (running) {
-    auto data = blocking_read(sensor_fd);  // 阻塞等待
-    process(data);                          // 处理
-    std::this_thread::sleep_for(1ms);       // 让出 CPU
-  }
+    while (running) {
+        auto data = blocking_read(sensor_fd);  // 阻塞等待
+        process(data);
+        std::this_thread::sleep_for(1ms);       // 让出 CPU → 触发内核调度
+    }
 }
-// 问题: 10 个传感器 = 10 个线程 = 不可控的上下文切换
+// 10 个传感器 = 10 个线程 = 不可控的上下文切换
 ```
 
-**协程** (如 state-threads、libco、Boost.Fiber) 通过用户态上下文切换减少开销。在矩阵乘法阻塞实验中，4 线程 + 10 协程/线程 比纯 4 线程快 4-5 倍 (14.9s vs 3.3s)，因为协程在阻塞时主动让出 CPU 而非被动等待调度器:
+问题不在于线程本身，而在于**线程数随任务数增长**。嵌入式系统的 CPU 核心数通常是 2-4 个，10+ 线程意味着频繁的上下文切换，每次切换 ~1-5us，累积后直接影响实时性。
+
+#### 协程的优势
+
+协程通过用户态上下文切换减少内核介入。使用 state-threads 库 (基于 `setjmp`/`longjmp` + `epoll` 实现的有栈协程) 进行的矩阵乘法实验展示了这一优势:
+
+**实验设计**: 1000x1000 矩阵乘法，每次内积计算后插入 1us 阻塞 (`sleep_for(1us)` vs `st_usleep(1)`) 模拟传感器采集中的 I/O 等待。
 
 ```
-纯多线程 (4 线程):      14.91s -- 每次 sleep_for(1us) 触发内核调度
-多线程+协程 (4x10):      3.32s -- st_usleep(1) 用户态切换，无内核介入
+纯多线程 (4 线程):              14.91 秒
+多线程 + 协程 (4 线程 x 10 协程): 3.32 秒   ← 4.5x 加速
 ```
 
-但协程在嵌入式场景有三个根本问题:
+4.5 倍加速的来源: `std::this_thread::sleep_for(1us)` 每次都触发内核调度器 (futex → schedule → context_switch)，而 `st_usleep(1)` 仅在用户态切换协程上下文 (保存/恢复寄存器，无内核介入)。当阻塞操作频繁时，内核调度的累积开销远超用户态切换。
 
-| 问题 | 说明 |
+#### 协程在嵌入式的三个根本问题
+
+尽管协程在阻塞密集场景下性能优异，但在 ARM-Linux 嵌入式系统中有三个根本障碍:
+
+**问题一: 栈内存不可控**
+
+有栈协程 (stackful coroutine) 需要为每个协程预分配独立的栈空间。state-threads 默认 64KB/协程，即使缩小到 4KB:
+
+```
+1000 个协程 x 4KB/栈 = 4MB 栈空间
+```
+
+嵌入式系统通常只有 32-256MB RAM，其中大部分被应用和 OS 占用。4MB 仅用于协程栈，这在内存预算中无法被接受。更关键的是，**栈深度在编译期无法精确预测** -- 如果某个协程的调用链比预期深，就会栈溢出，且调试困难。
+
+C++20 无栈协程 (stackless, `co_await`) 不分配独立栈，但:
+- 需要 `-std=c++20`，嵌入式工具链 (GCC 9/10) 支持不完整
+- coroutine frame 仍然可能堆分配 (compiler-dependent)
+- 生态碎片化严重，缺乏嵌入式验证的协程运行时
+
+**问题二: 与 `-fno-exceptions` 冲突**
+
+嵌入式 C++ 编译通常带 `-fno-exceptions -fno-rtti` 以减小二进制体积和避免不确定性。但协程库的兼容性:
+
+| 协程库 | 实现方式 | `-fno-exceptions` |
+|--------|---------|-------------------|
+| state-threads | `setjmp`/`longjmp` + epoll | 兼容 (纯 C) |
+| libco (腾讯) | 汇编上下文切换 | 基本兼容 |
+| Boost.Fiber | C++ 模板 + 异常 | **不兼容** |
+| Boost.Coroutine2 | C++ 模板 + 异常 | **不兼容** |
+| C++20 coroutines | 编译器内置 | 依赖实现 |
+
+兼容的选项 (state-threads, libco) 都是纯 C 库，与 C++17 类型系统 (variant, optional, constexpr) 没有集成。
+
+**问题三: 生态碎片化**
+
+Baidu Apollo 的 Cyber RT 使用了自研的非共享栈、非对称、汇编实现的协程。协程库的实现方式差异巨大:
+
+| 维度 | 选项 |
 |------|------|
-| 生态碎片化 | state-threads (epoll+longjmp)、libco (汇编)、Boost.Fiber (重依赖) 互不兼容 |
-| 栈内存不可控 | 有栈协程需要 4-64KB 栈/协程，1000 协程 = 4-64MB，嵌入式内存预算不允许 |
-| 与 `-fno-exceptions` 冲突 | 多数协程库依赖异常或 RTTI，嵌入式编译选项下不可用 |
+| 栈模型 | 共享栈 (stackless) vs 非共享栈 (stackful) |
+| 对称性 | 对称 (协程间互相让渡) vs 非对称 (只能让渡给调用者) |
+| 上下文切换 | ucontext (有系统调用) vs 汇编 (零内核介入) vs setjmp/longjmp |
+
+每种组合有不同的 API、不同的内存模型、不同的调试方式。嵌入式项目一旦选择了某个协程库，就很难迁移。
 
 ### 1.2 路径二: I/O 多路复用
 
-Linux 提供五种 I/O 模型: 阻塞、非阻塞、信号驱动、多路复用 (select/poll/epoll)、异步 I/O (aio/io_uring)。对网络 I/O，epoll 是公认的最优方案:
+#### Linux 五种 I/O 模型
+
+Linux 提供了五种 I/O 模型，理解它们的区别是选择并发策略的基础:
+
+**阻塞 I/O (Blocking I/O)**: 进程发起 `read()` 后被挂起，直到数据就绪并拷贝到用户空间。最简单，但单线程只能服务一个 fd。
+
+**非阻塞 I/O (Non-Blocking I/O)**: `read()` 在数据未就绪时立即返回 `EAGAIN`，进程需要不断轮询。避免了阻塞，但忙轮询浪费 CPU。
+
+**信号驱动 I/O (Signal-Driven I/O)**: 通过 `SIGIO` 信号通知数据就绪，进程在信号处理函数中读取数据。减少了轮询，但信号处理的可重入性和优先级反转问题使其在复杂系统中不可靠。
+
+**I/O 多路复用 (I/O Multiplexing)**: 通过 `select()`/`poll()`/`epoll()` 同时监控多个 fd，当某个 fd 就绪时通知进程。**这是网络 I/O 的主流方案**。
+
+**异步 I/O (Asynchronous I/O)**: 进程发起 `aio_read()` 后立即返回，数据就绪后内核直接拷贝到用户空间并通知进程。进程不参与数据拷贝。
 
 ```
-select()   → O(n) 扫描 fd_set，fd 数量上限 1024
-poll()     → O(n) 扫描 pollfd 数组，无 fd 上限
-epoll()    → O(1) 事件驱动，内核红黑树维护 fd，高并发首选
+             阻塞I/O     非阻塞I/O   信号驱动    多路复用     异步I/O
+等待数据:    阻塞        轮询        信号通知    select/poll  不参与
+拷贝数据:    阻塞        阻塞        阻塞        阻塞         不参与
+进程状态:    全程挂起    忙等        被动通知    批量等待     全程非阻塞
 ```
 
-但 epoll 在嵌入式场景的局限:
+前四种模型中，数据拷贝阶段进程都是阻塞的 (区别只在"等待数据"阶段)。真正的异步 I/O 是第五种，进程完全不参与等待和拷贝。
 
-| 问题 | 说明 |
-|------|------|
-| Linux 专有 | 不可移植到 RT-Thread/FreeRTOS 等 RTOS (它们只支持 POSIX poll/select) |
-| 仅管 I/O 就绪 | 不解决消息路由、类型安全、背压控制等应用层问题 |
-| 回调地狱 | 复杂业务逻辑在 epoll 回调中层层嵌套，可维护性差 |
+#### select / poll / epoll 对比
+
+```cpp
+// select: 位图扫描，fd 上限 1024
+fd_set read_fds;
+FD_ZERO(&read_fds);
+FD_SET(fd1, &read_fds);
+FD_SET(fd2, &read_fds);
+select(max_fd + 1, &read_fds, NULL, NULL, &timeout);
+// 每次调用都要重建 fd_set，O(n) 扫描
+
+// poll: pollfd 数组，无 fd 上限，但仍 O(n) 扫描
+struct pollfd fds[2] = {
+    {fd1, POLLIN, 0},
+    {fd2, POLLIN, 0}
+};
+poll(fds, 2, timeout_ms);
+
+// epoll: 内核红黑树维护 fd，O(1) 事件通知
+int epfd = epoll_create1(0);
+struct epoll_event ev = {.events = EPOLLIN, .data.fd = fd1};
+epoll_ctl(epfd, EPOLL_CTL_ADD, fd1, &ev);
+epoll_wait(epfd, events, max_events, timeout_ms);
+// 只返回就绪的 fd，不扫描全量
+```
+
+| 特性 | select | poll | epoll |
+|------|--------|------|-------|
+| fd 上限 | 1024 (FD_SETSIZE) | 无限制 | 无限制 |
+| 就绪检测 | O(n) 扫描位图 | O(n) 扫描数组 | O(1) 就绪链表 |
+| fd 传递 | 每次拷贝 fd_set 到内核 | 每次拷贝 pollfd 到内核 | 注册一次，内核维护 |
+| 水平/边沿触发 | 仅水平触发 | 仅水平触发 | 支持 ET (边沿触发) |
+| 可移植性 | POSIX 标准 | POSIX 标准 | **Linux 专有** |
+
+对高并发网络 I/O，epoll 是公认最优方案。但嵌入式场景的问题不在于并发连接数 (通常 < 100)，而在于:
+
+#### epoll 在嵌入式的局限
+
+**不可移植**: RT-Thread、FreeRTOS 等 RTOS 只支持 POSIX `poll()`/`select()`，不支持 `epoll`。如果核心逻辑绑定 epoll，就无法移植到 MCU 平台。
+
+**仅管 I/O 就绪**: epoll 告诉你"fd 可读了"，但不解决消息路由、类型安全、背压控制等应用层问题。你仍然需要在 epoll 回调里手写消息分发和队列管理。
+
+**回调耦合**: 复杂业务逻辑在 epoll 回调中层层嵌套 (epoll_wait → recv → parse → dispatch → process)，难以测试和维护。
 
 ### 1.3 路径三: 异步 I/O
 
-Linux 异步 I/O 有两种实现: POSIX aio (用户态模拟) 和 libaio/io_uring (内核态真异步)。但:
+Linux 异步 I/O 有三种实现:
+
+**POSIX aio** (`aio_read`/`aio_write`): 用户空间模拟，内部创建线程池执行同步 I/O。代码示例:
+
+```cpp
+struct aiocb aio;
+memset(&aio, 0, sizeof(aio));
+aio.aio_fildes = fd;
+aio.aio_buf = buffer;
+aio.aio_nbytes = 1024;
+aio.aio_offset = 0;
+
+aio_read(&aio);  // 立即返回
+
+// 轮询等待完成
+while (aio_error(&aio) == EINPROGRESS) {
+    // 可以做其他事情
+}
+ssize_t ret = aio_return(&aio);  // 获取结果
+```
+
+POSIX aio 看起来是异步的，但实际上内部创建了线程池来执行同步 `read()`。线程数不可控，且在某些 glibc 实现中性能并不比同步 I/O + 线程池好。
+
+**libaio** (`io_submit`/`io_getevents`): 内核态真异步，直接与块设备层交互。但:
+- **仅支持块设备** (需要 `O_DIRECT` 打开文件)
+- 不支持网络 socket
+- 不支持 buffered I/O
+
+**io_uring** (Linux 5.1+): 通用的异步 I/O 框架，支持网络、文件、定时器。性能优异，但:
+- 需要 Linux 5.1+ 内核
+- 嵌入式内核版本普遍 4.x
+- API 复杂 (submission/completion queue pair)
+- 安全漏洞频繁 (多个 CVE)
 
 | 方案 | 适用范围 | 嵌入式问题 |
 |------|----------|-----------|
-| POSIX aio | 文件/块设备 | 内部创建线程池，线程数不可控 |
-| libaio | 块设备 (O_DIRECT) | 不支持网络 socket，不支持 buffered I/O |
-| io_uring | 通用 (5.1+) | 需要 Linux 5.1+，嵌入式内核版本普遍 4.x |
+| POSIX aio | 文件/块设备 | 内部线程池，线程数不可控 |
+| libaio | 块设备 (O_DIRECT) | 不支持 socket，不支持 buffered I/O |
+| io_uring | 通用 (5.1+) | 内核版本要求高，API 复杂，安全漏洞多 |
 
-**结论**: 对网络 I/O (UDP/TCP)，多路复用仍是最佳选择; 异步 I/O 仅建议用于磁盘/块设备操作。
+**结论**: 对网络 I/O (UDP/TCP)，I/O 多路复用仍是最佳选择; 异步 I/O 仅建议用于磁盘/块设备操作。
 
-### 1.4 嵌入式的核心需求
+### 1.4 缺口分析: 嵌入式需要什么
 
-上述三条路径各解决了部分问题，但嵌入式系统需要的是一个**融合方案**:
+三条路径各解决了部分问题，但嵌入式需要的融合特性没有任何一条路径单独提供:
 
-```
-确定性线程数 (4-8 个)  ←  线程/协程模型不提供
-零堆分配热路径         ←  协程栈分配、std::function 不保证
-跨平台 I/O 抽象       ←  epoll 不可移植
-类型安全消息路由       ←  I/O 多路复用不涉及
-编译期分发             ←  以上均不涉及
-```
+| 嵌入式需求 | 多线程+协程 | I/O 多路复用 | 异步 I/O |
+|-----------|:---------:|:---------:|:-------:|
+| 确定性线程数 (4-8) | 协程数不可控 | 需手动管理 | 线程池不可控 |
+| 零堆分配热路径 | 协程栈分配 | 不涉及 | aio 控制块 |
+| 跨平台 I/O | 协程库不可移植 | epoll 不可移植 | io_uring 不可移植 |
+| 类型安全消息路由 | 不涉及 | 不涉及 | 不涉及 |
+| `-fno-exceptions` | 多数库不兼容 | 兼容 | 兼容 |
+| 编译期分发 | 不涉及 | 不涉及 | 不涉及 |
 
-newosp 的回答: **事件驱动消息总线 + 固定线程预算 + 可移植 I/O 抽象**。
+需要的是**第四条路**: 将 I/O 就绪通知 (多路复用的优势) 与类型安全的消息传递 (无锁队列 + variant) 解耦组合，在编译期确定的线程预算内完成。
 
-## 2. newosp 并发架构总览
+## 2. 第四条路: 事件驱动消息总线
 
 newosp 的并发模型可以用一句话概括: **所有并发通过消息总线解耦，所有 I/O 通过事件循环驱动，线程数编译期确定**。
 
@@ -121,367 +250,84 @@ newosp 的并发模型可以用一句话概括: **所有并发通过消息总线
               ┌────────────────────┼────────────────────┐
               │                    │                     │
     ┌─────────▼────────┐ ┌────────▼────────┐ ┌─────────▼────────┐
-    │  SingleThread     │ │  StaticExecutor │ │   WorkerPool     │
-    │  Executor         │ │  (专用调度线程)  │ │  (Dispatcher + N │
-    │  (阻塞当前线程)   │ │  PinnedExecutor │ │   Worker 线程)   │
-    └──────────────────┘ │  (CPU 亲和性)    │ └──────────────────┘
-                         └─────────────────┘
+    │  SingleThread     │ │  PinnedExecutor │ │   WorkerPool     │
+    │  Executor         │ │  (CPU 亲和性)   │ │  (Dispatcher + N │
+    │  (阻塞当前线程)   │ │  RealtimeExec   │ │   Worker 线程)   │
+    └──────────────────┘ └─────────────────┘ └──────────────────┘
                                    │
                         ┌──────────▼───────────────────────┐
                         │       IoPoller (I/O 事件循环)     │
                         │  Linux: epoll  │  通用: poll()    │
                         │  macOS: kqueue │  RT-Thread: poll │
                         └──────────────────────────────────┘
-                                   │
-              ┌────────────────────┼────────────────────┐
-              │                    │                     │
-    ┌─────────▼────────┐ ┌────────▼────────┐ ┌─────────▼────────┐
-    │   TCP Transport  │ │  ShmTransport   │ │  SerialTransport │
-    │   (socket I/O)   │ │  (共享内存 IPC)  │ │  (UART/RS-485)  │
-    └──────────────────┘ └─────────────────┘ └──────────────────┘
 ```
 
-### 2.1 线程预算: 编译期确定，运行时不膨胀
+### 2.1 设计选择
 
-newosp 的典型线程分布:
+| 问题 | 传统方案 | newosp 方案 |
+|------|---------|------------|
+| 线程间通信 | `mutex` + `std::queue` (堆分配) | CAS 无锁 MPSC + 预分配环形缓冲 |
+| 回调注册 | `std::function` (可能堆分配) | FixedFunction SBO (编译期拒绝超限) |
+| 消息类型安全 | `void*` 或 `std::any` | `std::variant` + `std::visit` 编译期路由 |
+| I/O 抽象 | 直接用 epoll | IoPoller (epoll/kqueue/poll 编译期选择) |
+| 线程数 | 随任务增长 | 编译期常量 (Executor + WorkerPool 配置) |
+| 背压控制 | 无界队列或阻塞 | 优先级准入 (60%/80%/99% 阈值) |
+
+### 2.2 线程预算
 
 | 组件 | 线程数 | 职责 |
 |------|--------|------|
 | TimerScheduler | 1 | 定时任务调度 |
 | DebugShell | 1+2 | TCP telnet 监听 + 会话 |
-| AsyncLog | 1 | 异步日志写盘 |
 | Executor | 1 | 消息调度 (SpinOnce 循环) |
 | WorkerPool | 1+N | Dispatcher + N Worker |
-| **合计** | **4-8** | 全部确定性 |
+| **合计** | **4-8** | 全部确定性，编译期可计算 |
 
-对比传统方案:
+关键: `Publish()` → `ProcessBatch()` → 回调执行的整条热路径中，没有一次 `malloc`/`free` 调用。这通过三个机制保证: (1) 环形缓冲预分配 (2) FixedFunction SBO (3) `std::variant` 值语义。
 
-```
-传统多线程:     线程数 = 任务数 (不可控)
-协程模型:       线程数确定，但协程数/栈内存不可控
-newosp:         线程数 = 编译期常量，内存预算可计算
-```
+AsyncBus、HSM、SPSC 的实现细节见 [工业传感器数据流水线: newosp 事件驱动架构实战](../newosp_event_driven_architecture/)。
 
-### 2.2 内存预算: 零堆分配保证
+## 3. I/O 集成: 可移植的事件循环
 
-| 组件 | 内存占用 | 分配方式 |
-|------|----------|----------|
-| AsyncBus (4096 slots) | ~320 KB | 预分配环形缓冲 |
-| WorkerPool (4 workers) | ~64 KB | 预分配 SPSC 队列 |
-| Node (16 subscriptions) | ~1 KB | 栈数组 |
-| IoPoller (64 events) | ~512 B | 内部缓冲 |
-| **热路径合计** | **~386 KB** | **零 malloc** |
+### 3.1 IoPoller: 编译期选择后端
 
-关键: `Publish()` → `ProcessBatch()` → 回调执行的整条消息热路径中，没有一次 `malloc`/`free` 调用。这是通过三个机制保证的:
-
-1. **环形缓冲预分配**: `Envelope` 数组在 Bus 构造时一次性分配
-2. **FixedFunction SBO**: 32 字节内联缓冲替代 `std::function` 的堆分配
-3. **std::variant 值语义**: 消息作为 variant 直接 move 进 Envelope，无间接指针
-
-## 3. 消息总线: 替代线程间共享状态
-
-### 3.1 为什么用消息传递替代锁
-
-传统并发使用共享内存 + 锁:
-
-```cpp
-// 传统方式: 共享状态 + mutex
-struct SensorData { float x, y, z; };
-std::mutex mtx;
-std::queue<SensorData> shared_queue;  // 共享队列
-
-// 生产者线程
-void producer() {
-  SensorData data = read_sensor();
-  std::lock_guard<std::mutex> lock(mtx);  // 加锁
-  shared_queue.push(data);                 // 堆分配 (queue node)
-}
-
-// 消费者线程
-void consumer() {
-  std::lock_guard<std::mutex> lock(mtx);  // 竞争同一把锁
-  auto data = shared_queue.front();
-  shared_queue.pop();
-  process(data);
-}
-```
-
-问题: mutex 竞争引入不确定性延迟; `std::queue` 的每次 push 都可能触发堆分配; 多消费者需要更复杂的同步。
-
-newosp 的消息传递模型:
-
-```cpp
-// newosp 方式: 消息总线解耦
-using Payload = std::variant<SensorData, ControlCmd, StatusReport>;
-using Bus = osp::AsyncBus<Payload>;
-
-// 生产者 (任意线程，lock-free)
-osp::Node<Payload> sensor_node("sensor", 1);
-sensor_node.Publish(SensorData{1.0f, 2.0f, 3.0f});  // CAS 发布，零堆分配
-
-// 消费者 (单线程调度)
-osp::Node<Payload> processor("processor", 2);
-processor.Subscribe<SensorData>([](const SensorData& data, const auto&) {
-    process(data);  // 类型安全，编译期路由
-});
-
-// 调度循环
-while (running) {
-  processor.SpinOnce();  // 批量处理，单消费者无锁
-}
-```
-
-### 3.2 AsyncBus: 无锁 MPSC 的四个关键设计
-
-**CAS 序列号排序**: 多个生产者通过 `compare_exchange_weak` 竞争序列号，获胜者将消息写入对应 slot。无 mutex，无 spinlock (发布路径)。
-
-```cpp
-// 简化的发布流程 (实际代码见 bus.hpp)
-bool Publish(PayloadVariant&& payload, uint32_t sender_id) noexcept {
-  uint64_t seq = prod_seq_.load(std::memory_order_relaxed);
-  while (!prod_seq_.compare_exchange_weak(seq, seq + 1,
-         std::memory_order_acq_rel)) { /* retry */ }
-  // seq 位置已获得，写入 Envelope
-  auto& env = ring_[seq & kBufferMask];
-  env.header.id = seq;
-  env.header.sender_id = sender_id;
-  env.payload = std::move(payload);
-  env.ready.store(true, std::memory_order_release);
-  return true;
-}
-```
-
-**批量消费**: `ProcessBatch()` 一次消费最多 256 条消息，减少原子操作频率:
-
-```cpp
-uint32_t ProcessBatch() noexcept {
-  uint32_t count = 0;
-  while (count < kBatchSize) {
-    auto& env = ring_[cons_seq_ & kBufferMask];
-    if (!env.ready.load(std::memory_order_acquire)) break;
-    Dispatch(env);          // 类型路由 + 回调执行
-    env.ready.store(false, std::memory_order_release);
-    ++cons_seq_;
-    ++count;
-  }
-  return count;
-}
-```
-
-**优先级准入控制**: 队列压力大时，低优先级消息被拒绝:
-
-```
-队列占用 >= 60%: 拒绝 LOW 优先级
-队列占用 >= 80%: 拒绝 MEDIUM 优先级
-队列占用 >= 99%: 拒绝 HIGH 优先级 (仅保留 CRITICAL)
-```
-
-**缓存行隔离**: 生产者计数器和消费者计数器分别放在不同的 64 字节缓存行，避免 ARM 多核场景的 false sharing:
-
-```cpp
-alignas(64) std::atomic<uint64_t> prod_seq_{0};  // 生产者独占缓存行
-alignas(64) uint64_t cons_seq_{0};                // 消费者独占缓存行
-```
-
-### 3.3 StaticNode: 编译期分发，15x 性能提升
-
-对性能敏感的消息处理，newosp 提供 `StaticNode`: 通过 `std::visit` + 编译期 Visitor 替代运行时回调分发:
-
-```cpp
-// Handler 在编译期绑定 (零间接调用)
-struct SensorHandler {
-  void operator()(const SensorData& data, const osp::MessageHeader& hdr) {
-    process(data);
-  }
-  void operator()(const ControlCmd& cmd, const osp::MessageHeader& hdr) {
-    execute(cmd);
-  }
-};
-
-osp::StaticNode<Payload, SensorHandler> sensor_node("sensor", 1, handler);
-// ProcessBatch 直接 std::visit，编译器可内联整个调用链
-```
-
-性能对比 (基准测试，ARM Cortex-A72):
-
-| 方式 | 延迟/消息 | 吞吐量 |
-|------|----------|--------|
-| Node + lambda 回调 | ~30 ns | ~33M msg/s |
-| StaticNode + Visitor | ~2 ns | ~500M msg/s |
-| std::function 回调 | ~45 ns | ~22M msg/s |
-
-StaticNode 的 15x 提升来自: 无虚函数、无间接调用、编译器可完全内联。
-
-## 4. 线程调度: Executor 家族
-
-newosp 提供三种 Executor，覆盖不同的嵌入式调度需求:
-
-### 4.1 SingleThreadExecutor: 阻塞调度
-
-最简单的模式: 在调用线程上阻塞运行消息循环。适合 main() 或专用线程:
-
-```cpp
-osp::SingleThreadExecutor<Payload> executor;
-executor.AddNode(sensor_node);
-executor.AddNode(processor_node);
-
-// 阻塞当前线程，持续调度消息
-executor.Spin();  // 直到 Stop() 被调用
-```
-
-### 4.2 StaticExecutor: 专用调度线程 + 精确休眠
-
-创建独立调度线程，支持两种休眠策略:
-
-```cpp
-// 策略一: Yield (低延迟，高 CPU)
-osp::StaticExecutor<Payload, osp::YieldSleepStrategy> executor;
-
-// 策略二: PreciseSleep (低 CPU，可调延迟)
-// 使用 clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME) 实现精确唤醒
-osp::PreciseSleepStrategy strategy(
-    1'000'000ULL,    // 默认休眠 1ms
-    100'000ULL,      // 最小 100us
-    10'000'000ULL    // 最大 10ms
-);
-osp::StaticExecutor<Payload, osp::PreciseSleepStrategy> executor(strategy);
-executor.Start();  // 后台线程
-```
-
-### 4.3 PinnedExecutor: CPU 亲和性绑定
-
-在指定 CPU 核心上运行调度线程，减少缓存失效和调度抖动:
-
-```cpp
-// 将消息调度线程绑定到 CPU 核心 2
-osp::PinnedExecutor<Payload, osp::YieldSleepStrategy> executor(/*cpu_core=*/2);
-executor.Start();
-```
-
-适合实时性要求高的场景 (激光雷达点云处理、运动控制):
-
-```
-CPU 0: Linux 内核 + 系统服务
-CPU 1: 网络 I/O + Transport
-CPU 2: 消息调度 (PinnedExecutor)  ← 独占核心
-CPU 3: WorkerPool Worker
-```
-
-## 5. WorkerPool: 两级无锁流水线
-
-当单个消费者线程处理不过来时，WorkerPool 提供**多工 Worker 并行处理**:
-
-```
-              ┌─────────────────────────┐
-              │      AsyncBus (MPSC)     │
-              │   多生产者 lock-free      │
-              └────────────┬────────────┘
-                           │
-              ┌────────────▼────────────┐
-              │     Dispatcher Thread    │
-              │  轮询 Bus → Round-Robin  │
-              │  分发到 Worker SPSC 队列  │
-              └──┬──────┬──────┬────────┘
-                 │      │      │
-           ┌─────▼──┐ ┌▼────┐ ┌▼─────┐
-           │Worker 0│ │W 1  │ │W N-1 │
-           │ SPSC   │ │SPSC │ │SPSC  │
-           │ 1024   │ │1024 │ │1024  │
-           └────────┘ └─────┘ └──────┘
-```
-
-### 5.1 两级队列设计
-
-**第一级: MPSC AsyncBus** -- 所有生产者 (传感器、网络、定时器) 通过 CAS 发布消息到共享 Bus。
-
-**第二级: Per-Worker SPSC** -- Dispatcher 从 Bus 取出消息，Round-Robin 分发到各 Worker 的 SPSC 队列。Worker 线程从自己的 SPSC 队列消费。
-
-```cpp
-osp::WorkerPool<Payload> pool(osp::WorkerPoolConfig{
-    .name = "sensor_pool",
-    .worker_num = 4,
-    .priority = 0,
-});
-
-// 注册 Handler (必须在 Start() 前)
-pool.RegisterHandler<SensorData>([](const SensorData& data, const auto& hdr) {
-    heavy_computation(data);  // CPU 密集型处理
-});
-
-pool.Start();
-// 4 Worker + 1 Dispatcher = 5 线程
-```
-
-### 5.2 AdaptiveBackoff: 三阶段退避
-
-Worker 空闲时的退避策略:
-
-```
-阶段 1: Spin (1-64 次)   -- CPU relax 指令 (x86: pause, ARM: yield)
-阶段 2: Yield (4 次)     -- std::this_thread::yield()
-阶段 3: Sleep (50us)     -- 粗粒度休眠
-```
-
-有消息到来时，立即回退到阶段 1。这个三阶段设计在低延迟和低功耗之间取得平衡:
-
-```
-有负载时: Spin 阶段，微秒级响应
-负载降低: 自动过渡到 Yield，让出 CPU
-持续空闲: Sleep 阶段，降低功耗
-```
-
-### 5.3 与传统线程池的对比
-
-| 特性 | std::thread 池 | newosp WorkerPool |
-|------|---------------|-------------------|
-| 任务提交 | mutex + condition_variable | lock-free MPSC + SPSC |
-| 任务分发 | 全局队列竞争 | Per-Worker 无锁队列 |
-| 堆分配 | std::function (每次提交) | FixedFunction SBO (零分配) |
-| 类型安全 | void* 或 std::any | std::variant 编译期路由 |
-| 背压控制 | 无 (无界队列或阻塞) | 优先级准入 + 队列深度监控 |
-| 健康监控 | 无 | GetStats() + Heartbeat |
-
-## 6. I/O 集成: IoPoller 的可移植设计
-
-### 6.1 为什么不直接用 epoll
-
-newosp 目标是 ARM-Linux 嵌入式平台，但未来可能移植到 RT-Thread MCU (支持 POSIX 层)。设计决策:
-
-```
-epoll     → Linux 专有，高性能，O(1) -- 作为 Linux 后端
-kqueue    → macOS/BSD 专有，O(1) -- 作为 macOS 后端
-poll()    → POSIX 标准，O(n)，可移植 -- 作为通用后端
-```
-
-IoPoller 在编译期选择后端，API 完全统一:
+前面分析了 epoll 的不可移植问题。newosp 的 IoPoller 通过编译期条件选择后端，API 完全统一:
 
 ```cpp
 osp::IoPoller poller;
 
-// 注册 socket fd (可读事件)
+// 注册 fd (可读事件)
 poller.Add(tcp_fd, osp::IoEvent::kReadable);
 poller.Add(serial_fd, osp::IoEvent::kReadable);
 
 // 统一事件循环
 while (running) {
-  auto result = poller.Wait(/*timeout_ms=*/100);
-  if (!result.has_value()) continue;
+    auto result = poller.Wait(/*timeout_ms=*/100);
+    if (!result.has_value()) continue;
 
-  for (uint32_t i = 0; i < result.value(); ++i) {
-    auto& ev = poller.Results()[i];
-    if (ev.fd == tcp_fd && (ev.events & osp::IoEvent::kReadable)) {
-      handle_tcp_data();
+    for (uint32_t i = 0; i < result.value(); ++i) {
+        auto& ev = poller.Results()[i];
+        if (ev.fd == tcp_fd && (ev.events & osp::IoEvent::kReadable)) {
+            handle_tcp_data();
+        }
     }
-    if (ev.fd == serial_fd && (ev.events & osp::IoEvent::kReadable)) {
-      handle_serial_data();
-    }
-  }
 }
 ```
 
-### 6.2 IoPoller 与消息总线的集成
+后端选择:
 
-IoPoller 负责 I/O 就绪通知，消息总线负责数据路由。两者的集成模式:
+| 平台 | 后端 | 复杂度 |
+|------|------|--------|
+| Linux | epoll | O(1) |
+| macOS/BSD | kqueue | O(1) |
+| 通用 POSIX | poll | O(n) |
+| RT-Thread | poll (POSIX 层) | O(n) |
+
+嵌入式 fd 数量通常 < 100，O(n) 的 poll 在这个规模下与 O(1) 的 epoll 差异可忽略。IoPoller 保证了核心逻辑可移植到 RT-Thread，同时在 Linux 上自动使用 epoll 获得最佳性能。
+
+### 3.2 IoPoller + 消息总线: 职责分离
+
+I/O 线程只负责**数据接收和消息发布**，不处理业务逻辑:
 
 ```
 IoPoller                           AsyncBus
@@ -489,183 +335,78 @@ IoPoller                           AsyncBus
    │ Wait() → fd readable             │
    │                                  │
    ├──→ recv(fd, buf, len)            │
-   │                                  │
    ├──→ 帧解析 (FrameHeader)          │
-   │                                  │
    ├──→ 反序列化为 SensorData          │
-   │                                  │
    └──→ node.Publish(SensorData{...}) ─┤
                                        │
-                              ProcessBatch() → 回调
+                              ProcessBatch() → StaticNode 回调
 ```
 
-具体代码示例 (Transport 接收路径):
+这个分离带来两个好处:
+1. **I/O 线程极轻量**: 只做 recv + publish，不持有业务状态，不需要锁
+2. **业务逻辑可测试**: StaticNode 的 Handler 接收消息和 Header，完全不依赖 socket/fd，可以用纯消息驱动测试
+
+## 4. 端到端示例: 传感器采集系统
 
 ```cpp
-// Transport 接收线程: I/O 事件 → 消息总线
-void TransportReceiver::Run() {
-  osp::IoPoller poller;
-  poller.Add(socket_fd_, osp::IoEvent::kReadable);
-
-  while (running_) {
-    auto result = poller.Wait(100);  // 100ms 超时
-    if (!result.has_value() || result.value() == 0) continue;
-
-    // I/O 就绪: 读取帧数据
-    uint8_t buf[kMaxFrameSize];
-    ssize_t n = ::recv(socket_fd_, buf, sizeof(buf), 0);
-    if (n <= 0) continue;
-
-    // 帧解析 + 反序列化
-    FrameHeaderV1 header;
-    if (!ParseFrame(buf, n, &header)) continue;
-
-    // 反序列化为具体消息类型
-    auto payload = Deserialize(buf + sizeof(header), header.type_idx);
-    if (!payload.has_value()) continue;
-
-    // 发布到消息总线 (零堆分配)
-    bus_.Publish(std::move(payload.value()), header.sender_id);
-  }
-}
-```
-
-### 6.3 与传统 I/O 模型的对比
-
-| 维度 | 传统 epoll 回调 | newosp IoPoller + Bus |
-|------|----------------|----------------------|
-| I/O 通知 | epoll_wait → 直接回调 | IoPoller.Wait → Publish → 批量回调 |
-| 线程模型 | 回调在 I/O 线程执行 | 回调在 Executor/Worker 线程执行 |
-| I/O 与业务耦合 | 紧耦合 (回调中处理业务) | 解耦 (I/O 线程只做 recv + publish) |
-| 背压 | 无 (回调积压在内存) | Bus 优先级准入控制 |
-| 可测试性 | 依赖 socket/fd mock | Node 可独立测试 (纯消息) |
-
-## 7. 完整示例: 传感器采集系统
-
-将以上组件组合为一个典型的嵌入式传感器采集系统:
-
-```cpp
-#include <osp/bus.hpp>
-#include <osp/node.hpp>
-#include <osp/static_node.hpp>
-#include <osp/executor.hpp>
-#include <osp/worker_pool.hpp>
-#include <osp/io_poller.hpp>
-#include <osp/shutdown.hpp>
-#include <osp/timer.hpp>
-
-// ── 消息类型 (POD, trivially_copyable) ────────────────────────
-struct SensorReading {
-  uint32_t sensor_id;
-  float value;
-  uint64_t timestamp_ns;
-};
-
-struct ProcessedResult {
-  uint32_t sensor_id;
-  float filtered_value;
-  uint8_t quality;  // 0-100
-};
-
-struct AlarmEvent {
-  uint32_t sensor_id;
-  uint8_t level;    // 0=info, 1=warn, 2=critical
-  char message[64];
-};
+// 消息类型 (POD, trivially_copyable)
+struct SensorReading { uint32_t sensor_id; float value; uint64_t timestamp_ns; };
+struct ProcessedResult { uint32_t sensor_id; float filtered_value; uint8_t quality; };
+struct AlarmEvent { uint32_t sensor_id; uint8_t level; char message[64]; };
 
 using Payload = std::variant<SensorReading, ProcessedResult, AlarmEvent>;
-using Bus = osp::AsyncBus<Payload>;
 
-// ── 编译期断言 ────────────────────────────────────────────────
-static_assert(std::is_trivially_copyable_v<SensorReading>);
-static_assert(std::is_trivially_copyable_v<ProcessedResult>);
-static_assert(std::is_trivially_copyable_v<AlarmEvent>);
-
-// ── Handler (编译期绑定) ──────────────────────────────────────
+// Handler (编译期绑定，零间接调用)
 struct ProcessingHandler {
-  Bus& bus;
-  void operator()(const SensorReading& r, const osp::MessageHeader&) {
-    // 滤波处理
-    ProcessedResult result{r.sensor_id, filter(r.value), 95};
-    bus.Publish(Payload(result), /*sender_id=*/2);
-  }
-  void operator()(const ProcessedResult&, const osp::MessageHeader&) {}
-  void operator()(const AlarmEvent&, const osp::MessageHeader&) {}
-};
-
-struct AlarmHandler {
-  void operator()(const ProcessedResult& r, const osp::MessageHeader&) {
-    if (r.quality < 50) {
-      AlarmEvent alarm{r.sensor_id, 1, "Low quality reading"};
-      // 报警处理...
+    osp::AsyncBus<Payload>& bus;
+    void operator()(const SensorReading& r, const osp::MessageHeader&) {
+        ProcessedResult result{r.sensor_id, filter(r.value), 95};
+        bus.Publish(Payload(result), /*sender_id=*/2);
     }
-  }
-  void operator()(const SensorReading&, const osp::MessageHeader&) {}
-  void operator()(const AlarmEvent&, const osp::MessageHeader&) {}
+    template <typename T>
+    void operator()(const T&, const osp::MessageHeader&) {}
 };
 
-// ── Main ──────────────────────────────────────────────────────
 int main() {
-  // 1. 优雅关闭
-  auto& shutdown = osp::ShutdownManager::Instance();
+    auto& shutdown = osp::ShutdownManager::Instance();
 
-  // 2. 消息节点
-  osp::Node<Payload> sensor_node("sensor_io", 1);
-  ProcessingHandler proc_handler{Bus::Instance()};
-  osp::StaticNode<Payload, ProcessingHandler> processor("processor", 2, proc_handler);
-  AlarmHandler alarm_handler;
-  osp::StaticNode<Payload, AlarmHandler> alarm("alarm", 3, alarm_handler);
+    // StaticNode: 编译期 Visitor，std::visit 直接跳转 (~2ns/msg)
+    ProcessingHandler handler{osp::AsyncBus<Payload>::Instance()};
+    osp::StaticNode<Payload, ProcessingHandler> processor("processor", 2, handler);
 
-  // 3. I/O 事件循环 (独立线程)
-  std::thread io_thread([&]() {
-    osp::IoPoller poller;
-    poller.Add(sensor_fd, osp::IoEvent::kReadable);
-    while (!shutdown.IsShutdown()) {
-      auto result = poller.Wait(100);
-      if (result.has_value() && result.value() > 0) {
-        SensorReading reading = read_sensor(sensor_fd);
-        sensor_node.Publish(reading);  // I/O → Bus
-      }
-    }
-  });
+    // I/O 线程: IoPoller → recv → Publish (与业务解耦)
+    std::thread io_thread([&]() {
+        osp::IoPoller poller;
+        poller.Add(sensor_fd, osp::IoEvent::kReadable);
+        while (!shutdown.IsShutdown()) {
+            auto result = poller.Wait(100);
+            if (result.has_value() && result.value() > 0) {
+                SensorReading reading = read_sensor(sensor_fd);
+                osp::Node<Payload>("sensor_io", 1).Publish(reading);
+            }
+        }
+    });
 
-  // 4. 消息调度 (CPU 核心 2 绑定)
-  osp::PinnedExecutor<Payload, osp::YieldSleepStrategy> executor(2);
-  executor.Start();
+    // 消息调度: CPU 2 绑核
+    osp::PinnedExecutor<Payload, osp::YieldSleepStrategy> executor(2);
+    executor.Start();
 
-  // 5. 等待关闭信号
-  shutdown.WaitForShutdown();
-  executor.Stop();
-  io_thread.join();
-  return 0;
+    shutdown.WaitForShutdown();
+    executor.Stop();
+    io_thread.join();
 }
 ```
 
-**线程分布**:
+线程分布:
 
 ```
 线程 0 (main):       等待 shutdown
 线程 1 (io_thread):  IoPoller + sensor recv + Publish
 线程 2 (executor):   ProcessBatch → StaticNode dispatch (CPU 2 绑定)
-线程 3 (shell):      DebugShell telnet (可选)
-合计: 3-4 个线程，确定性
+合计: 3 个线程，确定性
 ```
 
-**消息流**:
-
-```
-sensor_fd (硬件) → IoPoller → SensorReading → AsyncBus
-                                                │
-    processor (StaticNode) ←────────────────────┘
-        │
-        └→ ProcessedResult → AsyncBus
-                                │
-    alarm (StaticNode) ←────────┘
-        │
-        └→ AlarmEvent (如果质量低)
-```
-
-## 8. 与传统方案的完整对比
+## 5. 对比总结
 
 | 维度 | 多线程+协程 | epoll 回调 | newosp 事件总线 |
 |------|-----------|-----------|----------------|
@@ -675,31 +416,16 @@ sensor_fd (硬件) → IoPoller → SensorReading → AsyncBus
 | 背压 | 无 | 自行实现 | 优先级准入控制 |
 | 可移植 | 依赖协程库 | Linux 专有 | poll/epoll/kqueue 自动选择 |
 | 可测试 | 线程竞态难测 | 依赖 fd mock | Node 纯消息测试 |
-| 编译选项 | 需要异常/RTTI | 无限制 | `-fno-exceptions -fno-rtti` |
-| 延迟 (P50) | ~1-10 us (上下文切换) | ~1 us (回调) | ~2 ns (StaticNode) |
-| 调试 | gdb 多线程 | strace + ltrace | DebugShell + Dump() |
+| 编译选项 | 多数需要异常/RTTI | 无限制 | `-fno-exceptions -fno-rtti` |
+| 延迟 (P50) | ~1-10 us (上下文切换) | ~1 us (回调) | ~2 ns (StaticNode visit) |
 
-## 9. 总结: 嵌入式并发的第四条路
+这不是"替代"传统方案，而是针对嵌入式约束的**特化融合**: 用消息总线替代共享锁、用固定线程池替代动态协程、用编译期分发替代运行时回调、用 IoPoller 替代 epoll 直调。最终在 4-8 个线程内实现确定性微秒级消息延迟和可计算的内存预算。
 
-传统并发模型各有其适用领域:
+## 参考资料
 
-- **多线程 + 协程**: 适合 Web 服务器、网络代理等高并发 I/O 密集场景
-- **I/O 多路复用 (epoll)**: 适合网络服务器的海量连接管理
-- **异步 I/O (libaio/io_uring)**: 适合存储系统的块设备高吞吐
-
-但嵌入式系统的约束集 (确定性线程数 + 零堆分配 + 跨平台 + `-fno-exceptions`) 需要**第四条路**: 事件驱动消息总线。
-
-newosp 的核心设计选择:
-
-| 嵌入式约束 | newosp 的回答 |
-|-----------|--------------|
-| 确定性线程数 | Executor/WorkerPool 编译期线程预算 |
-| 零堆分配热路径 | CAS 预分配环形缓冲 + FixedFunction SBO |
-| 跨平台 I/O | IoPoller (epoll/kqueue/poll 编译期选择) |
-| 类型安全消息 | std::variant + 编译期类型路由 |
-| 编译期分发 | StaticNode + std::visit 内联 |
-| 背压控制 | 优先级准入 (LOW/MEDIUM/HIGH 阈值) |
-| 最小锁粒度 | MPSC CAS (发布无锁) + SPSC (工人无锁) |
-| 可调试性 | DebugShell + Dump() + GetStats() |
-
-这不是"替代"传统方案，而是针对嵌入式约束的**特化融合**: 用消息总线替代共享锁、用固定线程池替代动态协程、用编译期分发替代运行时回调。最终在 4-8 个线程内，实现了确定性微秒级消息延迟和可计算的内存预算。
+1. [newosp GitHub 仓库](https://github.com/DeguiLiu/newosp) -- C++17 header-only 嵌入式基础设施库
+2. [C++ 多线程与协程优化阻塞型任务](https://blog.csdn.net/stallion5632/article/details/143887766) -- state-threads 矩阵乘法实验
+3. [Linux I/O 多路复用与异步 I/O 对比](https://blog.csdn.net/stallion5632/article/details/143675999) -- 五种 I/O 模型分析
+4. [一顿饭的事儿，搞懂了 Linux 5 种 IO 模型](https://www.cnblogs.com/jay-huaxiao/p/12615760.html)
+5. [Cyber RT 协程实现](https://zhuanlan.zhihu.com/p/365838048) -- Baidu Apollo 协程架构
+6. [state-threads for Internet Applications](http://state-threads.sourceforge.net/docs/st.html)
