@@ -10,6 +10,7 @@ TocOpen: true
 ---
 
 > 相关文章:
+> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](../memory_barrier_hardware/) -- 内存序的硬件根因 (Store Buffer/Invalidation Queue/MESI)
 > - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- Wait-free SPSC 的逐行代码分析
 > - [无锁异步日志设计](../lockfree_async_log/) -- Per-Thread SPSC 在日志系统中的应用
 > - [嵌入式系统死锁防御: 从有序锁到无锁架构](../deadlock_prevention/) -- newosp 的无锁 MPSC 总线架构
@@ -366,7 +367,7 @@ void consumer() {
 }
 ```
 
-在 x86（TSO 模型）上，这段代码碰巧正确 -- 硬件保证 store-store 有序。但在 ARM（弱序模型）上，CPU 可能将 `data = 42` 重排到 `ready = true` 之后，消费者看到 `ready == true` 但 `data` 还是 0。
+在 x86（TSO 模型）上，这段代码碰巧正确 -- 硬件保证 store-store 有序。但在 ARM（弱序模型）上，CPU 可能将 `data = 42` 重排到 `ready = true` 之后，消费者看到 `ready == true` 但 `data` 还是 0。重排序的硬件根因是 Store Buffer 和 Invalidation Queue，详见 [内存屏障的硬件原理](../memory_barrier_hardware/)。
 
 ### 5.2 acquire-release 配对
 
@@ -415,7 +416,7 @@ x86 硬件天然保证了大多数排序，所以在 x86 上用 `relaxed` 的代
 | 写后让对方可见 | `release` | 保证之前的数据写入不会被重排到此之后 |
 | 不确定时 | `seq_cst` | 安全但代价高；确认正确后再降级优化 |
 
-> 每种内存序在 ARM 上的具体指令映射和代价分析，见 [SPSC 无锁环形缓冲区设计剖析 -- 第 6 节](../spsc_ringbuffer_design/)。
+> 每种内存序在 ARM 上的具体指令映射和代价分析，见 [SPSC 无锁环形缓冲区设计剖析 -- 第 6 节](../spsc_ringbuffer_design/)。四种屏障类型 (StoreStore/LoadLoad/LoadStore/StoreLoad) 和 ARM DMB/DSB/ISB 的精确语义，见 [内存屏障的硬件原理](../memory_barrier_hardware/)。
 
 ---
 
