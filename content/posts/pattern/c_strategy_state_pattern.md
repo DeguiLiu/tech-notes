@@ -177,8 +177,8 @@ float sensor_process(sensor_ctx_t *ctx, float raw) {
 ```mermaid
 classDiagram
     class sensor_ctx_t {
-        +filter_strategy_t *strategy
-        +void *state
+        +filter_strategy_t_ptr strategy
+        +void_ptr state
         +process(raw)
     }
     class filter_strategy_t {
