@@ -11,11 +11,15 @@ TocOpen: true
 
 > 原文链接: [C++编程：利用环形缓冲区优化 TCP 发送流程，避免 Short Write 问题](https://blog.csdn.net/stallion5632/article/details/143668586)
 >
+> 前置阅读: [Linux编程：解析 EAGAIN 错误 Resource temporarily unavailable](https://blog.csdn.net/stallion5632/article/details/142407679)
+>
 > 相关: [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) | [ARM-Linux 网络性能优化](../arm_linux_network_optimization/)
 
 ---
 
-## 1. 问题域: 什么是 TCP Short Write
+## 1. 问题域: Short Write 与 EAGAIN
+
+### 1.1 什么是 TCP Short Write
 
 非阻塞模式下调用 `send()` / `write()`，内核 TCP 发送缓冲区空间不足时，系统调用只写入**部分字节**并返回实际写入数，`errno` 置为 `EAGAIN` / `EWOULDBLOCK`。这就是 short write。
 
@@ -28,7 +32,31 @@ TocOpen: true
 
 阻塞模式下 `send()` 会等待直到全部写完，但阻塞会导致线程挂起，在 epoll 事件循环中不可接受。
 
-正确的做法: **用户态维护发送缓冲区**，配合 `EPOLLOUT` 事件在内核缓冲区可写时继续刷出。
+### 1.2 EAGAIN: 不是错误，是"稍后重试"
+
+EAGAIN (errno 11) 是 POSIX 标准定义的瞬态错误码，表示"资源暂时不可用"。在非阻塞 I/O 中，它的含义是:
+
+- **send() 返回 -1, errno=EAGAIN**: 内核 TCP 发送缓冲区已满，一个字节也写不进去。不是连接错误，稍后重试可能成功。
+- **send() 返回 N (0 < N < len)**: 写入了部分字节 (short write)。不一定触发 EAGAIN，但后续 send 可能触发。
+
+关键区分:
+
+| 返回值 | errno | 含义 | 处理方式 |
+|--------|-------|------|----------|
+| N > 0 | - | 成功写入 N 字节 | 推进指针，继续写剩余 |
+| -1 | EAGAIN / EWOULDBLOCK | 内核缓冲满 | 等待 EPOLLOUT 后重试 |
+| -1 | EINTR | 被信号中断 | 立即重试 |
+| -1 | EPIPE / ECONNRESET | 连接已断 | 关闭连接 |
+| 0 | - | 对端关闭 | 关闭连接 |
+
+一个常见的错误是把 EAGAIN 当作致命错误直接断开连接 -- 这会导致在网络拥塞或接收端处理缓慢时产生不必要的连接断开。
+
+### 1.3 正确的处理策略
+
+1. **同步重试 (简单场景)**: 循环调用 `send()`，遇到 EAGAIN 时 `yield()` + 重试，超过上限则报告失败。适合低频场景。
+2. **用户态发送缓冲 + EPOLLOUT (高吞吐场景)**: 数据先写入环形缓冲区，由 `EPOLLOUT` 事件驱动异步刷写。不阻塞调用线程。
+
+本文重点讨论方案 2。
 
 ---
 
@@ -471,21 +499,34 @@ buf.Write(payload, 4096);      // 载荷
 
 ### 4.4 newosp transport 的 short write 处理
 
-newosp `transport.hpp` 中的 `SendAll()` 已经处理了 TCP short write:
+newosp `transport.hpp` 中的 `SendAll()` 处理 TCP short write。v0.4.1 新增了 EAGAIN 区分:
 
 ```cpp
-// newosp transport.hpp SendAll():
+// newosp v0.4.1 transport.hpp SendAll():
 while (remaining > 0) {
   auto r = socket_.Send(ptr, remaining);
-  // ... 循环直到全部发送
+  if (!r.has_value()) {
+    if (r.get_error() == SocketError::kWouldBlock) {
+      // EAGAIN: 有限重试 (yield + 最多 16 次)
+      if (++eagain_count > kMaxEagainRetries) {
+        return TransportError::kWouldBlock;  // 不断开连接
+      }
+      std::this_thread::yield();
+      continue;
+    }
+    // 致命错误 (EPIPE, ECONNRESET)
+    connected_ = false;
+    return TransportError::kSendFailed;
+  }
   ptr += sent;
   remaining -= sent;
+  eagain_count = 0;  // 有进展则重置
 }
 ```
 
-这是**同步阻塞式**的 short write 处理 -- 循环重试直到全部写完。优点是实现简单，缺点是 `send()` 返回 EAGAIN 时直接判定为失败，不支持异步缓冲。
+这是**同步有限重试**方案 -- 比 v0.4.0 的直接判定失败改进了对瞬态 EAGAIN 的容忍度，且 EAGAIN 重试耗尽后返回 `kWouldBlock` 而不断开连接，允许调用方决策是否重试。
 
-对于 newosp 的目标场景 (同机 shm_transport 优先，TCP 仅作远程备选)，同步方案是合理的选择。如果未来需要高吞吐 TCP 传输，可引入本文的 `SendBuffer` + EPOLLOUT 异步方案。
+对于 newosp 的目标场景 (同机 shm_transport 优先，TCP 仅作远程备选)，同步方案是合理的选择。高吞吐 TCP 场景应引入本文的 `SendBuffer` + EPOLLOUT 异步方案。
 
 ---
 
