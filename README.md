@@ -6,13 +6,13 @@
 
 ```
 architecture/       -- 架构设计 (10 篇)
-performance/        -- 性能优化 (26 篇)
+performance/        -- 性能优化 (27 篇)
 practice/           -- 工程实践 (10 篇)
-pattern/            -- 设计模式 (7 篇)
+pattern/            -- 设计模式 (8 篇)
 tools/              -- 开发工具 (11 篇)
 ```
 
-共 **64** 篇文章 (64 篇公开, 0 篇草稿)
+共 **66** 篇文章 (66 篇公开, 0 篇草稿)
 
 ## 文章索引
 
@@ -31,10 +31,11 @@ tools/              -- 开发工具 (11 篇)
 | [fpga_arm_soc_lidar_feasibility.md](architecture/fpga_arm_soc_lidar_feasibility.md) | FPGA + ARM 双核 SoC 处理激光雷达点云的可行性分析 | 2026-02-15 |
 | [rtos_vs_linux_heterogeneous_soc.md](architecture/rtos_vs_linux_heterogeneous_soc.md) | RTOS vs Linux 异构选型: 三核 SoC 上的双系统设计 | 2026-02-15 |
 
-### performance/ -- 性能优化 (26 篇)
+### performance/ -- 性能优化 (27 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [high_performance_system_design_principles.md](performance/high_performance_system_design_principles.md) | 高性能系统设计的五个反直觉原则: 从消息队列优化中提炼的通用方法论 | 2026-02-17 |
 | [mccc_zero_heap_optimization_benchmark.md](performance/mccc_zero_heap_optimization_benchmark.md) | MCCC 消息总线零堆分配优化与性能实测 | 2026-02-17 |
 | [memory_barrier_hardware.md](performance/memory_barrier_hardware.md) | 内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB | 2026-02-17 |
 | [object_pool_hidden_costs.md](performance/object_pool_hidden_costs.md) | 对象池在嵌入式热路径上的三个隐性成本 | 2026-02-17 |
@@ -77,11 +78,12 @@ tools/              -- 开发工具 (11 篇)
 | [ztask_cpp_modernization.md](practice/ztask_cpp_modernization.md) | ztask 调度器的 C++14 重写: 类型安全、RAII 与模板化改造 | 2026-02-15 |
 | [ztask_scheduler.md](practice/ztask_scheduler.md) | ztask: 零动态分配的裸机合作式任务调度器设计分析 | 2026-02-15 |
 
-### pattern/ -- 设计模式 (7 篇)
+### pattern/ -- 设计模式 (8 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
 | [cpp17_what_c_cannot_do.md](pattern/cpp17_what_c_cannot_do.md) | C11 做不到的事: 10 项 C++17 语言级不可替代能力 | 2026-02-17 |
+| [pimpl_modern_cpp_embedded.md](pattern/pimpl_modern_cpp_embedded.md) | PIMPL 机制的现代 C++ 演进: 从编译防火墙到零堆分配 | 2026-02-17 |
 | [c_hsm_data_driven_framework.md](pattern/c_hsm_data_driven_framework.md) | C 语言层次状态机框架: 从过程驱动到数据驱动的重构实践 | 2026-02-16 |
 | [c_strategy_state_pattern.md](pattern/c_strategy_state_pattern.md) | C 语言设计模式实战: 策略模式与状态模式的本质差异 | 2026-02-16 |
 | [compile_time_dispatch_optimization.md](pattern/compile_time_dispatch_optimization.md) | 嵌入式系统中的编译期分发: 用模板消除虚函数开销 | 2026-02-16 |
