@@ -1,5 +1,5 @@
 ---
-title: "嵌入式开发中的 SSH/SCP 自动化: 从 Expect 脚本到密钥认证的工程实践"
+title: "告别手动输密码: 嵌入式 SSH/SCP 自动化方案"
 date: 2026-02-16
 draft: false
 categories: ["blog"]

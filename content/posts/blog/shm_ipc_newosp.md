@@ -1,5 +1,5 @@
 ---
-title: "共享内存进程间通信的工程实践: 从 POSIX shm 原理到 newosp 无锁 Ring Buffer"
+title: "共享内存 IPC 实践: 从 POSIX shm 到 newosp 无锁 Ring Buffer"
 date: 2026-02-16
 draft: false
 categories: ["blog"]

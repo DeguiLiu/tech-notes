@@ -1,5 +1,5 @@
 ---
-title: "Zynq-7000 激光雷达点云处理: FPGA + 双核 ARM 的架构设计与性能分析"
+title: "FPGA + ARM 双核 SoC 处理激光雷达点云的可行性分析"
 date: 2026-02-15
 draft: false
 categories: ["architecture"]

@@ -1,5 +1,5 @@
 ---
-title: "嵌入式配置持久化方案对比: 裸 struct、自定义 TLV、nanopb 与 c-capnproto"
+title: "嵌入式配置序列化选型: struct/TLV/nanopb/capnproto 对比"
 date: 2026-02-16
 draft: false
 categories: ["blog"]

@@ -1,5 +1,5 @@
 ---
-title: "工业传感器数据流水线: newosp C++17 零堆分配事件驱动架构实战"
+title: "如何设计传感器数据流水线: newosp 事件驱动 + 零堆分配方案"
 date: 2026-02-16
 draft: false
 categories: ["blog"]

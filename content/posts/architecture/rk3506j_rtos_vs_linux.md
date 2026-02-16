@@ -1,5 +1,5 @@
 ---
-title: "RK3506J 三核异构设计: 当 RTOS 与 Linux 跑在同一芯片上"
+title: "RTOS vs Linux 异构选型: 三核 SoC 上的双系统设计"
 date: 2026-02-15
 draft: false
 categories: ["architecture"]

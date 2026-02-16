@@ -1,5 +1,5 @@
 ---
-title: "C++14 嵌入式日志库设计: 从 Boost.Log 到可插拔后端架构"
+title: "轻量级 C++14 日志库设计: 可插拔后端与零依赖架构"
 date: 2026-02-15
 draft: false
 categories: ["blog"]

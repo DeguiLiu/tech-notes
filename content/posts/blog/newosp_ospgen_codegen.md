@@ -1,5 +1,5 @@
 ---
-title: "newosp ospgen: YAML 驱动的嵌入式 C++17 零堆消息代码生成"
+title: "newosp ospgen: YAML 驱动的嵌入式 C++17 零堆分配消息代码生成"
 date: 2026-02-16
 draft: false
 categories: ["blog"]

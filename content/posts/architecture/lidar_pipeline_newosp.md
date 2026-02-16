@@ -1,5 +1,5 @@
 ---
-title: "激光雷达高吞吐数据处理 Pipeline: 基于 newosp C++17 模块化架构设计"
+title: "激光雷达高吞吐数据处理 Pipeline: 模块化架构与 NEON 向量化"
 date: 2026-02-17
 draft: false
 categories: ["architecture"]

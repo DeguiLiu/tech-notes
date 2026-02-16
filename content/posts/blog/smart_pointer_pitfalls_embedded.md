@@ -1,5 +1,5 @@
 ---
-title: "嵌入式 C++ 智能指针的五个陷阱: 从失效分析到零堆分配替代方案"
+title: "嵌入式 C++ 智能指针的五个陷阱与零堆分配替代方案"
 date: 2026-02-16
 draft: false
 categories: ["blog"]

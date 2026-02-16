@@ -1,5 +1,5 @@
 ---
-title: "嵌入式 A/B 分区固件升级引擎: HSM 驱动 + 三层掉电保护 + 零堆分配"
+title: "嵌入式 A/B 分区固件升级引擎: HSM 状态机 + 三层掉电保护"
 date: 2026-02-17
 draft: false
 categories: ["blog"]

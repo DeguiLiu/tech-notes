@@ -1,5 +1,5 @@
 ---
-title: "QPC 框架深度解析: Active Object 模型、层次状态机与零拷贝事件通信"
+title: "QPC 框架深度解析: Active Object 与层次状态机的嵌入式实践"
 date: 2026-02-16
 draft: false
 categories: ["blog"]

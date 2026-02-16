@@ -1,5 +1,5 @@
 ---
-title: "在 Zynq-7000 双核 ARM 上跑 RT-Thread SMP: MMU、Cache 与调度实战"
+title: "双核 ARM SoC 上跑 RT-Thread SMP: MMU、Cache 与调度实战"
 date: 2026-02-15
 draft: false
 categories: ["architecture"]

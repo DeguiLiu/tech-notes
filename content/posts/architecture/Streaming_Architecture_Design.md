@@ -1,5 +1,5 @@
 ---
-title: "工业嵌入式流式数据处理架构设计: 从传感器采集到网络输出的全链路"
+title: "嵌入式流式数据处理架构: 传感器到网络输出的全链路设计"
 date: 2026-02-17
 draft: false
 categories: ["architecture"]
