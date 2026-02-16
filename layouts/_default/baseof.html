@@ -31,6 +31,40 @@
     <script>
         mermaid.initialize({ startOnLoad: true, theme: 'default' });
     </script>
+    <style>
+        .mermaid-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); z-index: 9999;
+            display: flex; align-items: center; justify-content: center;
+            cursor: zoom-out;
+        }
+        .mermaid-overlay svg {
+            max-width: 95vw; max-height: 95vh;
+            background: #fff; border-radius: 8px; padding: 20px;
+        }
+    </style>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.mermaid').forEach(function(el) {
+                el.style.cursor = 'zoom-in';
+                el.addEventListener('dblclick', function() {
+                    var svg = el.querySelector('svg');
+                    if (!svg) return;
+                    var overlay = document.createElement('div');
+                    overlay.className = 'mermaid-overlay';
+                    overlay.innerHTML = svg.outerHTML;
+                    overlay.addEventListener('click', function() { overlay.remove(); });
+                    document.body.appendChild(overlay);
+                });
+            });
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    var o = document.querySelector('.mermaid-overlay');
+                    if (o) o.remove();
+                }
+            });
+        });
+    </script>
     {{- end }}
 </body>
 
