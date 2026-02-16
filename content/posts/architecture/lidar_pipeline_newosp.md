@@ -1,6 +1,6 @@
 ---
 title: "激光雷达高吞吐数据处理 Pipeline: 基于 newosp C++17 模块化架构设计"
-date: 2026-02-16
+date: 2026-02-17
 draft: false
 categories: ["architecture"]
 tags: ["C++17", "ARM", "embedded", "lock-free", "zero-copy", "pipeline", "lidar", "state-machine", "SPSC", "NEON", "SoA"]
@@ -9,7 +9,7 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 基础设施库: [newosp](https://github.com/DeguiLiu/newosp) v0.4.0 (1114 tests, ASan/TSan/UBSan clean)
+> 基础设施库: [newosp](https://github.com/DeguiLiu/newosp) v0.4.3 (1153 tests, ASan/TSan/UBSan clean)
 > 目标平台: ARM-Linux (Cortex-A53/A72/A7) | C++17, Header-only
 > 适用场景: 激光雷达点云处理、工业视觉、机器人传感器融合、边缘计算
 
@@ -57,20 +57,11 @@ TocOpen: true
 
 ## 2. 架构总览: 数据面与控制面分离
 
-### 2.1 核心设计原则
+本 Pipeline 采用 **数据面与控制面分离** 架构。控制面/数据面分离的通用设计原理、AsyncBus MPSC 消息总线、ShmChannel 零拷贝通道、RealtimeExecutor 实时调度等基础设施的详细介绍参见 [工业嵌入式流式数据处理架构设计](../Streaming_Architecture_Design/)。本节聚焦激光雷达 Pipeline 的具体拓扑设计。
 
-一个常见的架构错误是将所有 stage 间通信都经过 MPSC 消息总线:
+**核心原则**: Pipeline 每个 stage 的 producer/consumer 关系是 1:1，MPSC 的 CAS 竞争在此场景下是多余开销。数据面用 SPSC 直连 (~5 ns)，控制面用 AsyncBus 处理诊断和扇入/扇出场景。
 
-```
-ACQ →[Bus]→ PRE →[Bus]→ DIST →[Bus]→ XTALK →[Bus]→ ... →[Bus]→ PKG  ← 错误!
-```
-
-Pipeline 每个 stage 的 producer/consumer 关系是 **1:1**，MPSC 的 CAS 竞争、variant 匹配、visitor 分发在此场景下全是多余开销。正确做法是**数据面与控制面分离**:
-
-- **数据面 (热路径)**: stage 间 SPSC 直连，只传 Handle (6B)，数据本体留在 Pool 中
-- **控制面**: AsyncBus 仅用于诊断命令、扇入/扇出场景 (多传感器汇聚、多下游消费)
-
-### 2.2 Pipeline 架构图
+### 2.1 Pipeline 架构图
 
 ```mermaid
 flowchart TB
@@ -99,7 +90,7 @@ flowchart TB
 - **XTalk**: 串扰去除 (需 HSM 状态管理，独立)
 - **Ghost**: 鬼影消除 (需多帧历史缓冲，独立)
 
-### 2.3 数据流: Handle 传递实现真零拷贝
+### 2.2 数据流: Handle 传递实现真零拷贝
 
 传统方案声称"零拷贝"但实际每个 stage 都在拷贝整帧数据。以 1024 点帧 (16 KB SoA) 为例:
 
@@ -269,43 +260,18 @@ SPSC vs MPSC Bus 性能对比 (Cortex-A53 @ 1.2 GHz, Handle 传递):
 
 ### 4.2 AsyncBus: 控制面与扇入/扇出
 
-AsyncBus 不用于线性 Pipeline 数据面，但在以下场景不可替代:
+AsyncBus 不用于线性 Pipeline 数据面，但在多传感器扇入和诊断命令注入场景不可替代。AsyncBus 的 Lock-free MPSC 设计、零堆分配机制、优先级准入控制的完整介绍参见 [工业嵌入式流式数据处理架构设计 -- AsyncBus](../Streaming_Architecture_Design/#3-控制面-asyncbus-消息总线)。
 
-**场景 1: 多传感器扇入**
+在激光雷达 Pipeline 中，AsyncBus 的典型用法:
 
-```cpp
-// 多个激光雷达传感器汇入同一处理 Pipeline
-using SensorBus = osp::AsyncBus<SensorPayload, 1024, 128>;
-SensorBus sensor_bus;
-
-// 传感器 A、B、C 各自 Publish (MPSC 安全)
-sensor_a_thread: sensor_bus.Publish(CloudA{...});
-sensor_b_thread: sensor_bus.Publish(CloudB{...});
-sensor_c_thread: sensor_bus.Publish(CloudC{...});
-
-// 融合节点统一消费
-fusion_thread: sensor_bus.ProcessBatch();
-```
-
-**场景 2: 诊断/控制命令注入**
-
-```cpp
-// 运行时参数调整 (从 Shell 注入)
-using CtrlBus = osp::AsyncBus<CtrlPayload, 64, 16>;
-CtrlBus ctrl_bus;
-
-// Shell 命令: 动态调整滤波参数
-ctrl_bus.Publish(SetFilterThreshold{0.5f});
-
-// Pipeline stage 定期检查控制消息
-void NoiseFilter::CheckCtrl() {
-  ctrl_bus.ProcessBatchWith<CtrlVisitor>(ctrl_visitor_);
-}
-```
+- **多传感器扇入**: 多个激光雷达传感器各自 Publish 到同一 Bus，融合节点统一 ProcessBatch
+- **诊断命令注入**: Shell 通过 Bus 下发运行时参数调整 (如滤波阈值)，Pipeline stage 定期 ProcessBatchWith 检查
 
 ### 4.3 层次状态机: 有状态 Stage 的管理
 
-并非所有 stage 都是无状态的逐点处理。串扰去除需要维护校准状态，故障恢复需要重试逻辑:
+并非所有 stage 都是无状态的逐点处理。串扰去除需要维护校准状态，故障恢复需要重试逻辑。HSM 的通用设计 (LCA 转换、Guard 条件、Entry/Exit) 和 HSM + BT 组合模式参见 [工业嵌入式流式数据处理架构设计 -- 状态管理](../Streaming_Architecture_Design/#6-状态管理-层次状态机-hsm)。
+
+在激光雷达串扰去除 stage 中，HSM 的具体应用:
 
 ```cpp
 enum class XTalkState : uint8_t {
@@ -347,14 +313,7 @@ stateDiagram-v2
     Error --> Idle : kRetry [retry >= 3]
 ```
 
-与传统 switch-case 对比:
-
-| 特性 | switch-case | newosp HSM |
-|------|------------|------------|
-| 层次嵌套 | 手动模拟 (flag + 嵌套 switch) | 自动 LCA entry/exit |
-| Guard 条件 | if-else 散落在 case 中 | 声明式 lambda |
-| 新增状态 | 修改所有相关 case | 添加一行 AddTransition |
-| 维护复杂度 | O(states x events) | O(transitions) |
+HSM 声明式转换替代 switch-case 后，新增状态只需添加一行 `AddTransition`，维护复杂度从 O(states x events) 降至 O(transitions)。
 
 ### 4.4 内存池: ObjectPool + Handle 模式
 
@@ -381,13 +340,9 @@ pool.Destroy(&pool[handle.pool_index]);  // O(1), placement delete
 
 ### 4.5 实时调度与看门狗
 
-```cpp
-// 每个 stage 绑定独立线程和 CPU 核心
-osp::RealtimeConfig rt_cfg;
-rt_cfg.sched_policy = SCHED_FIFO;
-rt_cfg.sched_priority = 80;
-rt_cfg.lock_memory = true;          // mlockall 防止 page fault
+RealtimeExecutor 的 SCHED_FIFO + isolcpus + mlockall 设计详见 [工业嵌入式流式数据处理架构设计 -- 调度层](../Streaming_Architecture_Design/#5-调度层-realtimeexecutor-与-workerpool)。以下是激光雷达 Pipeline 的具体线程分配:
 
+```cpp
 // Stage 线程分配 (4 核 Cortex-A53)
 // CPU0: 采集 (DMA 中断亲和)
 // CPU1: PreCalc + XTalk (融合，计算密集)
@@ -519,7 +474,7 @@ struct StageMetrics {
 | **状态机** | switch-case (扁平) | LCA HSM (层次, guard, entry/exit) |
 | **编译期配置** | #define 宏 | 模板参数 (QueueDepth, MaxStates) |
 | **流水线并行** | 手动 pthread | Stage-per-thread + CPU 绑核 |
-| **测试** | 手写断言 | Catch2 (1114 tests, 26085 assertions) |
+| **测试** | 手写断言 | Catch2 (1153 tests) |
 | **Sanitizer** | 无 | ASan + TSan + UBSan 全绿 |
 
 ---
@@ -633,12 +588,13 @@ int main() {
 
 5. **LCA 层次状态机**: 有状态 stage (串扰去除、校准) 用 HSM 管理，声明式转换替代 switch-case 意大利面条。
 
-6. **工程化保障**: 1114 个 Catch2 测试 + ASan/TSan/UBSan CI + Shell 多后端诊断，基础设施经过充分验证。
+6. **工程化保障**: 1153 个 Catch2 测试 + ASan/TSan/UBSan CI + Shell 多后端诊断，基础设施经过充分验证。
 
 ---
 
 ## 参考
 
+- [工业嵌入式流式数据处理架构设计](../Streaming_Architecture_Design/) -- 控制面/数据面分离、AsyncBus、ShmChannel、RealtimeExecutor、HSM+BT 通用架构设计
 - [newosp GitHub](https://github.com/DeguiLiu/newosp) -- C++17 header-only 嵌入式基础设施库
 - [newosp 设计文档](https://github.com/DeguiLiu/newosp/blob/main/docs/design_zh.md) -- 完整架构设计
 - QP/C Framework -- 量子平台 C 事件驱动框架

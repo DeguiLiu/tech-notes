@@ -3,8 +3,8 @@ title: "ztask: 零动态分配的裸机合作式任务调度器设计分析"
 date: 2026-02-15
 draft: false
 categories: ["blog"]
-tags: ["ARM", "deadlock", "embedded", "memory-pool", "scheduler"]
-summary: "`ztask` 是一个为资源受限的嵌入式系统设计的、轻量级的合作式任务调度器。它的核心设计理念是简洁、高效、确定性和低功耗。它不依赖于任何操作系统，也不使用动态内存分配（如`malloc`），使其非常适合用于裸机应用中。"
+tags: ["ARM", "embedded", "scheduler", "cooperative-scheduling", "bare-metal", "zero-heap", "RTOS"]
+summary: "分析 ztask 裸机合作式调度器的设计: 静态内存池管理、基于 Tick 的排序链表调度（O(1) poll）、低功耗休眠计算。附完整 C 源码（~200 行）和典型应用示例。适用于无 RTOS 的资源受限 MCU 环境。"
 ShowToc: true
 TocOpen: true
 ---

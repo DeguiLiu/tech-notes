@@ -1,6 +1,6 @@
 ---
 title: "工业嵌入式流式数据处理架构设计: 从传感器采集到网络输出的全链路"
-date: 2026-02-15
+date: 2026-02-17
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "C++17", "CRC", "DMA", "LiDAR", "MISRA", "behavior-tree", "callback", "embedded", "lock-free", "logging", "memory-pool", "message-bus", "newosp", "performance", "scheduler", "serial", "state-machine", "zero-copy"]
@@ -9,7 +9,7 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 版本: v3.0 | 基础设施库: [newosp](https://github.com/DeguiLiu/newosp) v0.2.0
+> 版本: v3.0 | 基础设施库: [newosp](https://github.com/DeguiLiu/newosp) v0.4.3
 > 目标平台: ARM-Linux (Cortex-A53/A72/A7) | C++17, Header-only
 > 适用场景: 激光雷达、工业视觉、机器人、边缘传感器融合
 
@@ -137,8 +137,8 @@ flowchart TB
 ```
 
 **关键特征**:
-- **40 个头文件**, Header-only INTERFACE 库
-- **979 个测试**, ASan + UBSan + TSan 全通过
+- **43 个头文件**, Header-only INTERFACE 库
+- **1153 个测试**, ASan + UBSan + TSan 全通过
 - **零 std::function**: 全部使用 `FixedFunction<64>` (SBO 回调，无堆分配)
 - **零 std::string**: 使用 `FixedString<N>` 替代
 
@@ -412,6 +412,8 @@ flowchart TB
 
 ## 7. 典型部署: 激光雷达数据处理
 
+> 本节展示架构在激光雷达场景的部署概览。完整的 Pipeline DAG 设计、Stage 融合优化、SoA 数据布局与 NEON 向量化详见 [激光雷达高吞吐数据处理 Pipeline](../lidar_pipeline_newosp/)。
+
 ### 7.1 系统架构
 
 ```mermaid
@@ -508,7 +510,9 @@ flowchart LR
 3. **调度层 (RealtimeExecutor)**: SCHED_FIFO + isolcpus + mlockall，确定性调度
 4. **状态管理 (HSM + BT)**: HSM 管理设备状态，BT 驱动启动自检和故障恢复流程，零堆分配
 
-newosp 的 Header-only 设计、零运行时依赖、编译期可配置的特性，使其特别适合资源受限的嵌入式 ARM-Linux 平台。所有性能数据均可通过源码复现（979 个测试，ASan/TSan clean）。
+newosp 的 Header-only 设计、零运行时依赖、编译期可配置的特性，使其特别适合资源受限的嵌入式 ARM-Linux 平台。所有性能数据均可通过源码复现（1153 个测试，ASan/TSan clean）。
+
+> 详细的激光雷达 Pipeline 实现（DAG 设计、Stage 融合、SoA + NEON 向量化）参见 [激光雷达高吞吐数据处理 Pipeline](../lidar_pipeline_newosp/)。
 
 ---
 
@@ -516,7 +520,7 @@ newosp 的 Header-only 设计、零运行时依赖、编译期可配置的特性
 
 | 资源 | 说明 |
 |------|------|
-| [newosp](https://github.com/DeguiLiu/newosp) | 工业嵌入式 C++17 基础设施库 (v0.2.0) |
+| [newosp](https://github.com/DeguiLiu/newosp) | 工业嵌入式 C++17 基础设施库 (v0.4.3) |
 | [newosp 设计文档](docs/design_zh.md) | 40 个模块详细设计 |
 | [newosp 性能报告](docs/benchmark_report_zh.md) | 完整基准测试数据 |
 | [newosp 激光雷达评估](docs/performance_analysis_lidar_zh.md) | 激光雷达场景性能分析 |

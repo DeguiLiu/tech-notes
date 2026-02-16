@@ -3,7 +3,7 @@ title: "ARMv8 CRC 性能实测: 硬件指令快 8 倍, NEON 反而更慢"
 date: 2026-02-15
 draft: false
 categories: ["blog"]
-tags: ["ARM", "CRC", "lock-free", "performance", "scheduler"]
+tags: ["ARM", "ARMv8", "CRC32", "NEON", "SIMD", "performance", "embedded"]
 summary: "对比两组实验: ARMv8 CRC32 硬件指令 (crc32cx) vs 软件查表法，以及 NEON SIMD vs 简单 C 循环的字节累加校验和。结果表明 CRC32 硬件指令比查表快 8 倍以上，而 NEON 手写的字节累加在 -O2 下反而比编译器自动优化的标量代码慢。"
 ShowToc: true
 TocOpen: true

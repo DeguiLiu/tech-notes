@@ -19,7 +19,6 @@ interview/           -- 嵌入式面试准备
 |------|------|
 | [blog_newosp.md](blog/blog_newosp.md) | newosp: 面向工业嵌入式的 C++17 Header-Only 基础设施库 |
 | [blog_callback_optimization.md](blog/blog_callback_optimization.md) | 回调机制优化: 从 std::function 到零开销 FixedFunction |
-| [cpp17_advantages_over_c.md](blog/cpp17_advantages_over_c.md) | 嵌入式场景下 C++17 相对 C 的优势分析 |
 | [cpp17_binary_size_vs_c.md](blog/cpp17_binary_size_vs_c.md) | C++17 vs C 二进制体积实测对比 |
 | [cpp17_claims_in_newosp.md](blog/cpp17_claims_in_newosp.md) | newosp 中 C++17 技术主张的代码论证 |
 | [cpp17_what_c_cannot_do.md](blog/cpp17_what_c_cannot_do.md) | C 语言无法实现的 C++17 能力 |
@@ -48,11 +47,9 @@ interview/           -- 嵌入式面试准备
 | 文件 | 主题 |
 |------|------|
 | [Streaming_Architecture_Design.md](architecture/Streaming_Architecture_Design.md) | 流式数据处理架构设计 (eventpp + Active Object) |
-| [Performance_Benchmark.md](architecture/Performance_Benchmark.md) | 性能基准测试报告 |
+| [Performance_Benchmark.md](architecture/Performance_Benchmark.md) | 零堆分配优化模式与性能基准测试 |
 | [Benchmark_Methodology_Detail.md](architecture/Benchmark_Methodology_Detail.md) | 基准测试方法论详解 |
-| [Optimization_Summary.md](architecture/Optimization_Summary.md) | 优化手段汇总 (Lock-free, 零拷贝, 批处理等) |
 | [eventpp_Optimization_Report.md](architecture/eventpp_Optimization_Report.md) | eventpp ARM-Linux 优化报告 |
-| [eventpp_processQueueWith_design.md](architecture/eventpp_processQueueWith_design.md) | eventpp processQueueWith 零开销访问者分发设计 |
 | [zynq7000_lidar_feasibility.md](architecture/zynq7000_lidar_feasibility.md) | Zynq-7000 处理30万点/秒激光雷达点云可行性分析 |
 | [zynq7000_rtthread_mmu_smp.md](architecture/zynq7000_rtthread_mmu_smp.md) | Zynq-7000 上 RT-Thread MMU + SMP 工程设计方案 |
 | [rk3506j_rtos_vs_linux.md](architecture/rk3506j_rtos_vs_linux.md) | RK3506J 架构选型: RT-Thread SMP vs Linux |

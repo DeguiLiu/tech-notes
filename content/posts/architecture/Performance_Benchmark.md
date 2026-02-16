@@ -1,10 +1,10 @@
 ---
-title: "MCCC 消息总线性能实测: 吞吐量、延迟与优先级背压验证"
-date: 2026-02-15
+title: "MCCC 消息总线零堆分配优化与性能实测"
+date: 2026-02-17
 draft: false
 categories: ["architecture"]
-tags: ["ARM", "C++17", "MCCC", "MISRA", "callback", "embedded", "lock-free", "message-bus", "performance", "scheduler"]
-summary: "MCCC Lock-free MPSC 消息总线在 BARE_METAL 模式下达到 18.7 M/s (54 ns/msg)，FULL_FEATURED 生产模式 5.8 M/s (172 ns/msg)，HIGH 优先级消息在背压测试中实现零丢失，E2E P99 延迟仅 449 ns。本文从对比层级、功能开销分解、端到端延迟分位数三个维度展示完整测试数据。"
+tags: ["ARM", "C++17", "MCCC", "MISRA", "callback", "embedded", "lock-free", "message-bus", "newosp", "performance", "zero-heap"]
+summary: "从 MCCC 消息总线优化实践中提炼 5 个零堆分配模式 (Envelope 内嵌、编译期类型索引、函数指针 RAII、FixedFunction/FixedVector/FixedString、编译期配置矩阵)，并附完整性能数据: BARE_METAL 18.7 M/s (54 ns/msg)，FULL_FEATURED 5.8 M/s (172 ns/msg)，HIGH 优先级零丢失，E2E P99 仅 449 ns。"
 ShowToc: true
 TocOpen: true
 ---
@@ -108,6 +108,89 @@ TocOpen: true
 
 > **总结**：优化后 BARE_METAL 吞吐从 3.1 M/s 提升至 18.7 M/s (6.0x)，
 > 主要得益于消除 shared_ptr 堆分配和 unordered_map 查找。
+
+---
+
+## 五个零堆分配模式
+
+> 从 MCCC 优化实践中提炼的通用模式，每个模式附带代码对比。
+
+### 模式一: Envelope 内嵌 (消除每消息堆分配)
+
+**问题**: `std::make_shared<Envelope>` 在每次 Publish 时堆分配。
+
+```cpp
+// 优化前: 每消息堆分配
+struct RingBufferNode {
+    std::atomic<uint32_t> sequence;
+    std::shared_ptr<MessageEnvelope> envelope;  // 堆分配
+};
+
+// 优化后: 零堆分配
+struct RingBufferNode {
+    std::atomic<uint32_t> sequence;
+    MessageEnvelope envelope;  // 直接内嵌
+};
+```
+
+### 模式二: 编译期类型索引 (消除 hash 查找)
+
+**问题**: `std::unordered_map<std::type_index, vector<callback>>` 每次 dispatch 需要 hash 计算。
+
+```cpp
+// 编译期计算类型在 variant 中的索引
+template <typename T, typename Variant>
+struct VariantIndex;
+
+// 固定大小数组替代 hash map
+std::array<CallbackSlot, std::variant_size_v<MessagePayload>> callbacks_;
+// dispatch: callbacks_[VariantIndex<T, MessagePayload>::value]  -- O(1)
+```
+
+### 模式三: 函数指针 RAII (消除虚表 + unique_ptr)
+
+**问题**: 资源释放通过虚基类 + `std::unique_ptr`，每次 `Borrow()` 堆分配。
+
+```cpp
+// 优化前: 虚基类 + unique_ptr
+class ITokenReleaser { virtual void Release() = 0; };
+DataToken(ptr, len, ts, std::make_unique<DMABufferReleaser>(pool, idx));
+
+// 优化后: 函数指针 (零堆分配, 零虚表)
+using ReleaseCallback = void (*)(void* context, uint32_t index) noexcept;
+DataToken(ptr, len, ts, &DMABufferPool::ReleaseBuffer, this, idx);
+```
+
+### 模式四: 零堆分配容器 (栈上定长替代动态容器)
+
+| 标准库类型 | 零堆分配替代 | 容量 | 溢出行为 |
+|-----------|------------|------|----------|
+| `std::string` | `FixedString<N>` | 编译期固定 | 截断 (显式标记) |
+| `std::vector<T>` | `FixedVector<T, N>` | 编译期固定 | `push_back` 返回 false |
+| `std::function` | `FixedFunction<Size>` | SBO 存储 (56B) | `static_assert` 编译期检查 |
+
+### 模式五: 编译期配置矩阵 (适配不同硬件)
+
+| 宏 | 默认值 | MCU 配置 | ARM Linux | 说明 |
+|----|:------:|:--------:|:---------:|------|
+| `QUEUE_DEPTH` | 131072 | 256 | 8192 | Ring Buffer 容量 |
+| `CACHELINE_SIZE` | 64 | 4 (关闭) | 64 | 对齐填充 |
+| `CACHE_COHERENT` | 1 | 0 | 1 | 是否需要 cache line 隔离 |
+| `MAX_MSG_TYPES` | 32 | 8 | 32 | 回调表大小 |
+
+MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 KB。
+
+### 模式适用性
+
+| 模式 | 适用条件 | 不适用 |
+|------|----------|--------|
+| Envelope 内嵌 | 消息大小编译期已知 | 消息大小动态变化 |
+| 编译期类型索引 | 消息类型集合编译期固定 | 需运行时注册新类型 |
+| 函数指针 RAII | 释放逻辑简单, 无需多态 | 需要复杂的析构链 |
+| 零堆分配容器 | 容量上界编译期可确定 | 容量不可预测 |
+| 编译期配置 | 需适配多种硬件平台 | 单一目标平台 |
+
+> 共同原则: **将运行时决策提前到编译期, 用编译期已知信息换取运行时零开销**。
 
 ---
 
@@ -358,6 +441,20 @@ TocOpen: true
 | 嵌入式/MCU | **MCCC** | 编译宏裁剪，零堆分配 |
 | 已有 eventpp 代码 | **eventpp + AO (优化后)** | 迁移成本低，优化后 3.1 M/s 持续吞吐 |
 | 单线程高吞吐 | **eventpp PoolQueueList** | 29 M/s (小批量) |
+
+---
+
+## 验证体系
+
+| 验证项 | 方法 | 通过标准 |
+|--------|------|----------|
+| 编译 | Release + Debug 构建 | 零错误零警告 |
+| 功能 | 全量消息收发测试 | 100% 投递成功 |
+| 内存安全 | AddressSanitizer | 零错误零泄漏 |
+| 线程安全 | ThreadSanitizer | 无 data race |
+| 未定义行为 | UBSanitizer | 零告警 |
+| 热路径堆分配 | malloc hook 运行时检测 | 0 次 |
+| 性能回归 | 基准测试 | 无 > 5% 回退 |
 
 ---
 
