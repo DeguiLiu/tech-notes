@@ -1,0 +1,33 @@
+name: ARM Benchmark
+on:
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System info
+        run: |
+          uname -a
+          lscpu | head -20
+          nproc
+          free -h
+
+      - name: Compile benchmark
+        run: |
+          g++ -O2 -std=c++17 -pthread \
+            -o benchmark examples/benchmark_five_principles.cpp
+          g++ --version | head -1
+
+      - name: Run benchmark (3 rounds)
+        run: |
+          echo "=== Round 1 ==="
+          ./benchmark
+          echo ""
+          echo "=== Round 2 ==="
+          ./benchmark
+          echo ""
+          echo "=== Round 3 ==="
+          ./benchmark
