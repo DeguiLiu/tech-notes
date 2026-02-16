@@ -18,9 +18,11 @@ params:
   ShowToc: true
   TocOpen: true
   mainSections:
-    - blog
     - architecture
-    - mccc
+    - performance
+    - practice
+    - pattern
+    - tools
   homeInfoParams:
     Title: "技术笔记"
     Content: "嵌入式系统、C/C++、架构设计与性能优化"
