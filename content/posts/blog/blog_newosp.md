@@ -1,10 +1,10 @@
 ---
 title: "newosp: 一个面向工业嵌入式的 C++17 Header-Only 基础设施库"
-date: 2026-02-15
+date: 2026-02-17
 draft: false
 categories: ["blog"]
 tags: ["ARM", "C++17", "CRC", "LiDAR", "behavior-tree", "callback", "embedded", "lock-free", "message-bus", "newosp", "scheduler", "serial", "state-machine", "zero-copy"]
-summary: "本文介绍的 newosp 库基于 MIT 协议开源，当前版本 v0.1.0。"
+summary: "本文介绍的 newosp 库基于 MIT 协议开源，当前版本 v0.2.0。"
 ShowToc: true
 TocOpen: true
 ---
@@ -25,26 +25,28 @@ ROS2 太重，对资源受限的嵌入式 Linux 平台不友好；自研框架�
 
 newosp 的设计围绕几个在嵌入式场景下至关重要的原则：
 
-**栈优先，热路径零堆分配。** 库内提供了 `FixedVector<T, N>`、`FixedString<N>`、`FixedFunction<Sig, Cap>` 等固定容量容器，所有数据都在栈上或静态分配。在实时性要求高的路径上，不会出现 `malloc` 导致的不确定延迟。
+**栈优先，热路径零堆分配。** 库内提供了 `FixedVector<T, N>`、`FixedString<N>`、`FixedFunction<Sig, Cap>` 等固定容量容器，所有数据都在栈上或静态分配。在实时性要求高的路径上，不会出现 `malloc` 导致的不确定延迟。整个库零 `std::function` 使用，回调统一通过 SBO（Small Buffer Optimization）的 `FixedFunction` 实现。
 
-**兼容 `-fno-exceptions -fno-rtti`。** 很多嵌入式项为了减小二进制体积和避免异常处理的运行时开销，会关闭异常和 RTTI。newosp 用 `expected<V, E>` 和 `optional<T>` 做类型安全的错误处理，完全不依赖异常机制。
+**兼容 `-fno-exceptions -fno-rtti`。** 很多嵌入式项目为了减小二进制体积和避免异常处理的运行时开销，会关闭异常和 RTTI。newosp 用 `expected<V, E>` 和 `optional<T>` 做类型安全的错误处理，完全不依赖异常机制。
 
-**零全局状态。** 所有状态封装在对象中，通过 RAII 管理生命周期。支持多实例并行，不会出现全局单例导致的测试困难和耦合问题。
+**零全局状态。** 所有状态封装在对象中，通过 RAII 管理生命周期。Bus 通过依赖注入传入 Node，支持多实例并行，不会出现全局单例导致的测试困难和耦合问题。
 
-**编译期分发替代虚函数。** 标签分发、`if constexpr`、CRTP、变参模板......用现代 C++ 的编译期技术替代传统的虚函数 OOP，在保持灵活性的同时实现零开销抽象。
+**编译期分发替代虚函数。** 标签分发、`if constexpr`、CRTP、变参模板......用现代 C++ 的编译期技术替代传统的虚函数 OOP，在保持灵活性的同时实现零开销抽象。`StaticNode` 通过模板参数化 Handler，编译器可生成直接跳转表并内联回调，消除间接调用开销。
 
 ## 七层架构一览
 
-newosp 按职责分为七层，共 38 个头文件：
+newosp 按职责分为七层，共 43 个头文件：
 
 ```
 应用层          app.hpp / post.hpp / qos.hpp / lifecycle_node.hpp
 服务与发现层    service.hpp / discovery.hpp / node_manager.hpp / *_hsm.hpp
 传输层          transport.hpp / shm_transport.hpp / serial_transport.hpp / transport_factory.hpp
 网络层          socket.hpp / connection.hpp / io_poller.hpp / net.hpp
-核心通信层      bus.hpp / node.hpp / worker_pool.hpp / spsc_ringbuffer.hpp / executor.hpp
+核心通信层      bus.hpp / node.hpp / static_node.hpp / worker_pool.hpp / spsc_ringbuffer.hpp / executor.hpp
 状态机与行为树  hsm.hpp / bt.hpp
-基础层          platform.hpp / vocabulary.hpp / config.hpp / log.hpp / timer.hpp / shell.hpp ...
+基础层          platform.hpp / vocabulary.hpp / config.hpp / log.hpp / async_log.hpp / timer.hpp
+                shell.hpp / mem_pool.hpp / shutdown.hpp / semaphore.hpp / watchdog.hpp
+                fault_collector.hpp / shell_commands.hpp / process.hpp / system_monitor.hpp
 ```
 
 每一层只依赖下层，不存在循环依赖。上层模块统一复用基础层的 `FixedString`、`FixedVector`、`SteadyNowUs` 等组件，零重复实现。
@@ -56,27 +58,56 @@ newosp 按职责分为七层，共 38 个头文件：
 这是整个库的通信骨架。`AsyncBus<PayloadVariant>` 是一个基于 CAS 的无锁 MPSC 消息总线，支持优先级准入控制和 topic 路由。
 
 ```cpp
+#include "osp/node.hpp"
+
 // 定义消息类型
 struct SensorData { float temperature; float humidity; };
 struct MotorCmd   { uint32_t mode; float target; };
 using Payload = std::variant<SensorData, MotorCmd>;
 
-// 创建节点，订阅消息
-osp::Node<Payload> sensor("sensor", 1);
-sensor.Subscribe<SensorData>([](const SensorData& d, const auto&) {
-    OSP_LOG_INFO("sensor", "temp=%.1f humidity=%.1f", d.temperature, d.humidity);
+// 创建 Bus 和 Node (Bus 依赖注入)
+osp::AsyncBus<Payload> bus;
+osp::Node<Payload> sensor("sensor", /*id=*/1, bus);
+
+// 订阅消息: void(const T&, const MessageHeader&)
+sensor.Subscribe<SensorData>([](const SensorData& d, const osp::MessageHeader& h) {
+    OSP_LOG_INFO("sensor", "temp=%.1f humidity=%.1f sender=%u",
+                 d.temperature, d.humidity, h.sender_id);
 });
 
 // 发布并处理
 sensor.Publish(SensorData{25.0f, 60.0f});
-sensor.SpinOnce();
+sensor.SpinOnce();  // 消费队列，分发到回调
 ```
 
 几个关键设计点：
 - 基于 `std::variant` + `VariantIndex<T>` 的编译期类型路由，不需要字符串匹配
 - FNV-1a 32-bit hash 做 topic 路由，O(1) 查找
-- Bus 通过依赖注入传入 Node，而非全局单例
-- 模板参数化 `QueueDepth` 和 `BatchSize`，适配不同硬件
+- Bus 通过依赖注入传入 Node，而非全局单例（也支持 Meyer's singleton 模式 `AsyncBus::Instance()`）
+- 宏参数化 `OSP_BUS_QUEUE_DEPTH`（默认 4096）和 `OSP_BUS_BATCH_SIZE`（默认 256），编译期适配不同硬件
+- 三级优先级准入控制（LOW/MEDIUM/HIGH），队列 60%/80%/99% 满时分级丢弃
+- 回调使用 `FixedFunction<void(const Envelope&), 4*sizeof(void*)>` SBO 存储，零 `std::function`
+
+### 编译期绑定节点 (static_node.hpp)
+
+对于性能极敏感的场景，`StaticNode<Payload, Handler>` 将 Handler 作为模板参数，编译器可以生成直接跳转表并内联回调，消除 `FixedFunction` 的间接调用开销：
+
+```cpp
+#include "osp/static_node.hpp"
+
+struct MyHandler {
+    void operator()(const SensorData& d, const osp::MessageHeader& h) {
+        // 编译器可内联此调用
+        OSP_LOG_INFO("handler", "temp=%.1f", d.temperature);
+    }
+    void operator()(const MotorCmd& c, const osp::MessageHeader& h) {
+        OSP_LOG_INFO("handler", "motor mode=%u", c.mode);
+    }
+};
+
+// 编译期绑定，零间接调用开销
+osp::StaticNode<Payload, MyHandler> node("sensor", 1, MyHandler{}, bus);
+```
 
 ### SPSC 环形缓冲 (spsc_ringbuffer.hpp)
 
@@ -84,7 +115,7 @@ sensor.SpinOnce();
 
 ### 层次状态机 (hsm.hpp)
 
-零堆分配的层次状态机实现，支持 LCA（Least Common Ancestor）转换算法和 guard 条件。在 newosp 中被广泛使用：串口 OTA 的帧解析、共享内存 IPC 的生产者/消费者状态管理、节点心跳监控、服务生命周期管理......几乎所有需要状态管理的场景都用 HSM 来驱动。
+零堆分配的层次状态机实现，支持 LCA（Least Common Ancestor）转换算法和 guard 条件。在 newosp 中被广泛使用：串口 OTA 的帧解析、共享内存 IPC 的生产者/消费者状态管理、节点心跳监控（`node_manager_hsm.hpp`）、服务生命周期管理（`service_hsm.hpp`）、发现流程管理（`discovery_hsm.hpp`）......几乎所有需要状态管理的场景都用 HSM 来驱动。
 
 ### 行为树 (bt.hpp)
 
@@ -94,21 +125,48 @@ sensor.SpinOnce();
 
 提供 Single、Static、Pinned 三种通用调度器，以及一个 `RealtimeExecutor`，支持 `SCHED_FIFO` 实时调度策略、`mlockall` 内存锁定、CPU 亲和性绑定。适合对延迟敏感的工业控制场景。
 
+### 生命周期节点 (lifecycle_node.hpp)
+
+HSM 驱动的生命周期管理，提供丰富的状态层次：
+
+```
+Alive (root)
++-- Unconfigured (Initializing / WaitingConfig)
++-- Configured
+|   +-- Inactive (Standby / Paused)
+|   +-- Active (Starting / Running / Degraded)
++-- Error (Recoverable / Fatal)
++-- Finalized
+```
+
+向后兼容 4 状态公共 API（`Configure()` / `Activate()` / `Deactivate()` / `Shutdown()`），同时提供细粒度的 12 状态详细查询。回调使用函数指针，零堆分配。
+
 ### 多传输后端 (transport_factory.hpp)
 
 `transport_factory` 根据通信双方的位置自动选择最优传输方式：
 - 同进程内: inproc（直接函数调用）
-- 同机器不同进程: 共享内存 IPC（`shm_transport.hpp`，无锁 SPSC）
-- 跨机器: TCP/UDP（`transport.hpp`，v0/v1 帧协议）
+- 同机器不同进程: 共享内存 IPC（`shm_transport.hpp`，无锁 SPSC，ARM 内存序加固）
+- 跨机器: TCP/UDP（`transport.hpp`，v0/v1 双版本帧协议，SequenceTracker 丢包检测）
 - 工业串口: `serial_transport.hpp`（CRC-CCITT 校验，符合 IEC 61508）
+
+### 异步日志 (async_log.hpp)
+
+每线程独立 SPSC 环形缓冲，单后台写线程 round-robin 轮询。DEBUG/INFO/WARN 走异步路径（wait-free push，零竞争），ERROR/FATAL 走同步 fprintf（crash-safe）。未启动异步后端时，所有宏透明回退到同步 `LogWrite()`。
+
+### 系统监控 (system_monitor.hpp)
+
+读取 `/proc/stat`、`/proc/meminfo`、`/sys/class/thermal` 等文件系统，监控 CPU 利用率、CPU 温度、内存使用、磁盘用量。POD 快照零拷贝，栈上解析，状态变化告警（仅阈值穿越时触发），可通过 `TimerScheduler` 周期采样。
+
+### 进程管理 (process.hpp)
+
+子进程 spawn/pipe/wait，进程查找（`FindPidByName`），Freeze/Resume/Kill 操作，`RunCommand` 命令执行。为多进程部署场景（如 `net_stress/` 示例中的 launcher 进程管理器）提供基础设施。
 
 ### 可靠性基础设施
 
 - `watchdog.hpp`: 软件看门狗，截止时间监控 + 超时回调
 - `fault_collector.hpp`: 故障收集与上报，FaultReporter POD 注入，环形缓冲存储
-- `lifecycle_node.hpp`: 生命周期节点（Unconfigured → Inactive → Active → Finalized），HSM 驱动
 - `qos.hpp`: QoS 配置（Reliability、History、Deadline、Lifespan）
-- `shell_commands.hpp`: 15 个内置诊断 Shell 命令，零侵入桥接
+- `shell_commands.hpp`: 内置诊断 Shell 命令，零侵入桥接，支持 TCP/stdin/UART 多后端
 
 ## 四个工业级示例
 
@@ -122,14 +180,14 @@ sensor.SpinOnce();
 
 **架构**:
 - `protocol.hpp`: 定义帧格式（0xAA 帧头 / 0x55 帧尾）、CRC-CCITT constexpr 查表、OTA 命令集
-- `parser.hpp`: HSM 驱动的 9 状态帧解析器（Idle → LenLo → LenHi → CmdClass → Cmd → Data → CrcLo → CrcHi → Tail），逐字节状态转移
-- `host.hpp`: 主机端升级流程，用行为树编排 4 个阶段（SendStart → SendChunks → SendEnd → SendVerify）
-- `device.hpp`: 设备端 6 状态 OTA 状态机（Idle → Erasing → Receiving → Verifying → Complete/Error），内含 Flash 模拟器
+- `parser.hpp`: HSM 驱动的 9 状态帧解析器（Idle -> LenLo -> LenHi -> CmdClass -> Cmd -> Data -> CrcLo -> CrcHi -> Tail），逐字节状态转移
+- `host.hpp`: 主机端升级流程，用行为树编排 4 个阶段（SendStart -> SendChunks -> SendEnd -> SendVerify）
+- `device.hpp`: 设备端 6 状态 OTA 状态机（Idle -> Erasing -> Receiving -> Verifying -> Complete/Error），内含 Flash 模拟器
 - `main.cpp`: 用 `SpscRingbuffer` 模拟双向 UART FIFO，注入约 5% 的信道噪声
 
-这个示例的亮点在于 HSM 和 BT 的配合：BT 负责编排"发送启动 → 分块传输 → 发送结束 → 校验"的高层流程，HSM 负责底层的帧解析状态转换和设备端 OTA 状态管理。两者各司其职，代码结构清晰。
+这个示例的亮点在于 HSM 和 BT 的配合：BT 负责编排"发送启动 -> 分块传输 -> 发送结束 -> 校验"的高层流程，HSM 负责底层的帧解析状态转换和设备端 OTA 状态管理。两者各司其职，代码结构清晰。
 
-同时集成了 `ThreadWatchdog`（5s 超时检测）、`FaultCollector`（故障上报）、`AsyncBus`（进度/状态变更/完成事件广播）、`DebugShell`（9 条调试命令），展示了一个工业级应用该有的可观测性。
+同时集成了 `ThreadWatchdog`（5s 超时检测）、`FaultCollector`（故障上报）、`AsyncBus`（进度/状态变更/完成事件广播）、`DebugShell`（调试命令），展示了一个工业级应用该有的可观测性。
 
 ### 2. 共享内存 IPC (shm_ipc/)
 
@@ -138,7 +196,7 @@ sensor.SpinOnce();
 **三个进程**:
 - `shm_producer`: HSM 驱动的帧生产者（8 状态），支持背压检测和自动降速
 - `shm_consumer`: HSM 驱动的帧消费者（8 状态），支持重连重试和帧完整性校验
-- `shm_monitor`: DebugShell 调试监控，提供 5 个 telnet 命令实时查看通道状态
+- `shm_monitor`: DebugShell 调试监控，提供 telnet 命令实时查看通道状态
 
 **设计要点**:
 - 生产者在 ring buffer 满时不是简单丢弃，而是进入 Paused 状态；连续 3 次满则进入 Throttled 降速状态
@@ -161,7 +219,7 @@ sensor.SpinOnce();
 **三阶段流程**:
 1. 设备注册（HIGH 优先级消息）
 2. 心跳保活（TimerScheduler 每 50ms 触发）
-3. 流控制（START → 5 帧数据 → STOP，数据用 LOW 优先级）
+3. 流控制（START -> 5 帧数据 -> STOP，数据用 LOW 优先级）
 
 这个示例的价值在于展示了 newosp 的消息优先级机制：注册请求用 HIGH 优先级确保及时处理，流数据用 LOW 优先级避免阻塞控制消息。所有消息类型都是 POD 结构，通过 `std::variant` 统一路由。
 
@@ -185,11 +243,11 @@ IoT 网关场景，展示 WorkerPool + Node 的分工协作。
 
 ## 测试与质量保证
 
-newosp 目前有 788 个测试用例，覆盖所有模块：
+newosp 目前有 1153 个测试用例，覆盖所有 43 个模块：
 
-- 正常模式: 788 tests
-- `-fno-exceptions` 模式: 393 tests（排除 sockpp 依赖的测试）
-- Sanitizer: AddressSanitizer + UBSanitizer + ThreadSanitizer 全部通过
+- 正常模式: 1153 tests，100% 通过
+- `-fno-exceptions` 模式: 排除 sockpp 依赖的测试后单独验证
+- Sanitizer: AddressSanitizer + UBSanitizer + ThreadSanitizer 全部通过（零警告）
 - CI: GitHub Actions，Debug + Release 双配置，每次提交自动验证
 
 测试框架用的 Catch2 v3.5.2，每个模块对应独立的测试文件 `tests/test_<module>.cpp`，另有集成测试 `tests/test_integration.cpp`。
@@ -229,4 +287,4 @@ newosp 适合这些场景：
 
 ---
 
-> 本文介绍的 newosp 库基于 MIT 协议开源，当前版本 v0.1.0。
+> 本文介绍的 newosp 库基于 MIT 协议开源，当前版本 v0.2.0。

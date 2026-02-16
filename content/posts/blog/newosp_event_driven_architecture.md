@@ -509,6 +509,8 @@ newosp 核心模块保持 POSIX API 边界清晰:
 | **类型安全** | `std::variant` + `expected<V,E>` + `static_assert` trivially_copyable |
 | **`-fno-exceptions -fno-rtti`** | 全代码库兼容，`Validate()` 返回 bool 而非抛异常 |
 
+**为什么不用对象池**。避免热路径 `malloc` 的另一种常见方案是对象池 (`mutex` + `queue<shared_ptr>`)。对象池确实比裸分配快约 60%，但在 newosp 的场景中仍有三个代价: mutex 在每次 acquire/release 上引入 futex 开销 (~20-40ns)，`shared_ptr` 原子引用计数在单向数据流中完全多余，`std::queue` 动态增长破坏编译期内存预算。newosp 用预分配环形缓冲 (slot 覆写，零 malloc) + variant 值语义 (无引用计数) + CAS/wait-free (无 mutex) 彻底消除了这三项开销。对象池适合生命周期不确定的共享对象 (连接池、线程池)，不适合单向流动的消息通道。详见 [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) 和 [对象池在嵌入式热路径上的三个隐性成本](../object_pool_hidden_costs/)。
+
 这些原则贯穿整条传感器流水线: variant 保证消息类型安全，CAS 保证并发发布安全，HSM 保证状态转换安全，`static_assert` 保证跨平台 sizeof 一致。每个"安全"都是编译期或硬件级保证，不是运行时约定。
 
 ## 参考资料
