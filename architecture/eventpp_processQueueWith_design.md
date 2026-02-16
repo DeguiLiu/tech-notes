@@ -27,7 +27,7 @@ process()
 
 ### 1.2 newosp 验证
 
-newosp 项目的 `ProcessBatchWith<Visitor>` 已验证此优化方向:
+[newosp](https://github.com/DeguiLiu/newosp) 项目的 `ProcessBatchWith<Visitor>` 已验证此优化方向:
 - 绕过 FixedFunction 回调表 + SharedSpinLock
 - 使用 `std::visit` 编译期跳转表 (C++17)
 - 实测 15x 加速 (2 ns/msg vs 30 ns/msg)

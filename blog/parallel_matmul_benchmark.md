@@ -1,6 +1,6 @@
 # C++17 并行矩阵乘法: 从单线程到多进程共享内存的性能实测
 
-> 并行计算是嵌入式 Linux 平台上绑不开的话题。线程池、消息总线、共享内存 IPC -- 每种并行方案都有其适用场景和性能特征。本文以矩阵乘法为载体，基于 newosp 基础设施库，实测对比四种并行方案的性能差异，并分析各方案的架构取舍。
+> 并行计算是嵌入式 Linux 平台上绑不开的话题。线程池、消息总线、共享内存 IPC -- 每种并行方案都有其适用场景和性能特征。本文以矩阵乘法为载体，基于 [newosp](https://github.com/DeguiLiu/newosp) 基础设施库，实测对比四种并行方案的性能差异，并分析各方案的架构取舍。
 
 项目地址: [https://gitee.com/liudegui/zmq_parallel_tasks](https://gitee.com/liudegui/zmq_parallel_tasks)
 

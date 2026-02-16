@@ -26,7 +26,7 @@
 | 异常 | 展开表 (`.eh_frame`)、着陆区 (`.gcc_except_table`) | .eh_frame 可占 .text 的 10-30% |
 
 工业嵌入式项目通常开启 `-fno-exceptions -fno-rtti`，此时这些开销归零。
-newosp 用 `expected<V,E>` 替代异常，用模板/CRTP 替代虚函数，从设计上规避了这两项开销。
+[newosp](https://github.com/DeguiLiu/newosp) 用 `expected<V,E>` 替代异常，用模板/CRTP 替代虚函数，从设计上规避了这两项开销。
 
 ### 观点 2："if constexpr 做物理剪枝，C++ 可能更小"
 

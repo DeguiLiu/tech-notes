@@ -2,7 +2,7 @@
 
 > 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/158074805)
 
-> 基于 newosp 工业嵌入式基础设施库的实践总结
+> 基于 [newosp](https://github.com/DeguiLiu/newosp) 工业嵌入式基础设施库的实践总结
 
 ## 核心论点
 

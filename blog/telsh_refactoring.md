@@ -105,7 +105,7 @@ inline int ShellSplit(char* cmdline, char* argv[], int max_args);
 
 ## 从 newosp 复用的组件
 
-telsh 从 [newosp](https://gitee.com/liudegui/newosp) 项目拷贝了 3 个 header-only 文件作为基础设施：
+telsh 从 [newosp](https://github.com/DeguiLiu/newosp) 项目拷贝了 3 个 header-only 文件作为基础设施：
 
 - `platform.hpp` (169 行) -- 平台检测、`OSP_ASSERT` 宏、编译器提示
 - `vocabulary.hpp` (858 行) -- `FixedFunction`、`FixedString`、`ScopeGuard`
