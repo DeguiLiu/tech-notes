@@ -10,6 +10,9 @@ TocOpen: true
 ---
 
 > [newosp](https://github.com/DeguiLiu/newosp) 项目地址
+>
+> 相关文章:
+> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- newosp 框架的核心架构与全景
 
 ---
 

@@ -12,6 +12,8 @@ TocOpen: true
 > 相关文章:
 > - [嵌入式系统死锁防御: 从有序锁到无锁架构的工程实践](../deadlock_prevention/) -- 架构层面如何避免锁问题
 > - [多线程死锁与优先级反转实战](../deadlock_priority_inversion_practice/) -- 死锁与优先级反转的代码级修复
+> - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](../lock_contention_benchmark/) -- 三种同步策略的性能实测
+> - [无锁编程核心原理](../lockfree_programming_fundamentals/) -- 从有锁迁移到无锁的理论基础
 >
 > 参考:
 > - 原文: [perf lock 诊断锁竞争](https://blog.csdn.net/stallion5632/article/details/143665002)

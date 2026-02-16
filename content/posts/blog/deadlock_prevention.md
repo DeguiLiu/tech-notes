@@ -10,6 +10,12 @@ TocOpen: true
 ---
 
 > 在多任务并发系统中，不当的锁管理是导致系统死锁或永久阻塞的根本原因。本文从死锁原理出发，先介绍经典的有序锁获取与超时回退策略，再结合 [newosp](https://github.com/DeguiLiu/newosp) 工业级嵌入式框架的真实代码，深入解析无锁 MPSC 总线、Wait-Free SPSC 队列、自旋锁指数退避、Collect-Release-Execute 回调模式、LIFO 有序关停等工程实践，构建从设计层面根除死锁的完整方法论。
+>
+> 相关文章:
+> - [多线程死锁与优先级反转实战](../deadlock_priority_inversion_practice/) -- 代码级的死锁复现与修复
+> - [perf lock 锁竞争诊断](../perf_lock_contention_diagnosis/) -- 运行时锁竞争的量化诊断
+> - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](../lock_contention_benchmark/) -- 有锁与无锁的性能实测
+> - [无锁编程核心原理](../lockfree_programming_fundamentals/) -- 从有锁到无锁的理论基础
 
 ---
 

@@ -1,10 +1,10 @@
 ---
-title: "newosp 深度解析: C++17 事件驱动架构、层次状态机与零堆分配消息总线"
+title: "工业传感器数据流水线: newosp C++17 零堆分配事件驱动架构实战"
 date: 2026-02-16
 draft: false
 categories: ["blog"]
-tags: ["newosp", "C++17", "event-driven", "HSM", "lock-free", "MPSC", "SPSC", "zero-copy", "zero-allocation", "state-machine", "ARM-Linux", "embedded", "CAS", "cache-line", "FixedFunction", "SBO", "RAII"]
-summary: "newosp 是面向工业级 ARM-Linux 嵌入式平台的 C++17 header-only 基础设施库。本文从架构设计出发，深入剖析 newosp 的四大核心支柱: 无锁 MPSC 消息总线 (CAS 环形缓冲 + 优先级准入)、层次状态机 (LCA 转换 + Guard 条件)、wait-free SPSC 环形缓冲 (编译期双路径 + FakeTSO)、以及 LifecycleNode 16 状态 HSM 生命周期管理。通过与 QP/C 框架的系统性对比，展示 newosp 如何在 C++17 类型系统下实现同等甚至更优的零堆分配、编译期分发和缓存友好设计。"
+tags: ["newosp", "C++17", "event-driven", "HSM", "lock-free", "MPSC", "SPSC", "zero-allocation", "state-machine", "ARM-Linux", "embedded", "pipeline", "sensor", "lidar"]
+summary: "以激光雷达点云处理流水线为主线，展示 newosp C++17 事件驱动架构如何解决工业传感器系统的三大工程难题: 零堆分配消息传递 (CAS 无锁 MPSC + variant 值语义)、可建模的状态管理 (层次状态机 LCA + Guard)、以及微秒级确定性调度。从端到端数据流切入，逐层拆解 AsyncBus、HSM、SPSC 如何协同支撑一条完整的工业数据处理流水线。"
 ShowToc: true
 TocOpen: true
 ---
@@ -13,75 +13,173 @@ TocOpen: true
 >
 > 本文基于 newosp v0.2.0，1114 test cases (26085 assertions)，ASan/TSan/UBSan 全部通过。
 >
-> 与 QP/C 框架的对比参考: [QPC 框架深度解析](../qpc_active_object_hsm/)
+> 相关文章:
+> - [newosp 嵌入式并发与 I/O 架构](../newosp_concurrency_io_architecture/) -- 线程模型、Executor、WorkerPool、IoPoller 详解
+> - [无锁编程核心原理: 从 CAS 到三种队列模式](../lockfree_programming_fundamentals/) -- AsyncBus 底层的无锁原理
+> - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- newosp SPSC 的逐行代码分析
+> - [共享内存进程间通信](../shm_ipc_newosp/) -- ShmRingBuffer 的工程实践
+> - [newosp ospgen: YAML 驱动的 C++17 零堆消息代码生成](../newosp_ospgen_codegen/) -- Bus/Node 消息类型的自动生成
+> - [C 语言层次状态机框架: 从过程驱动到数据驱动](../c_hsm_data_driven_framework/) -- C 语言 HSM 的演进路径
+> - [嵌入式线程间消息传递重构: MCCC 无锁消息总线](../mccc_message_passing/) -- newosp AsyncBus 的前身 MCCC
+>
+> CSDN 原文: [newosp 深度解析: C++17 事件驱动架构](https://blog.csdn.net/stallion5632)
 
-## 1. 为什么需要 newosp
+## 1. 问题: 传感器数据处理的三重困境
 
-工业级嵌入式系统 (激光雷达、机器人、边缘计算) 面临一组核心矛盾:
+工业传感器系统 (激光雷达、深度相机、工业视觉) 面临三个相互矛盾的工程需求:
 
-- **性能**: 热路径必须零堆分配、零拷贝，微秒级确定性延迟
-- **安全**: 并发模块之间需要隔离，不能靠"约定"而要靠"机制"保证线程安全
-- **可维护性**: 状态管理不能退化为 if-else 嵌套，需要可建模、可测试的状态机
-- **可移植性**: 核心逻辑不能绑死 Linux，未来要能迁移到 RT-Thread 等 RTOS
+**确定性**: 1kHz+ 采样率要求热路径微秒级延迟，一次 `malloc` 或 `mutex` slow path 就可能导致帧丢失。
 
-QP/C (Quantum Platform in C) 用 Active Object + HSM + 零拷贝事件队列 解决了同类问题，但它是纯 C 框架，受限于语言表达力。newosp 在 C++17 类型系统之上重新设计了完整的事件驱动架构，41 个 header-only 模块覆盖从基础设施到应用层的全栈需求。
+**安全性**: 传感器有复杂的硬件状态 (初始化、采集中、校准、异常恢复)。if-else 嵌套到第三层就无法维护，需要可建模、可测试的状态管理。
 
-### 1.1 核心设计原则
+**可组合性**: 数据从 DMA 采集到最终输出要经过 5-6 个处理阶段，每个阶段可能由不同开发者负责。阶段之间需要解耦，同时不能引入共享状态和锁竞争。
 
-| 原则 | 实现手段 | QP/C 对应 |
-|------|---------|-----------|
-| **零全局状态** | Bus 依赖注入，非全局单例 | QF 全局框架 |
-| **栈优先，零堆分配** | FixedFunction/FixedVector/FixedString/ObjectPool | 固定事件池 |
-| **无锁/最小锁** | CAS MPSC + wait-free SPSC + SharedSpinLock | 关中断临界区 |
-| **编译期分发** | 模板参数化 + `if constexpr` + `std::visit` | 函数指针 + switch |
-| **类型安全** | `std::variant` + `expected<V,E>` + NewType | `void*` + 强制转换 |
-| **`-fno-exceptions -fno-rtti`** | 全代码库兼容 | 原生 C，无此问题 |
+传统方案的选择:
 
-### 1.2 架构全景
+| 方案 | 缺陷 |
+|------|------|
+| `shared_ptr<Frame>` + `mutex` + `deque` | 堆分配 control block + futex slow path，热路径不确定 |
+| 回调链 + `std::function` | SBO 溢出时堆分配，回调嵌套难以测试 |
+| 手写 enum + switch 状态机 | 状态数增长时 O(n^2) 转换，无法继承默认行为 |
 
-```
-┌───────────────────────────────────────────────────────────────────────┐
-│                        newosp Architecture                            │
-│                                                                       │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  ┌──────────┐ │
-│  │  AsyncBus     │  │  HSM          │  │  SPSC         │  │Lifecycle │ │
-│  │  (MPSC)       │  │  层次状态机   │  │  RingBuffer   │  │  Node    │ │
-│  │              │  │              │  │              │  │          │ │
-│  │  CAS 无锁    │  │  LCA 转换    │  │  Wait-free   │  │  16 状态 │ │
-│  │  优先级准入   │  │  Guard 条件  │  │  编译期路径   │  │  HSM 驱动│ │
-│  │  批量处理    │  │  冒泡继承    │  │  FakeTSO     │  │  Fault   │ │
-│  └──────────────┘  └──────────────┘  └──────────────┘  └──────────┘ │
-│                                                                       │
-│  ┌────────────────────────────────────────────────────────────────┐  │
-│  │  vocabulary.hpp: expected<V,E> | FixedFunction | FixedVector   │  │
-│  │                  FixedString | ScopeGuard | NewType             │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-│                                                                       │
-│  ┌────────────────────────────────────────────────────────────────┐  │
-│  │  Executor: Single | Static | Pinned | Realtime (SCHED_FIFO)   │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-│                                                                       │
-│  ┌────────────────────────────────────────────────────────────────┐  │
-│  │  Platform: ARM-Linux | GCC/Clang | C++17 | -fno-exceptions    │  │
-│  └────────────────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────────────────────────────────────┘
-```
+newosp 是面向 ARM-Linux 嵌入式平台的 C++17 header-only 基础设施库 ([GitHub](https://github.com/DeguiLiu/newosp))，41 个模块覆盖从消息总线到状态机的全栈需求。本文以**激光雷达点云处理流水线**为主线，展示这些模块如何协同工作。
 
-## 2. 无锁 MPSC 消息总线 (AsyncBus)
+## 2. 流水线全景: 从 DMA 到输出
 
-### 2.1 从 QP/C QEQueue 到 newosp AsyncBus
-
-QP/C 的事件队列 `QEQueue` 是 SPSC 设计 (单生产者单消费者)，通过关中断临界区保护入队操作。这在 RTOS 裸机环境完全合理: ISR 时间窗极短，关中断开销纳秒级。
-
-但在 ARM-Linux 多核环境下，关中断不可行 (用户态无此权限)，且多个线程同时向同一个 Bus 发布消息是常态。newosp 的 AsyncBus 采用 **CAS (Compare-And-Swap) 无锁 MPSC** 设计:
+### 2.1 架构
 
 ```
-Producer 0 ─┐
-Producer 1 ──┼── CAS Publish ──> Ring Buffer ──> ProcessBatch() ──> 类型分发
-Producer 2 ─┘   (无锁竞争)      (sequence-based)   (批量消费)      (variant + FixedFunction)
+DMA/ISR ──> Acquisition ──> Preprocess ──> Compute ──> Filter ──> Package
+            (采集)         (预处理)      (距离计算)  (滤波)    (封装)
+            HSM 管理       去串扰/鬼影    深度转换    噪声消除   帧聚合
 ```
 
-### 2.2 CAS 环形缓冲: 数据结构
+每个阶段是一个 `StaticNode` (编译期绑定 Handler)，阶段间通过共享的 `AsyncBus` 通信。数据以 `std::variant` 值语义在 Bus 的环形缓冲中传递，**全程零堆分配**。
+
+### 2.2 消息类型
+
+所有消息必须 `trivially_copyable` (SPSC/ShmRingBuffer `memcpy` 安全):
+
+```cpp
+struct RawFrame {
+    uint32_t seq;
+    uint32_t timestamp_us;
+    uint16_t adc_values[256];
+    uint16_t point_count;
+    uint8_t  channel_id;
+    uint8_t  padding[1];
+};
+
+struct ComputedFrame {
+    uint32_t seq;
+    uint32_t timestamp_us;
+    float    distances[256];
+    float    intensities[256];
+    uint16_t valid_count;
+    uint8_t  channel_id;
+    uint8_t  padding[1];
+};
+
+// 中间阶段: PreprocessedFrame, FilteredFrame, PackagedResult (结构类似)
+// 控制消息
+struct PipelineControl {
+    enum class Action : uint8_t { kStart = 0, kStop, kReset, kCalibrate };
+    Action action;
+    uint8_t channel_id;
+};
+
+// 流水线 Payload
+using SensorPayload = std::variant<
+    RawFrame, PreprocessedFrame, ComputedFrame,
+    FilteredFrame, PackagedResult, PipelineControl>;
+
+// 编译期保证
+static_assert(std::is_trivially_copyable_v<RawFrame>);
+static_assert(std::is_trivially_copyable_v<ComputedFrame>);
+```
+
+**为什么用 variant 值语义而不是 `shared_ptr`**: `shared_ptr<Frame>` 的 control block 需要堆分配，引用计数的原子操作在 ARM 上也有可观开销。variant 将帧数据 (固定大小 POD) 直接嵌入 Bus 的 Envelope 中，一次 `memcpy` 完成发布，`sizeof` 编译期确定。
+
+### 2.3 流水线装配
+
+```cpp
+auto& bus = osp::AsyncBus<SensorPayload>::Instance();
+
+// 每个阶段 = StaticNode<Payload, Handler>
+osp::StaticNode<SensorPayload, AcquisitionHandler>  acq_node("acquisition", 1, acq_handler);
+osp::StaticNode<SensorPayload, PreprocessHandler>   prep_node("preprocess", 2, prep_handler);
+osp::StaticNode<SensorPayload, ComputeHandler>      comp_node("compute", 3, comp_handler);
+osp::StaticNode<SensorPayload, FilterHandler>       filt_node("filter", 4, filt_handler);
+osp::StaticNode<SensorPayload, PackageHandler>      pack_node("package", 5, pack_handler);
+
+// 单线程顺序调度 (延迟最确定)
+while (!shutdown.IsShutdown()) {
+    acq_node.SpinOnce();    // DMA/ISR → RawFrame
+    prep_node.SpinOnce();   // RawFrame → PreprocessedFrame
+    comp_node.SpinOnce();   // PreprocessedFrame → ComputedFrame
+    filt_node.SpinOnce();   // ComputedFrame → FilteredFrame
+    pack_node.SpinOnce();   // FilteredFrame → PackagedResult
+}
+```
+
+也可以按计算密度分配到不同 CPU 核心:
+
+```cpp
+// I/O 密集阶段 → CPU 0，计算密集阶段 → CPU 1
+std::thread io_thread([&]() {
+    while (!shutdown.IsShutdown()) { acq_node.SpinOnce(); prep_node.SpinOnce(); }
+});
+std::thread compute_thread([&]() {
+    while (!shutdown.IsShutdown()) {
+        comp_node.SpinOnce(); filt_node.SpinOnce(); pack_node.SpinOnce();
+    }
+});
+```
+
+### 2.4 Handler 示例: 预处理阶段
+
+每个 Handler 是一个实现了 `operator()` 重载的 struct，编译器通过 `std::visit` 生成直接跳转表 (零间接调用):
+
+```cpp
+struct PreprocessHandler {
+    osp::AsyncBus<SensorPayload>* bus;
+
+    void operator()(const RawFrame& raw, const osp::MessageHeader&) {
+        PreprocessedFrame pf{};
+        pf.seq = raw.seq;
+        pf.timestamp_us = raw.timestamp_us;
+
+        // 去串扰 + 去鬼影 (具体算法省略)
+        pf.valid_count = remove_crosstalk_and_ghost(
+            raw.adc_values, raw.point_count, pf.cleaned_values);
+
+        bus->Publish(SensorPayload(pf), /*sender_id=*/2);
+    }
+
+    template <typename T>
+    void operator()(const T&, const osp::MessageHeader&) {}  // 其他类型忽略
+};
+```
+
+### 2.5 端到端延迟追踪
+
+每帧携带 `seq` + `timestamp_us`，在最终阶段计算流水线延迟:
+
+```cpp
+void operator()(const FilteredFrame& ff, const osp::MessageHeader&) {
+    uint32_t latency_us = osp::SteadyNowUs() - ff.timestamp_us;
+    if (latency_us > 1000) {  // 超过 1ms 告警
+        OSP_LOG_WARN("Pipeline", "high latency: seq=%u %u us", ff.seq, latency_us);
+    }
+    // ... 正常封装处理
+}
+```
+
+## 3. AsyncBus: 支撑流水线的无锁消息总线
+
+流水线中每个 `StaticNode` 调用 `bus->Publish()` 发布消息，调用 `SpinOnce()` 消费消息。这两个操作由 AsyncBus 的 CAS 无锁 MPSC 环形缓冲支撑。
+
+### 3.1 核心数据结构
 
 ```cpp
 template <typename PayloadVariant,
@@ -90,418 +188,154 @@ template <typename PayloadVariant,
 class AsyncBus;
 ```
 
-核心数据结构:
+消息以**信封** (header + variant payload) 存储在缓存行对齐的环形缓冲中:
 
 ```cpp
-// 消息头 (32 字节)
 struct MessageHeader {
-    uint64_t msg_id;        // 全局递增 ID
-    uint64_t timestamp_us;  // 微秒时间戳
-    uint32_t sender_id;     // 发送者节点 ID
-    uint32_t topic_hash;    // FNV-1a 32-bit hash (0 = 无主题)
+    uint64_t msg_id;           // 全局递增 ID
+    uint64_t timestamp_us;     // 微秒时间戳
+    uint32_t sender_id;        // 发送者节点 ID
+    uint32_t topic_hash;       // FNV-1a 32-bit hash
     MessagePriority priority;  // kLow / kMedium / kHigh
 };
 
-// 信封 = 消息头 + 载荷 (variant)
-struct MessageEnvelope<PayloadVariant> {
-    MessageHeader header;
-    PayloadVariant payload;
-};
-
-// 环形缓冲节点 (缓存行对齐)
 struct alignas(64) RingBufferNode {
-    std::atomic<uint32_t> sequence;  // 序号控制
+    std::atomic<uint32_t> sequence;  // 序号控制 (CAS 的核心)
     MessageEnvelope<PayloadVariant> envelope;
 };
 ```
 
-与 QP/C 的关键区别: QP/C 队列存储的是**事件指针** (`QEvt const *`)，newosp 存储的是**完整信封** (header + variant payload)。QP/C 依赖引用计数实现零拷贝事件共享; newosp 在同一进程内通过 variant 值语义避免了指针管理和引用计数的复杂性。
+### 3.2 CAS 发布: 多生产者无锁竞争
 
-### 2.3 CAS 发布: 无锁生产者竞争
+多个 `StaticNode` (可能在不同线程) 同时发布消息，通过 CAS 循环竞争环形缓冲的写入位置:
 
-```cpp
-bool Publish(PayloadVariant&& payload, MessagePriority priority = kMedium) {
-    // 1. 优先级准入控制 (背压)
-    uint32_t depth = producer_pos_.load(relaxed) - cached_consumer_pos_;
-    if (depth >= AdmissionThreshold(priority)) {
-        // 缓存的消费位置可能已过时，尝试刷新
-        cached_consumer_pos_ = consumer_pos_.load(acquire);
-        depth = producer_pos_.load(relaxed) - cached_consumer_pos_;
-        if (depth >= AdmissionThreshold(priority)) {
-            return false;  // 队列已满，丢弃该优先级消息
-        }
-    }
-
-    // 2. CAS 循环抢占生产者位置
-    uint32_t prod_pos;
-    RingBufferNode* target;
-    do {
-        prod_pos = producer_pos_.load(relaxed);
-        target = &ring_buffer_[prod_pos & kBufferMask];
-
-        uint32_t seq = target->sequence.load(acquire);
-        if (seq != prod_pos) {
-            return false;  // 该槽位尚未被消费者释放
-        }
-    } while (!producer_pos_.compare_exchange_weak(
-        prod_pos, prod_pos + 1,
-        std::memory_order_acq_rel,    // CAS 成功: Acquire + Release
-        std::memory_order_relaxed));  // CAS 失败: Relaxed (立即重试)
-
-    // 3. 填充数据
-    target->envelope.header = MakeHeader(priority);
-    target->envelope.payload = std::move(payload);
-
-    // 4. 发布: Release 语义确保数据对消费者可见
-    target->sequence.store(prod_pos + 1, std::memory_order_release);
-    return true;
-}
+```
+Producer 0 ─┐
+Producer 1 ──┼── CAS Publish ──> Ring Buffer ──> ProcessBatch() ──> 类型分发
+Producer 2 ─┘   (无锁竞争)      (sequence-based)   (批量消费)      (variant visit)
 ```
 
-**内存序策略解析**:
+关键内存序: 生产者用 `acq_rel` CAS 抢占位置，用 `release` store 发布数据; 消费者用 `acquire` load 读取数据。完整实现见 [bus.hpp](https://github.com/DeguiLiu/newosp/blob/main/include/osp/bus.hpp)。
 
-| 操作 | memory_order | 原因 |
-|------|-------------|------|
-| 读 `producer_pos_` | `relaxed` | 只是预判，CAS 才是权威 |
-| 读 `sequence` | `acquire` | 需要看到消费者对该槽位的释放 |
-| CAS 成功 | `acq_rel` | Acquire: 读取最新状态; Release: 对其他生产者可见 |
-| CAS 失败 | `relaxed` | 立即重试，无需同步 |
-| 写 `sequence` (发布) | `release` | 确保 payload 写入对消费者可见 |
+### 3.3 优先级准入控制
 
-### 2.4 优先级准入控制
-
-QP/C 的 `QActive_post_()` 有 `margin` 参数控制溢出策略，但粒度仅为"通过/拒绝"。newosp 实现了三级优先级准入:
+传感器流水线中，控制命令 (启停、校准) 的优先级高于数据帧。当 Bus 队列压力增大时，AsyncBus 按优先级逐级丢弃:
 
 ```
 队列深度
-│
-│  ████████████████████████████████████  100%
-│  ██████████████████████████████████    99%  ← kHigh 阈值
-│  ████████████████████████████          80%  ← kMedium 阈值
-│  ██████████████████                    60%  ← kLow 阈值
-│
-│  当队列压力增大时:
-│  1. 先丢弃 kLow (遥测、统计)
-│  2. 再丢弃 kMedium (常规数据)
-│  3. kHigh (控制命令) 几乎不丢弃
+│  ████████████████████  100%
+│  ██████████████████    99%  ← kHigh 阈值 (控制命令)
+│  ██████████████        80%  ← kMedium 阈值 (常规数据)
+│  ██████████            60%  ← kLow 阈值 (遥测/统计)
 ```
 
-**缓存消费位置优化**: 生产者先检查 `cached_consumer_pos_` (relaxed 读，无 cache line 竞争)，只有接近阈值时才重新读取真正的 `consumer_pos_` (acquire 读)。这一优化在低负载时完全避免了对消费者原子变量的争用。
+生产者先检查本地缓存的消费位置 (relaxed 读，无 cache line 竞争)，只有接近阈值时才重新读取真正的消费位置 (acquire 读)。低负载时完全避免对消费者原子变量的争用。
 
-### 2.5 批量消费与编译期分发
+### 3.4 编译期分发: StaticNode vs Node
 
-消费侧是单线程的，这与 QP/C 的 AO 事件循环完全对应: 一个 AO 从自己的队列中取事件，不存在消费侧竞争。
+newosp 提供两种消费模式:
 
-newosp 提供两种分发模式:
+| 模式 | 机制 | ns/msg (P50) |
+|------|------|---:|
+| **StaticNode** (编译期) | `std::visit` 跳转表 | ~2 |
+| Node (运行时) | FixedFunction 回调表 | ~30 |
 
-**回调模式** (`ProcessBatch`):
+StaticNode 的 Handler 在编译期确定，编译器为每个 variant alternative 生成直接调用，无 FixedFunction 间接调用、无 SharedSpinLock、无回调表遍历。流水线的 5 个处理阶段全部使用 StaticNode。
+
+**FixedFunction**: 需要运行时动态订阅的场景使用 Node 模式，回调存储在 `FixedFunction<void(const Envelope&), 32>` 中 -- 32 字节 SBO 缓冲，编译期 `static_assert` 拒绝超限 lambda，**杜绝 `std::function` 的隐式堆分配**。
+
+## 4. HSM: 采集阶段的状态管理
+
+流水线的 Acquisition 阶段需要管理传感器硬件状态。平面 FSM 在这里不够用: 设备的 Idle/Acquiring/Validating 三个子状态都需要响应 "Deactivate" 事件 (关闭设备)，平面 FSM 需要为每个子状态都写一条相同的转换。
+
+### 4.1 层次状态机: 继承与覆盖
+
+newosp 的 `StateMachine<Context, MaxStates>` 通过状态嵌套解决这一问题:
+
+```
+Acquisition HSM (6 个状态)
+├── Inactive         ← 设备未启动
+├── Active (父状态)  ← 处理 Deactivate (所有子状态继承)
+│   ├── Idle         ← 等待 DMA 完成信号
+│   ├── Acquiring    ← 正在接收 DMA 数据
+│   └── Validating   ← 校验帧完整性
+└── Error            ← 硬件异常 (DMA 超时/CRC 错误)
+```
+
+子状态未处理的事件自动**冒泡**到父状态。Active 父状态只需定义一次 Deactivate 处理:
 
 ```cpp
-uint32_t ProcessBatch() {
-    for (uint32_t i = 0; i < kBatchSize; ++i) {
-        auto* node = &ring_buffer_[consumer_pos_ & kBufferMask];
-        uint32_t seq = node->sequence.load(acquire);
-        if (seq != consumer_pos_ + 1) break;  // 无更多消息
-
-        // 预取下一个槽位 (减少 cache miss)
-        if (i + 1 < kBatchSize) {
-            __builtin_prefetch(&ring_buffer_[(consumer_pos_ + 1) & kBufferMask], 0, 1);
-        }
-
-        // 通过回调表分发
-        DispatchToCallbacks(node->envelope);
-
-        // 释放槽位: 设置 sequence 为下一轮的生产位置
-        node->sequence.store(consumer_pos_ + kQueueDepth, release);
-        ++consumer_pos_;
+// Active 父状态: 一次定义，三个子状态 (Idle/Acquiring/Validating) 共享
+inline osp::TransitionResult HandleActive(AcqContext& ctx, osp::Event& e) {
+    if (e.id == kEvtDeactivate) {
+        return ctx.sm->RequestTransition(ctx.idx_inactive);
     }
-    return processed;
+    return osp::TransitionResult::kUnhandled;  // 继续冒泡
 }
 ```
 
-**编译期访问者模式** (`ProcessBatchWith<Visitor>`):
+### 4.2 LCA 转换算法
+
+状态转换的核心是**最近公共祖先 (LCA)** 计算: 从源状态到 LCA 依次执行 Exit 动作，再从 LCA 到目标状态依次执行 Entry 动作。newosp 使用**深度归一化**实现:
+
+1. 计算源和目标的深度
+2. 将较深的状态上移到同一层
+3. 同步上移直到找到公共祖先
+4. 执行 Exit 路径 (source → LCA) 和 Entry 路径 (LCA → target)
+
+Exit/Entry 路径使用栈上固定数组 (`int32_t path[32]`)，整个转换过程零堆分配。完整实现见 [hsm.hpp](https://github.com/DeguiLiu/newosp/blob/main/include/osp/hsm.hpp)。
+
+### 4.3 Guard 条件
+
+newosp 在状态配置中内置 Guard 函数指针。事件派发时，先检查 Guard 条件，返回 false 则跳过该状态直接冒泡:
 
 ```cpp
-template <typename Visitor>
-uint32_t ProcessBatchWith(Visitor& visitor) {
-    // 与上述逻辑相同，但分发部分替换为:
-    std::visit([&](auto& payload) {
-        visitor(payload, envelope.header);
-    }, envelope.payload);
-    // 编译器为每个 variant alternative 生成直接跳转表
-    // 无 SharedSpinLock、无回调表遍历、无 FixedFunction 间接调用
-}
-```
-
-**性能对比** (1000 条 SmallMsg, P50):
-
-| 模式 | ns/msg | 加速比 |
-|------|-------:|-------:|
-| 直接分发 (ProcessBatchWith) | ~2 | **15x** |
-| 回调 (ProcessBatch + FixedFunction) | ~30 | 1x |
-
-### 2.6 零堆分配回调: FixedFunction SBO
-
-QP/C 不需要回调机制 (AO 的状态机直接处理事件)。newosp 需要支持运行时动态订阅，但不能引入 `std::function` 的堆分配:
-
-```cpp
-// SBO (Small Buffer Optimization) 固定函数
-template <typename Signature, size_t BufferSize = 2 * sizeof(void*)>
-class FixedFunction;
-
-// AsyncBus 订阅回调: 32 字节 SBO 缓冲
-static constexpr size_t kCallbackBufSize = 4 * sizeof(void*);  // 32B (64-bit)
-using CallbackType = FixedFunction<void(const EnvelopeType&), kCallbackBufSize>;
-```
-
-核心实现:
-
-```cpp
-template <typename Ret, typename... Args, size_t BufferSize>
-class FixedFunction<Ret(Args...), BufferSize> {
-    using Storage = typename std::aligned_storage<BufferSize, alignof(void*)>::type;
-    using Invoker = Ret(*)(const Storage&, Args...);
-    using Destroyer = void(*)(Storage&);
-
-    Storage storage_;
-    Invoker invoker_ = nullptr;
-    Destroyer destroyer_ = nullptr;
-
-    template <typename Callable>
-    FixedFunction(Callable&& fn) {
-        using Decay = std::decay_t<Callable>;
-        // 编译期拒绝超限捕获
-        static_assert(sizeof(Decay) <= BufferSize,
-                      "Callable too large for FixedFunction buffer");
-        ::new (&storage_) Decay(std::forward<Callable>(fn));
-        invoker_ = &InvokeImpl<Decay>;
-        destroyer_ = &DestroyImpl<Decay>;
-    }
-};
-```
-
-与 `std::function` 的关键区别:
-
-| 特性 | `std::function` | `FixedFunction` |
-|------|:---:|:---:|
-| 大 lambda 处理 | 堆分配 | **编译期拒绝** |
-| 小 lambda 处理 | SBO (实现依赖) | **SBO (保证)** |
-| 拷贝语义 | 可拷贝 | Move-only |
-| 类型擦除大小 | ~32-48B (实现依赖) | 精确 `BufferSize + 16B` |
-| 热路径堆分配 | 可能 | **不可能** |
-
-### 2.7 与 QP/C QEQueue 的系统性对比
-
-| 维度 | QP/C QEQueue | newosp AsyncBus |
-|------|:---:|:---:|
-| 并发模型 | SPSC (关中断保护) | **MPSC (CAS 无锁)** |
-| 存储内容 | 事件指针 (4/8B) | 完整信封 (header + variant) |
-| 入队复杂度 | O(1) 指针写 | O(1) CAS + 数据拷贝 |
-| 出队复杂度 | O(1) 指针读 | O(1) sequence 检查 |
-| 优先级控制 | 无 (margin 参数) | **三级准入 (60/80/99%)** |
-| 批量处理 | 无 | **BatchSize 可配置 + prefetch** |
-| 分发方式 | 状态机 switch | **variant visit / 回调表** |
-| 编译期优化 | 无 | **ProcessBatchWith 零间接** |
-| 多实例 | 每 AO 一个队列 | 支持多 Bus 实例隔离 |
-| QP/C frontEvt 优化 | 有 (空队列快速路径) | 无 (sequence 统一路径) |
-
-**设计取舍**: QP/C 的 `frontEvt` 优化在低负载时 (队列空) 完全跳过环形缓冲操作，这在嵌入式系统常态下极具价值。newosp 使用 sequence number 统一入队路径，牺牲了低负载快速路径，但换来了 MPSC 并发支持和更高吞吐量上限。
-
-## 3. 层次状态机 (HSM)
-
-### 3.1 从平面 FSM 到层次 HSM: 相同的问题，不同的解法
-
-newosp 和 QP/C 对 HSM 的需求完全一致: 解决平面状态机的**状态爆炸**问题。但实现路径截然不同。
-
-QP/C 的 HSM 以 `QMState` 结构体为核心，状态处理函数返回 `Q_HANDLED()` 或 `Q_SUPER()` 来实现冒泡:
-
-```c
-// QP/C: 子状态通过 Q_SUPER 委托给父状态
-static QState Child_state(MyAO *me, QEvt const *e) {
-    switch (e->sig) {
-    case SPECIFIC_SIG:
-        handle_specific();
-        return Q_HANDLED();
-    }
-    return Q_SUPER(&Parent_state);  // 冒泡
-}
-```
-
-newosp 的 HSM 以模板化 `StateMachine<Context, MaxStates>` 为核心，状态信息存储在固定大小数组中:
-
-```cpp
-// newosp: 状态配置 (编译期绑定)
-template <typename Context>
 struct StateConfig {
-    const char* name;              // 调试用名称 (静态生命周期)
-    int32_t parent_index;          // 父状态索引 (-1 = 根)
-    TransitionResult (*handler)(Context&, Event&);  // 处理函数
-    void (*on_entry)(Context&);    // Entry 动作
-    void (*on_exit)(Context&);     // Exit 动作
-    bool (*guard)(const Context&, Event&);  // Guard 条件
-};
-
-// 三值返回
-enum class TransitionResult : uint8_t {
-    kHandled,     // 事件已处理
-    kUnhandled,   // 冒泡到父状态
-    kTransition   // 请求状态转换
+    const char* name;
+    int32_t parent_index;                         // -1 = 根
+    TransitionResult (*handler)(Context&, Event&);
+    void (*on_entry)(Context&);
+    void (*on_exit)(Context&);
+    bool (*guard)(const Context&, Event&);        // Guard 条件
 };
 ```
 
-### 3.2 LCA 算法: 手工路径 vs 编译期计算
+这使得"仅在特定条件下才处理事件"可以声明式表达，而非在 handler 内部硬编码 if 判断。
 
-QP/C 提供两种 HSM 变体:
+### 4.4 采集 HSM 与 Handler 的集成
 
-- **QHsm**: 运行时沿 superstate 链递归查找 LCA
-- **QMsm**: QM 工具在编译期预计算 LCA，生成静态转换动作表
-
-newosp 的 LCA 算法是运行时计算，但基于**深度归一化**的高效实现:
+AcquisitionHandler 将 Bus 消息转化为 HSM 事件:
 
 ```cpp
-void ExecuteTransition(int32_t source_idx, int32_t target_idx) {
-    // Step 1: 计算源和目标的深度
-    int32_t src_depth = ComputeDepth(source_idx);
-    int32_t tgt_depth = ComputeDepth(target_idx);
+struct AcquisitionHandler {
+    AcqContext* ctx;
 
-    int32_t s = source_idx;
-    int32_t t = target_idx;
-
-    // Step 2: 归一化深度 (将较深的状态上移)
-    while (src_depth > tgt_depth) {
-        s = states_[s].parent_index;
-        --src_depth;
-    }
-    while (tgt_depth > src_depth) {
-        t = states_[t].parent_index;
-        --tgt_depth;
+    void operator()(const PipelineControl& ctrl, const osp::MessageHeader&) {
+        osp::Event e{ctrl.action == PipelineControl::Action::kStart
+                         ? kEvtActivate : kEvtDeactivate};
+        ctx->sm->Dispatch(e);
     }
 
-    // Step 3: 同步上移直到找到公共祖先
-    while (s != t) {
-        s = states_[s].parent_index;
-        t = states_[t].parent_index;
-    }
-    int32_t lca = s;  // LCA 找到
-
-    // Step 4: 执行 Exit 路径 (source -> LCA)
-    int32_t exit_path[OSP_HSM_MAX_DEPTH];
-    int32_t exit_count = BuildExitPath(source_idx, lca, exit_path);
-    for (int32_t i = 0; i < exit_count; ++i) {
-        if (states_[exit_path[i]].on_exit) {
-            states_[exit_path[i]].on_exit(context_);
-        }
-    }
-
-    // Step 5: 执行 Entry 路径 (LCA -> target，需要反转)
-    int32_t entry_path[OSP_HSM_MAX_DEPTH];
-    int32_t entry_count = BuildEntryPath(target_idx, lca, entry_path);
-    // entry_path 是 bottom-up，需要 top-down 执行
-    for (int32_t i = entry_count - 1; i >= 0; --i) {
-        if (states_[entry_path[i]].on_entry) {
-            states_[entry_path[i]].on_entry(context_);
-        }
-    }
-
-    current_state_ = target_idx;
-}
-```
-
-**关键设计决策**: Exit/Entry 路径使用栈上固定数组 (`int32_t path[OSP_HSM_MAX_DEPTH]`, 32 层深度上限)，整个转换过程零堆分配。
-
-### 3.3 Guard 条件: newosp 的扩展
-
-QP/C 的 HSM 没有原生 Guard 条件 (需要在状态处理函数内手动实现)。newosp 在状态配置中内置 Guard:
-
-```cpp
-// Guard 条件在事件派发时自动检查
-TransitionResult Dispatch(Event& event) {
-    int32_t state = current_state_;
-
-    while (state >= 0) {
-        auto& cfg = states_[state];
-
-        // Guard 检查: 如果 guard 返回 false，跳过该状态
-        if (cfg.guard != nullptr && !cfg.guard(context_, event)) {
-            state = cfg.parent_index;  // 继续冒泡
-            continue;
-        }
-
-        TransitionResult result = cfg.handler(context_, event);
-
-        if (result == TransitionResult::kHandled) {
-            return result;
-        }
-        if (result == TransitionResult::kTransition) {
-            ExecuteTransition(current_state_, pending_target_);
-            return result;
-        }
-        // kUnhandled: 冒泡到父状态
-        state = cfg.parent_index;
-    }
-
-    return TransitionResult::kUnhandled;  // 到达根状态仍未处理
-}
-```
-
-### 3.4 事件冒泡-继承-覆盖: 思想一致，表达不同
-
-newosp 和 QP/C 的冒泡机制在概念上完全一致:
-
-```
-事件到达当前状态
-  │
-  ▼
-当前状态 handler 处理?
-  ├─ kHandled  → 完成
-  ├─ kTransition → 执行 LCA 转换 → 完成
-  └─ kUnhandled → 冒泡到 parent_index → 重复
-```
-
-但 C++ 的类型系统带来了更强的安全性:
-
-```cpp
-// newosp: Event 携带类型化数据
-struct Event {
-    uint32_t id;
-    const void* data;  // 与 variant 配合使用时可以静态转换
+    template <typename T>
+    void operator()(const T&, const osp::MessageHeader&) {}
 };
-
-// QP/C: 需要手动强制转换
-SensorEvt const *se = (SensorEvt const *)e;  // 无编译期检查
 ```
 
-### 3.5 零堆分配保证
+HSM 内部的状态处理函数在适当时机通过 `bus->Publish()` 发布 RawFrame，驱动下游流水线。**消息总线和状态机各司其职**: Bus 负责阶段间解耦通信，HSM 负责阶段内状态管理。
 
-| 组件 | QP/C | newosp |
-|------|------|--------|
-| 状态存储 | `QMState` 静态数组 | `std::array<StateConfig, MaxStates>` |
-| 转换路径 | 编译期表 (QMsm) / 递归栈 (QHsm) | 栈上 `int32_t path[32]` |
-| 事件 | 固定事件池 `Q_NEW()` | 值语义 Event (栈分配) |
-| Handler | 函数指针 | 函数指针 (无 FixedFunction/std::function) |
+### 4.5 零堆分配保证
 
-两个框架在 HSM 实现上都达到了**零堆分配**目标，但路径不同: QP/C 靠事件池 + 引用计数管理事件生命周期; newosp 靠 C++ 值语义和 RAII 自动管理。
+| 组件 | 存储方式 |
+|------|---------|
+| 状态配置 | `std::array<StateConfig, MaxStates>` |
+| 转换路径 | 栈上 `int32_t path[32]` |
+| 事件 | 值语义 Event (栈分配) |
+| Handler | 函数指针 (非 std::function) |
+| 内存开销 | ~500B (16 状态) |
 
-### 3.6 newosp vs QP/C HSM 对比总结
+## 5. SPSC 环形缓冲: 模块间的零拷贝通道
 
-| 维度 | QP/C QHsm/QMsm | newosp StateMachine |
-|------|:---:|:---:|
-| 语言 | C | C++17 |
-| 状态容量 | 无限制 (链表) | 模板参数 MaxStates (默认 16) |
-| LCA 计算 | 运行时递归 (QHsm) / 编译期表 (QMsm) | 运行时深度归一化 |
-| Guard 条件 | 手动实现 | **内置 `guard` 函数指针** |
-| Entry/Exit | 函数指针 | 函数指针 |
-| 冒泡机制 | `Q_SUPER()` 返回值 | `kUnhandled` + parent_index |
-| 双实现策略 | QHsm (手工) / QMsm (代码生成) | 单一实现 (运行时 LCA) |
-| 代码生成支持 | QM 图形化工具 | ospgen YAML 工具 (消息/拓扑) |
-| 线程安全 | 单线程 Dispatch (RTC) | 单线程 Dispatch |
-| 内存开销 | 取决于状态数 | ~500B (16 状态) |
-
-## 4. Wait-free SPSC 环形缓冲
-
-### 4.1 QP/C 与 newosp 的 SPSC 设计
-
-QP/C 的 `QEQueue` 本质上也是一个 SPSC 队列 (一个生产者向一个 AO 投递事件)。newosp 的 `SpscRingbuffer` 则是一个通用的、类型化的 SPSC 组件，在多个模块中复用:
+newosp 的 `SpscRingbuffer` 是一个通用的、类型化的 wait-free SPSC 组件，在多个模块中复用:
 
 | 集成点 | 元素类型 | 容量 |
 |--------|---------|------|
@@ -510,360 +344,109 @@ QP/C 的 `QEQueue` 本质上也是一个 SPSC 队列 (一个生产者向一个 A
 | 网络帧缓冲 | `RecvFrameSlot` | 32 |
 | 统计通道 | `ShmStats` (48B) | 16 |
 
-### 4.2 模板参数化与编译期双路径
+### 5.1 编译期双路径
 
 ```cpp
-template <typename T,
-          size_t BufferSize,         // 必须是 2 的幂
-          bool FakeTSO = false,      // 单核 relaxed ordering
-          typename IndexT = size_t>
+template <typename T, size_t BufferSize, bool FakeTSO = false>
 class SpscRingbuffer {
-    static constexpr bool kTriviallyCopyable =
-        std::is_trivially_copyable<T>::value;
-
-    // 编译期选择拷贝策略
     bool PushBatch(const T* buf, size_t count) {
-        if constexpr (kTriviallyCopyable) {
-            // POD 类型: memcpy 批量拷贝 (可能分两段处理 wrap-around)
-            const size_t first_part = std::min(count, BufferSize - head_offset);
+        if constexpr (std::is_trivially_copyable_v<T>) {
+            // POD: memcpy 批量拷贝 (处理 wrap-around 分两段)
             std::memcpy(&data_buff_[head_offset], buf, first_part * sizeof(T));
-            if (count > first_part) {
-                std::memcpy(&data_buff_[0], buf + first_part,
-                           (count - first_part) * sizeof(T));
-            }
         } else {
-            // 非 POD 类型: 逐元素 move
+            // 非 POD: 逐元素 move
             for (size_t i = 0; i < count; ++i) {
                 data_buff_[(head + i) & kMask] = std::move(buf[i]);
             }
         }
-        head_.value.store(head + count, ReleaseOrder());
-        return true;
     }
 };
 ```
 
-这是 QP/C 无法实现的: C 语言没有 `if constexpr`，不能在编译期根据类型属性选择不同的代码路径。
+`if constexpr` 在编译期选择 memcpy (POD) 或逐元素 move (非 POD) 路径。传感器流水线中的所有消息类型都是 `trivially_copyable`，走 memcpy 快路径。
 
-### 4.3 FakeTSO: 单核 MCU 优化
-
-newosp 为未来移植到 RT-Thread 单核 MCU 准备了 `FakeTSO` 模式:
+### 5.2 FakeTSO: 单核 MCU 优化
 
 ```cpp
-// 内存序选择 (编译期)
 static constexpr std::memory_order AcquireOrder() {
     return FakeTSO ? std::memory_order_relaxed : std::memory_order_acquire;
 }
-static constexpr std::memory_order ReleaseOrder() {
-    return FakeTSO ? std::memory_order_relaxed : std::memory_order_release;
-}
 ```
 
-| FakeTSO | Acquire | Release | 适用场景 |
-|---------|---------|---------|----------|
-| false | `acquire` | `release` | 多核 ARM-Linux / RISC-V |
-| true | `relaxed` | `relaxed` | 单核 MCU (RT-Thread) / x86 TSO |
+| FakeTSO | Acquire/Release | 适用场景 |
+|---------|-----------------|----------|
+| false | acquire / release | 多核 ARM-Linux |
+| true | relaxed / relaxed | 单核 MCU (RT-Thread) |
 
-**原理**: 单核 MCU 上，ISR 和线程之间的内存可见性由 `ISB` (指令同步屏障) 隐式保证，不需要硬件内存屏障。将 acquire/release 降级为 relaxed 可以节省 ARM 上 `DMB` 指令的开销。
+单核 MCU 上，ISR 和线程之间的内存可见性由 `ISB` 隐式保证，将 acquire/release 降级为 relaxed 节省 ARM `DMB` 指令开销。
 
-QP/C 在 RTOS 上使用关中断达到相同效果: 关中断本身就是一个隐式的全屏障。两种方案在单核场景下性能等价。
-
-### 4.4 缓存行对齐: 消除 False Sharing
+### 5.3 缓存行对齐
 
 ```cpp
-static constexpr size_t kCacheLineSize = 64;
-
-struct alignas(kCacheLineSize) PaddedIndex {
-    std::atomic<IndexT> value{0};
+struct alignas(64) PaddedIndex {
+    std::atomic<size_t> value{0};
 };
-
-PaddedIndex head_;  // 生产者独占写入
+PaddedIndex head_;  // 生产者独占
 // --- 64 字节边界 ---
-PaddedIndex tail_;  // 消费者独占写入
+PaddedIndex tail_;  // 消费者独占
 ```
 
-QP/C 的 QEQueue 没有缓存行对齐 (RTOS 环境下 L1 cache 通常较小或无 D-Cache)。newosp 针对 ARM Cortex-A 的 64 字节缓存行做了显式分离，避免生产者和消费者因缓存行乒乓 (false sharing) 导致性能退化。
+生产者和消费者的索引分布在不同缓存行，消除 false sharing。
 
-### 4.5 零拷贝查看: Peek 与 At
-
-QP/C 的 `frontEvt` 快速路径允许直接读取最新事件而不出队。newosp 提供了更通用的零拷贝查看:
+### 5.4 延迟计算
 
 ```cpp
-// Peek: 查看队首元素 (不出队)
-const T* Peek() const {
-    IndexT head = head_.value.load(AcquireOrder());
-    IndexT tail = tail_.value.load(std::memory_order_relaxed);
-    if (head == tail) return nullptr;
-    return &data_buff_[tail & kMask];
-}
-
-// At: 随机访问第 n 个元素
-const T* At(size_t n) const;
-
-// Discard: 跳过 n 个元素 (不拷贝)
-size_t Discard(size_t count);
-```
-
-### 4.6 PushFromCallback: 延迟计算优化
-
-```cpp
-// 仅在队列有空间时才执行 callback 计算
 template <typename Callable>
 bool PushFromCallback(Callable&& callback) {
-    if (IsFull()) return false;  // 避免执行昂贵的 callback
+    if (IsFull()) return false;  // 队列满则跳过
     data_buff_[head & kMask] = callback();  // 延迟计算
     head_.value.store(head + 1, ReleaseOrder());
     return true;
 }
 ```
 
-这一模式在传感器数据采集场景极为实用: 如果下游消费者跟不上，直接跳过 ADC 读取，避免无意义的硬件操作。
+传感器采集场景: 如果下游消费者跟不上，`PushFromCallback` 直接跳过 ADC 读取，避免无意义的硬件操作。
 
-## 5. LifecycleNode: HSM 驱动的生命周期管理
+完整 SPSC 实现分析见 [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/)。
 
-### 5.1 从 QP/C QActive 到 newosp LifecycleNode
+## 6. 生命周期与调度
 
-QP/C 的 `QActive` 生命周期是线性的: `ctor → start → 事件循环 (永不退出)`。状态管理完全交给用户定义的 HSM。
+### 6.1 LifecycleNode: 16 状态 HSM 驱动
 
-newosp 的 `LifecycleNode` 则内置了一个 **16 状态的层次状态机**，借鉴 ROS2 Lifecycle Node 的设计，将节点生命周期本身建模为 HSM:
+newosp 的 `LifecycleNode` 内置了一个 **16 状态的层次状态机**，将节点生命周期本身建模为 HSM:
 
 ```
 Alive (根状态)
-├── Unconfigured
-│   ├── Initializing     ← 加载默认配置
-│   └── WaitingConfig    ← 等待 Configure 触发
+├── Unconfigured (Initializing / WaitingConfig)
 ├── Configured
-│   ├── Inactive
-│   │   ├── Standby      ← 就绪，等待 Activate
-│   │   └── Paused       ← 曾经 Active，可 Resume
-│   └── Active
-│       ├── Starting     ← 过渡态，执行 on_activate
-│       ├── Running      ← 正常运行
-│       └── Degraded     ← 运行中降级 (告警/部分功能失效)
-├── Error
-│   ├── Recoverable      ← 可恢复，重试 Configure
-│   └── Fatal            ← 不可恢复，必须 Shutdown
-└── Finalized (终态，独立根)
+│   ├── Inactive (Standby / Paused)
+│   └── Active (Starting / Running / Degraded)
+├── Error (Recoverable / Fatal)
+└── Finalized (终态)
 ```
 
-### 5.2 HSM 实例的零堆分配构造
+LifecycleNode 继承自 Node，支持粗粒度 (4 状态) 和细粒度 (16 状态) 双层视图，内置 FaultReporter 注入点。HSM 实例使用 placement new 在预分配的对齐存储中构造，零堆分配。
 
-LifecycleNode 内部使用 placement new 在预分配的对齐存储中构造 HSM:
+### 6.2 Executor 调度家族
 
-```cpp
-template <typename PayloadVariant>
-class LifecycleNode : public Node<PayloadVariant> {
-private:
-    LifecycleHsmContext ctx_;
-    bool hsm_initialized_;
-    // 对齐存储: 避免堆分配
-    alignas(HsmType) uint8_t hsm_storage_[sizeof(HsmType)];
+流水线的调度策略由 Executor 决定。newosp 提供四种执行模型:
 
-    void InitHsm() noexcept {
-        auto* hsm = new (hsm_storage_) HsmType(ctx_);
-        hsm_initialized_ = true;
-        ctx_.sm = hsm;
+| Executor | 特点 | 适用场景 |
+|----------|------|---------|
+| SingleThread | 阻塞调用线程 | 调试、单核 |
+| Static | 后台线程 + 休眠策略 | 通用场景 |
+| Pinned | CPU 绑核 | 确定性调度 |
+| **Realtime** | SCHED_FIFO + mlockall + CPU affinity | 工业实时 |
 
-        // 注册 16 个状态 (全部编译期确定)
-        ctx_.idx[DS::kAlive] =
-            hsm->AddState({"Alive", -1, HandleAlive, nullptr, nullptr, nullptr});
+RealtimeExecutor 初始化序列: `mlockall()` → CPU affinity → SCHED_FIFO → 自定义栈 → 进入 ProcessBatch 循环。高精度休眠使用 `clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME)` 实现亚毫秒级精度。
 
-        int32_t alive = ctx_.I(DS::kAlive);
-        ctx_.idx[DS::kUnconfigured] =
-            hsm->AddState({"Unconfigured", alive, HandleNoop, nullptr, nullptr, nullptr});
-        // ... 注册全部 16 个状态 ...
+详细的线程模型、WorkerPool 二级排队、IoPoller I/O 集成见 [newosp 嵌入式并发与 I/O 架构](../newosp_concurrency_io_architecture/)。
 
-        hsm->SetInitialState(ctx_.I(DS::kWaitingConfig));
-        hsm->Start();
-    }
-
-    HsmType* GetHsm() noexcept {
-        return reinterpret_cast<HsmType*>(hsm_storage_);
-    }
-};
-```
-
-### 5.3 粗粒度与细粒度状态映射
-
-为了向后兼容简单场景，LifecycleNode 提供双层状态视图:
-
-```cpp
-// 粗粒度 (4 状态，向后兼容)
-enum class LifecycleState : uint8_t {
-    kUnconfigured,  // Unconfigured/Initializing/WaitingConfig
-    kInactive,      // Standby/Paused
-    kActive,        // Starting/Running/Degraded
-    kFinalized      // 终态
-};
-
-// 细粒度 (16 状态，精确控制)
-enum class LifecycleDetailedState : uint8_t {
-    kAlive, kUnconfigured, kInitializing, kWaitingConfig,
-    kConfigured, kInactive, kStandby, kPaused,
-    kActive, kStarting, kRunning, kDegraded,
-    kError, kRecoverable, kFatal, kFinalized
-};
-```
-
-### 5.4 内置故障上报
-
-与 QP/C 不同，newosp 的 LifecycleNode 内置了 FaultReporter 注入点:
-
-```cpp
-// 16 字节 POD 结构 (零开销注入)
-struct FaultReporter {
-    void (*fn)(uint16_t fault_index, uint32_t detail,
-               FaultPriority priority, void* ctx) = nullptr;
-    void* ctx = nullptr;
-
-    void Report(uint16_t fault_index, uint32_t detail,
-                FaultPriority priority) const noexcept {
-        if (fn != nullptr) { fn(fault_index, detail, priority, ctx); }
-    }
-};
-```
-
-HSM 状态处理函数中自动上报:
-
-```cpp
-inline TransitionResult HandleWaitingConfig(Ctx& ctx, const Event& event) {
-    if (event.id == kLcEvtConfigure) {
-        if (ctx.on_configure != nullptr && !ctx.on_configure()) {
-            ctx.transition_failed = true;
-            // 自动上报故障
-            ctx.fault_reporter.Report(kFaultConfigureFailed, 0,
-                                      FaultPriority::kHigh);
-            return TransitionResult::kHandled;  // 留在当前状态
-        }
-        return ctx.sm->RequestTransition(ctx.I(DS::kStandby));
-    }
-    return TransitionResult::kUnhandled;
-}
-```
-
-`fn == nullptr` 时 `Report()` 为空操作，零运行时开销。这比 QP/C 中手动在每个状态函数里加 assert 或日志更系统化。
-
-### 5.5 与 QP/C QActive 生命周期对比
-
-| 维度 | QP/C QActive | newosp LifecycleNode |
-|------|:---:|:---:|
-| 生命周期模型 | `ctor → start → 永不退出` | **16 状态 HSM** |
-| 状态管理 | 用户自定义 HSM | **内置标准生命周期 + 用户 HSM** |
-| Configure/Activate | 无 | **标准转换 API** |
-| Degraded 降级 | 无 | **Running → Degraded 子状态** |
-| 错误恢复 | 用户自行处理 | **Recoverable/Fatal 分层** |
-| 故障上报 | 无 | **内置 FaultReporter** |
-| 线程映射 | 每 AO 一个 RTOS 线程 | Node + Executor 解耦 |
-
-## 6. 调度与实时性
-
-### 6.1 QP/C 的调度模型
-
-QP/C 在 RT-Thread 上的调度模型: 每个 QActive 对应一个 RT-Thread 线程，`qf_thread_function()` 是永不退出的事件循环:
-
-```c
-// QP/C: 每个 AO 的事件循环
-static void qf_thread_function(void *arg) {
-    QActive *me = (QActive *)arg;
-    for (;;) {
-        QEvt const *e = QActive_get_(me);   // 阻塞等待
-        QHSM_DISPATCH(&me->super, e);       // 派发给 HSM
-        QF_gc(e);                            // 回收事件
-    }
-}
-```
-
-### 6.2 newosp 的多层级 Executor
-
-newosp 提供四种执行模型，通过模板参数在编译期选择:
-
-```cpp
-// 1. 单线程轮询 (最简单，调试用)
-osp::SingleThreadExecutor<Payload> exec;
-exec.Spin();  // 阻塞在调用线程
-
-// 2. 后台线程 + 休眠策略 (通用)
-osp::StaticExecutor<Payload, osp::YieldSleepStrategy> exec;
-exec.Start();  // 创建后台线程
-
-// 3. CPU 绑核 (确定性调度)
-osp::PinnedExecutor<Payload, osp::PreciseSleepStrategy> exec(/*cpu_core=*/2);
-exec.Start();
-
-// 4. 实时调度 (工业级)
-osp::RealtimeConfig cfg;
-cfg.sched_policy = SCHED_FIFO;
-cfg.sched_priority = 80;
-cfg.lock_memory = true;     // mlockall(MCL_CURRENT | MCL_FUTURE)
-cfg.cpu_affinity = 3;       // 绑定到 CPU 3
-cfg.stack_size = 65536;     // 64KB 自定义栈
-
-osp::RealtimeExecutor<Payload, osp::PreciseSleepStrategy> exec(cfg);
-exec.Start();
-```
-
-**RealtimeExecutor 初始化序列**:
-
-```
-线程启动
-  │
-  ├── 1. mlockall()        ← 锁定所有内存页，防止 page fault
-  ├── 2. CPU affinity      ← pthread_setaffinity_np()
-  ├── 3. SCHED_FIFO        ← pthread_setschedparam()
-  ├── 4. 自定义栈大小       ← pthread_attr_setstacksize()
-  └── 5. 进入 ProcessBatch 循环
-```
-
-### 6.3 PreciseSleepStrategy: 高精度休眠
-
-QP/C 在 RT-Thread 上通过 `QTimeEvt` (SysTick 驱动) 实现周期性唤醒。newosp 使用 `clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME)` 实现亚毫秒级精确休眠:
-
-```cpp
-struct PreciseSleepStrategy {
-    uint64_t default_sleep_ns_;  // 默认休眠时长
-    uint64_t min_sleep_ns_;      // 最小休眠 (避免忙等)
-    uint64_t max_sleep_ns_;      // 最大休眠 (避免过长)
-    uint64_t next_wakeup_ns_ = 0;
-
-    void OnIdle() {
-        uint64_t now = SteadyNowNs();
-        uint64_t sleep_ns = (next_wakeup_ns_ > now)
-            ? next_wakeup_ns_ - now
-            : default_sleep_ns_;
-
-        // 限幅
-        sleep_ns = std::clamp(sleep_ns, min_sleep_ns_, max_sleep_ns_);
-
-        struct timespec ts;
-        ts.tv_sec  = static_cast<time_t>((now + sleep_ns) / 1000000000ULL);
-        ts.tv_nsec = static_cast<long>((now + sleep_ns) % 1000000000ULL);
-        clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, nullptr);
-    }
-
-    void SetNextWakeup(uint64_t abs_ns) { next_wakeup_ns_ = abs_ns; }
-};
-```
-
-**与 QP/C QTimeEvt 的对比**:
-
-| 维度 | QP/C QTimeEvt | newosp PreciseSleepStrategy |
-|------|:---:|:---:|
-| 时基 | SysTick (通常 1kHz) | CLOCK_MONOTONIC (纳秒级) |
-| 精度 | 1 tick (1ms @ 1kHz) | 亚毫秒 (受内核调度影响) |
-| 驱动方式 | ISR 定时器中断 | clock_nanosleep 绝对时间 |
-| 周期性任务 | `QTimeEvt_armX(1U, 1U)` | `SetNextWakeup(now + period)` |
-| 适用平台 | RTOS (裸机/FreeRTOS/RT-Thread) | Linux (需要 CLOCK_MONOTONIC) |
-
-## 7. 跨模块集成: 从单点到系统
+## 7. 跨模块集成
 
 ### 7.1 数据流全景
 
-newosp 的核心数据流与 QP/C 的 AO 通信模型在概念上等价，但实现更为灵活:
-
 ```
-                    newosp 数据流
-                    ============
-
 传感器线程 ─┐
 控制线程  ──┼── AsyncBus::Publish() ─── [CAS MPSC Ring Buffer] ───┐
 网络线程  ─┘   (无锁竞争)              (4096 slots, 缓存行对齐)      │
@@ -883,170 +466,54 @@ newosp 的核心数据流与 QP/C 的 AO 通信模型在概念上等价，但实
                 HSM/BT    回调处理    并行计算
 ```
 
-**与 QP/C 的对应关系**:
+### 7.2 可靠性闭环
 
-```
-QP/C                              newosp
-====                              ======
-QActive (AO 对象)          ←→     Node / StaticNode / LifecycleNode
-QEQueue (事件队列)          ←→     AsyncBus (MPSC) + SpscRingbuffer (SPSC)
-QHsm_dispatch()            ←→     StateMachine::Dispatch()
-QF_publish()               ←→     Node::Publish() / AsyncBus::Publish()
-QF_TICK_X()                ←→     TimerScheduler + PreciseSleepStrategy
-QActive on RT-Thread       ←→     RealtimeExecutor (SCHED_FIFO + mlockall)
-Q_NEW() / QF_gc()          ←→     variant 值语义 (无需引用计数)
-```
+newosp 的 Watchdog 和 FaultCollector 职责正交:
 
-### 7.2 Node 双模式: 动态订阅 vs 编译期绑定
+- **Watchdog**: 检测问题 (线程心跳超时)
+- **FaultCollector**: 处理问题 (分级上报 + hook 决策: kHandled / kEscalate / kDefer / kShutdown)
 
-```cpp
-// 模式 1: Node (运行时动态订阅)
-osp::Node<Payload> sensor("sensor", 1, bus);
-sensor.Subscribe<SensorData>([](const SensorData& d, const osp::MessageHeader& h) {
-    process(d.temp);
-});
-sensor.Subscribe<SensorData>("imu/temperature", on_imu_temp);
-sensor.SpinOnce();
+两者通过应用层 wiring 组合，没有内部依赖。流水线的 Acquisition HSM 通过 FaultReporter 向 FaultCollector 上报硬件异常 (DMA 超时、CRC 错误)。
 
-// 模式 2: StaticNode (编译期绑定, 15x 快于 Node)
-struct StreamHandler {
-    ProtocolState* state;
-    void operator()(const StreamData& sd, const osp::MessageHeader&) {
-        ++state->stream_count;  // 编译器可完全内联
-    }
-    template <typename T>
-    void operator()(const T&, const osp::MessageHeader&) {}  // catch-all: 零开销
-};
-
-osp::StaticNode<Payload, StreamHandler> ctrl("ctrl", 3, StreamHandler{&state});
-ctrl.SpinOnce();  // ProcessBatchWith: 编译期直接跳转，无回调表
-```
-
-### 7.3 WorkerPool: 二级排队架构
-
-```
-Submit(job) ──> AsyncBus::Publish() [MPSC, 无锁]
-                       │
-               DispatcherThread (ProcessBatch, round-robin 分发)
-                       │
-            ┌──────────┼──────────┐
-            ▼          ▼          ▼
-      Worker[0]    Worker[1]  Worker[N-1]
-      SpscRingbuffer (wait-free, 1024 深度)
-      └── 独立线程，CPU 亲和性可配置
-```
-
-这一设计将无锁 MPSC 入口和 wait-free SPSC 工作分发组合起来，前者承受多生产者并发写入，后者保证工作线程零竞争。
-
-### 7.4 可靠性闭环: Watchdog + FaultCollector
-
-```
-ThreadWatchdog                          FaultCollector
-(检测问题)                              (处理问题)
-    │                                       │
-    │ timeout 回调                          │ Hook 决策
-    ├──────────────> ReportFault ───────────>│
-    │                                       │ kHandled / kEscalate
-    │                                       │ kDefer / kShutdown
-    │       Beat()                          │
-    │<──── ThreadHeartbeat <────── 消费者线程│
-    │  (也被 Watchdog 监控)                 │
-```
-
-核心原则: Watchdog 和 FaultCollector 职责正交。Watchdog 只发现问题 (线程挂死)，FaultCollector 只处理问题 (分级上报 + hook 决策)。两者通过应用层 wiring 组合，没有内部依赖。
-
-## 8. 性能与资源预算
-
-### 8.1 内存占用
-
-| 模块 | 典型配置 | 内存 |
-|------|---------|------|
-| AsyncBus<Payload, 4096, 256> | 高吞吐 | ~320 KB |
-| AsyncBus<Payload, 256, 64> | 嵌入式低内存 | ~20 KB |
-| StateMachine<Ctx, 16> | 16 状态 HSM | ~500 B |
-| SpscRingbuffer<uint8_t, 4096> | 串口字节缓冲 | ~4 KB |
-| LifecycleNode (含 HSM) | 16 状态生命周期 | ~2 KB |
-| ThreadWatchdog<32> | 32 线程监控 | ~2 KB |
-| FaultCollector<64, 256> | 默认配置 | ~36 KB |
-
-### 8.2 热路径性能
-
-| 操作 | 延迟 | 堆分配 |
-|------|------|--------|
-| AsyncBus::Publish (CAS 成功) | < 100 ns | 0 |
-| ProcessBatchWith (编译期分发) | ~2 ns/msg | 0 |
-| HSM Dispatch (3 层冒泡) | < 200 ns | 0 |
-| HSM Transition (LCA 2 层) | < 500 ns | 0 |
-| SPSC Push/Pop (单元素) | < 50 ns | 0 |
-| SPSC PushBatch (memcpy 路径) | 批量吞吐优 | 0 |
-
-### 8.3 测试覆盖
-
-- 正常模式: 1114 test cases (26085 assertions)
-- `-fno-exceptions` 模式: 393 test cases
-- Sanitizer: ASan + UBSan + TSan 全部通过
-- 每个模块独立测试文件，集成测试验证跨模块交互
-
-## 9. 方案对比总结
-
-| 维度 | QP/C (Active Object on RTOS) | newosp (C++17 on ARM-Linux) |
-|------|:---:|:---:|
-| **语言** | C11 | C++17 |
-| **目标平台** | MCU (FreeRTOS/RT-Thread/裸机) | ARM-Linux (工业嵌入式) |
-| **并发模型** | AO + 关中断临界区 | MPSC CAS + SPSC wait-free |
-| **状态机** | QHsm/QMsm (两种变体) | StateMachine + LifecycleNode |
-| **事件队列** | QEQueue (SPSC + frontEvt) | AsyncBus (MPSC + 优先级准入) |
-| **零拷贝机制** | 事件指针 + 引用计数 | variant 值语义 + FixedFunction SBO |
-| **动态分配** | 固定事件池 `Q_NEW/QF_gc` | ObjectPool + FixedVector + 栈优先 |
-| **编译期优化** | QMsm 转换表 (QM 工具生成) | `if constexpr` + `std::visit` + 模板参数化 |
-| **类型安全** | `void*` 手动转换 | `std::variant` + `expected<V,E>` + NewType |
-| **调度** | RTOS 线程 / QXK 内核 | Single/Static/Pinned/Realtime Executor |
-| **生命周期** | ctor → start → 永不退出 | 16 状态 HSM (Configure/Activate/Degraded/...) |
-| **故障处理** | 用户自定义 | 内置 FaultReporter + FaultCollector |
-| **测试** | 用户自行编写 | 1114 tests, ASan/TSan/UBSan |
-| **代码风格** | 函数指针 + switch/case | Header-only + RAII + 模板 |
-
-## 10. 最佳实践
-
-### 10.1 模块选择指南
+### 7.3 模块选择指南
 
 | 场景 | 推荐方案 |
 |------|---------|
 | 简单传感器数据流 | Node + AsyncBus + SingleThreadExecutor |
 | 高吞吐多生产者 | StaticNode + AsyncBus<PV, 4096, 256> + PinnedExecutor |
+| 多级流水线处理 | 多个 StaticNode + 共享 Bus + 顺序 SpinOnce |
 | 复杂状态管理 | StateMachine (手动) 或 LifecycleNode (标准生命周期) |
 | 实时控制 | RealtimeExecutor (SCHED_FIFO) + PreciseSleepStrategy |
 | 跨进程 IPC | ShmChannel + ShmRingBuffer (零拷贝共享内存) |
-| 工业串口通信 | SerialTransport + SpscRingbuffer + CRC16 |
 
-### 10.2 性能调优
+### 7.4 迁移路径: Linux → RT-Thread
 
-- **Bus 队列深度**: 根据峰值突发估算。低频控制用 256，高频传感器用 4096
-- **BatchSize**: 与生产频率匹配。批量越大吞吐越高，但单次延迟增加
-- **StaticNode vs Node**: 编译期确定的处理逻辑用 StaticNode (15x 性能提升)
-- **FakeTSO**: 确认为单核 MCU 后启用，减少内存屏障指令
-- **SleepStrategy**: 低功耗场景用 PreciseSleepStrategy，高吞吐用 YieldSleepStrategy
+newosp 核心模块保持 POSIX API 边界清晰:
 
-### 10.3 迁移路径: Linux → RT-Thread
-
-newosp 的核心模块 (HSM, SPSC, Bus, Executor) 保持 POSIX API 边界清晰，为未来迁移到 RT-Thread (C++17 RTOS) 做好准备:
-
-| 模块 | Linux 依赖 | RT-Thread 适配方案 |
-|------|-----------|-------------------|
+| 模块 | Linux 依赖 | RT-Thread 适配 |
+|------|-----------|---------------|
 | SPSC | 无 (纯 C++ atomic) | `FakeTSO = true` |
 | HSM | 无 (纯 C++) | 直接使用 |
 | AsyncBus | 无 (CAS 原子操作) | 直接使用 |
 | Executor | pthread, SCHED_FIFO | 映射到 RT-Thread 线程 API |
-| Timer | clock_gettime | 映射到 rt_tick |
 | ShmTransport | shm_open, mmap | 不适用 (单进程) |
+
+## 8. 设计原则总结
+
+| 原则 | 实现手段 |
+|------|---------|
+| **零全局状态** | Bus 依赖注入，非全局单例 |
+| **栈优先，零堆分配** | FixedFunction SBO / FixedVector / FixedString / variant 值语义 |
+| **无锁/最小锁** | CAS MPSC + wait-free SPSC + SharedSpinLock |
+| **编译期分发** | 模板参数化 + `if constexpr` + `std::visit` 跳转表 |
+| **类型安全** | `std::variant` + `expected<V,E>` + `static_assert` trivially_copyable |
+| **`-fno-exceptions -fno-rtti`** | 全代码库兼容，`Validate()` 返回 bool 而非抛异常 |
+
+这些原则贯穿整条传感器流水线: variant 保证消息类型安全，CAS 保证并发发布安全，HSM 保证状态转换安全，`static_assert` 保证跨平台 sizeof 一致。每个"安全"都是编译期或硬件级保证，不是运行时约定。
 
 ## 参考资料
 
 1. [newosp GitHub 仓库](https://github.com/DeguiLiu/newosp) -- C++17 header-only 嵌入式基础设施库
-2. [QP/C 官方文档](https://www.state-machine.com/qpc/) -- Quantum Leaps Active Object 框架
-3. [QPC 层次状态机设计与优势分析](https://blog.csdn.net/stallion5632/article/details/149359525)
-4. [QPC 框架中状态机的设计优势和特殊之处](https://blog.csdn.net/stallion5632/article/details/149260812)
-5. [QPC QActive 零拷贝 & 无锁数据传输解析](https://blog.csdn.net/stallion5632/article/details/149374727)
-6. [QPC QActive 在 RT-Thread 上的实现原理详述](https://blog.csdn.net/stallion5632/article/details/149604623)
-7. Miro Samek, *Practical UML Statecharts in C/C++*, 2nd Edition
-8. [ROS2 Lifecycle Node Design](https://design.ros2.org/articles/node_lifecycle.html)
+2. [ROS2 Lifecycle Node Design](https://design.ros2.org/articles/node_lifecycle.html)
+3. [事件驱动架构的嵌入式激光雷达点云数据处理](https://blog.csdn.net/stallion5632/article/details/150624229)
+4. Miro Samek, *Practical UML Statecharts in C/C++*, 2nd Edition

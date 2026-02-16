@@ -11,6 +11,12 @@ TocOpen: true
 
 > 本文通过严格的基准测试方法，对比多线程高竞争场景下三种同步策略的性能表现：自旋锁 (atomic_flag)、互斥锁 (std::mutex) 和无锁队列 (moodycamel::ConcurrentQueue)。
 >
+> 相关文章:
+> - [perf lock 锁竞争诊断](../perf_lock_contention_diagnosis/) -- 生产环境的锁竞争定位方法
+> - [嵌入式系统死锁防御: 从有序锁到无锁架构](../deadlock_prevention/) -- 从架构层面消除锁问题
+> - [无锁编程核心原理](../lockfree_programming_fundamentals/) -- 无锁数据结构的理论基础
+> - [多线程死锁与优先级反转实战](../deadlock_priority_inversion_practice/) -- 锁使用不当的典型问题
+>
 > 完整测试代码: [lock-contention-benchmark](https://gitee.com/liudegui/lock-contention-benchmark)
 
 ## 1. 背景

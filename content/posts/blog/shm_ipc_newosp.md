@@ -9,7 +9,13 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 参考文章: [C++编程：使用 cpp-ipc 实现基于共享内存的进程间发布订阅](https://blog.csdn.net/stallion5632/article/details/140881982)
+> 相关文章:
+> - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- ShmRingBuffer 底层的 SPSC 设计详解
+> - [无锁编程核心原理](../lockfree_programming_fundamentals/) -- CAS 无锁设计的理论基础
+> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- newosp 框架全景
+> - [newosp ospgen: YAML 驱动的零堆消息代码生成](../newosp_ospgen_codegen/) -- ShmRingBuffer 传输的消息类型生成
+>
+> 参考: [C++编程：使用 cpp-ipc 实现基于共享内存的进程间发布订阅](https://blog.csdn.net/stallion5632/article/details/140881982)
 >
 > newosp 实现: [shm_transport.hpp](https://github.com/DeguiLiu/newosp) -- POSIX 共享内存 + 无锁 MPSC Ring Buffer
 >

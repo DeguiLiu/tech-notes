@@ -9,6 +9,11 @@ ShowToc: true
 TocOpen: true
 ---
 
+> 相关文章:
+> - [QPC 框架深度解析: Active Object 模型与层次状态机](../qpc_active_object_hsm/) -- QP/C 的 HSM 双实现策略 (QHsm/QMsm)
+> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- C++17 模板化 HSM 的现代实现
+> - [行为树 Tick 机制深度解析](../behavior_tree_tick_mechanism/) -- BT 与 HSM 互补的架构实践
+
 状态机是嵌入式系统中最常用的设计模式之一。但随着状态数量增长和层级嵌套加深，传统的 switch-case 实现会变得难以维护。本文以 [state_machine](https://gitee.com/liudegui/state_machine) 框架为例，展示如何将过程驱动的状态机改造为数据驱动的层次状态机 (HSM)。
 
 原始版本来自 [misje/stateMachine](https://github.com/misje/stateMachine)，RT-Thread 社区有一个维护版本。本文基于对两者的重构，重点在于**数据驱动设计**和 **MISRA C:2012 合规**。

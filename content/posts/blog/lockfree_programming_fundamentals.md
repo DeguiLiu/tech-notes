@@ -17,6 +17,7 @@ TocOpen: true
 > - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](../lock_contention_benchmark/) -- 有锁与无锁的性能实测
 > - [perf lock 锁竞争诊断](../perf_lock_contention_diagnosis/) -- 何时需要从有锁迁移到无锁
 > - [共享内存进程间通信](../shm_ipc_newosp/) -- 跨进程场景的无锁 Ring Buffer
+> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- 无锁 MPSC 总线在完整框架中的集成
 >
 > 参考:
 > - [iceoryx Lock-Free Queue Design](https://github.com/eclipse-iceoryx/iceoryx/blob/main/doc/design/lockfree_queue.md)

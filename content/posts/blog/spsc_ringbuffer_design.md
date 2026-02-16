@@ -11,6 +11,12 @@ TocOpen: true
 
 > 配套代码: [liudegui/ringbuffer](https://gitee.com/liudegui/ringbuffer) -- header-only C++14 SPSC 环形缓冲区，Catch2 测试，ASan/UBSan/TSan clean
 >
+> 相关文章:
+> - [无锁编程核心原理: 从 CAS 到三种队列模式](../lockfree_programming_fundamentals/) -- SPSC/MPSC/MPMC 的理论基础与对比
+> - [无锁异步日志设计: Per-Thread SPSC](../lockfree_async_log/) -- SPSC 在日志系统中的工程应用
+> - [共享内存进程间通信](../shm_ipc_newosp/) -- 跨进程场景的 SPSC Ring Buffer
+> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- SPSC 在 newosp 消息总线中的角色
+>
 > 参考:
 > - 原始实现: [jnk0le/Ring-Buffer](https://github.com/jnk0le/Ring-Buffer) -- 本项目在其基础上修正了所有权违反、冗余屏障等问题
 > - CSDN 原文: [C++ 无锁环形队列 (LockFreeRingQueue) 的简单实现、测试和分析](https://blog.csdn.net/stallion5632/article/details/139755553)

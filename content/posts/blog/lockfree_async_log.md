@@ -10,6 +10,10 @@ TocOpen: true
 ---
 
 > 在多核 ARM Linux 嵌入式系统中，传统的同步日志记录方式（如直接调用 `fprintf` 或 `write`）由于受限于磁盘 I/O 延迟及内核态切换开销，往往成为系统的性能瓶颈。本文提出并实现了一种基于 **Per-Thread SPSC 环形缓冲** 与 **分级路由** 的异步日志架构，在 ARM 平台上实现了 wait-free 热路径 (~200-300ns)、零竞争生产者、崩溃安全的关键日志保障，以及背压丢弃的自动上报机制。
+>
+> 相关文章:
+> - [无锁编程核心原理](../lockfree_programming_fundamentals/) -- SPSC/MPSC 无锁队列的理论基础
+> - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- Per-Thread SPSC 的底层实现详解
 
 ## 1. 同步日志的问题
 

@@ -13,6 +13,10 @@ TocOpen: true
 >
 > **姊妹篇**: [嵌入式系统死锁防御: 从有序锁到无锁架构的工程实践](../deadlock_prevention/) -- 侧重 newosp 框架的架构级防御策略（无锁 MPSC 总线、SPSC 队列、Collect-Release-Execute 模式、LIFO 有序关停等），读者可先阅读本文理解问题场景，再阅读姊妹篇学习系统级解决方案。
 >
+> 相关文章:
+> - [perf lock 锁竞争诊断](../perf_lock_contention_diagnosis/) -- 生产环境的锁竞争量化定位
+> - [锁竞争基准测试](../lock_contention_benchmark/) -- Spinlock vs Mutex vs 无锁队列性能对比
+>
 > 参考:
 > - 原文: [C++ 线程优先级反转](https://blog.csdn.net/stallion5632/article/details/143610920)
 > - 原文: [C++ 嵌套锁与编译优化导致的死锁问题](https://blog.csdn.net/stallion5632/article/details/143633084)

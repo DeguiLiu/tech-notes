@@ -13,6 +13,10 @@ TocOpen: true
 
 本文以 [bt-cpp](https://gitee.com/liudegui/bt-cpp) (C++14 header-only 行为树库) 为主线，从 Tick 机制原理出发，逐步展开节点遍历语义、异步模式、性能特征和工程实践。
 
+> 相关文章:
+> - [C 语言层次状态机框架: 从过程驱动到数据驱动](../c_hsm_data_driven_framework/) -- HSM 与 BT 互补的架构基础
+> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- newosp 中 HSM + BT 的实际集成
+
 ## 1. Tick 机制核心原理
 
 ### 1.1 什么是 Tick
