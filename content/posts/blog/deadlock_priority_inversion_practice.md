@@ -84,14 +84,24 @@ $ ./deadlock_abba
 
 时序分析:
 
+```mermaid
+gantt
+    title AB-BA 死锁时序 (错误的锁获取顺序)
+    dateFormat X
+    axisFormat %s
+
+    section Thread 1
+    lock(mutex_a) 成功          :done, t1a, 0, 1
+    模拟工作                     :done, t1w, 1, 2
+    lock(mutex_b) 阻塞...       :crit, t1b, 2, 5
+
+    section Thread 2
+    lock(mutex_b) 成功          :done, t2b, 0, 1
+    模拟工作                     :done, t2w, 1, 2
+    lock(mutex_a) 阻塞...       :crit, t2a, 2, 5
 ```
-时间   Thread 1                Thread 2
- T0    lock(mutex_a) 成功
- T1                            lock(mutex_b) 成功
- T2    lock(mutex_b) 阻塞      lock(mutex_a) 阻塞
-       等待 Thread 2 释放 B     等待 Thread 1 释放 A
-       -----> 循环等待，死锁 <-----
-```
+
+> Thread 1 持有 A 等待 B，Thread 2 持有 B 等待 A -- 循环等待，死锁。
 
 ### 1.2 修复方案一: 统一锁序
 
@@ -112,6 +122,27 @@ void thread2_fixed() {
     std::cout << "Thread 2 acquired both locks\n";
 }
 ```
+
+```mermaid
+gantt
+    title 统一锁序后 (正确的锁获取顺序)
+    dateFormat X
+    axisFormat %s
+
+    section Thread 1
+    lock(mutex_a) 成功          :done, t1a, 0, 1
+    模拟工作                     :done, t1w, 1, 2
+    lock(mutex_b) 成功          :done, t1b, 2, 3
+    完成                         :done, t1d, 3, 4
+
+    section Thread 2
+    lock(mutex_a) 等待...       :active, t2a, 0, 4
+    lock(mutex_a) 成功          :done, t2a2, 4, 5
+    lock(mutex_b) 成功          :done, t2b, 5, 6
+    完成                         :done, t2d, 6, 7
+```
+
+> 两个线程按相同顺序 (A -> B) 获取锁，Thread 2 排队等待 Thread 1 释放 A 后再继续，不会死锁。
 
 **局限**: 当系统中有数十把锁时，维护全局锁序变得困难。新增一把锁需要确定它在全局序中的位置，并更新所有调用点。姊妹篇中介绍的 `OrderedLock_t` + `lock_multiple()` 方案通过编号自动排序解决了这个问题。
 
@@ -171,6 +202,21 @@ void thread2_trylock() {
 ### 2.1 问题复现
 
 这是嵌入式系统中最常见但最隐蔽的死锁: 在持有锁的情况下调用回调函数，而回调函数内部又尝试获取同一把锁。
+
+```mermaid
+sequenceDiagram
+    participant main
+    participant NotifyAll
+    participant Callback
+    participant Count
+
+    main->>NotifyAll: 调用 NotifyAll()
+    NotifyAll->>NotifyAll: lock(mutex_) 成功
+    NotifyAll->>Callback: 执行回调 cb()
+    Callback->>Count: 调用 Count()
+    Count->>Count: lock(mutex_) 阻塞!
+    Note over NotifyAll,Count: 死锁: mutex_ 已被 NotifyAll 持有,<br/>Count 永远无法获取
+```
 
 ```cpp
 // deadlock_reentrant.cpp
@@ -240,6 +286,29 @@ std::recursive_mutex mutex_;  // 允许同一线程多次加锁
 
 ### 2.3 正确修复: Collect-Release-Execute
 
+```mermaid
+sequenceDiagram
+    participant main
+    participant NotifyAll
+    participant Callback
+    participant Count
+
+    main->>NotifyAll: 调用 NotifyAll()
+    rect rgb(200,230,200)
+        Note over NotifyAll: Phase 1: Collect
+        NotifyAll->>NotifyAll: lock(mutex_) 成功
+        NotifyAll->>NotifyAll: 拷贝回调列表到 local
+        NotifyAll->>NotifyAll: unlock(mutex_) (RAII)
+    end
+    rect rgb(200,210,240)
+        Note over NotifyAll: Phase 3: Execute (锁外)
+        NotifyAll->>Callback: 执行回调 cb()
+        Callback->>Count: 调用 Count()
+        Count->>Count: lock(mutex_) 成功!
+        Count-->>Callback: 返回 count
+    end
+```
+
 将通知逻辑拆分为三个阶段: 在锁内**收集**回调列表，**释放**锁后再**执行**回调:
 
 ```cpp
@@ -283,6 +352,19 @@ private:
 ## 3. 自死锁: 同一线程重复加锁
 
 ### 3.1 问题复现
+
+```mermaid
+sequenceDiagram
+    participant main
+    participant outer
+    participant inner
+
+    main->>outer: 调用 outer()
+    outer->>outer: lock(mtx) 成功
+    outer->>inner: 调用 inner()
+    inner->>inner: lock(mtx) 阻塞!
+    Note over outer,inner: 死锁: 同一线程持有 mtx<br/>又尝试再次获取 mtx
+```
 
 `std::mutex` 的 `lock()` 在同一线程重复调用时是**未定义行为**（通常表现为死锁）:
 
@@ -366,17 +448,27 @@ private:
 
 优先级反转是实时系统中的「准死锁」: 高优先级任务被低优先级任务**间接**阻塞。
 
-```
-时间轴 -->
+```mermaid
+gantt
+    title 优先级反转 (Priority Inversion)
+    dateFormat X
+    axisFormat %s
 
-Task C (低优先级):   [===== 持有锁 ======================= 释放锁]
-Task B (中优先级):          [============ 抢占 C ===========]
-Task A (高优先级):              [尝试获取锁... 阻塞等待 C ...]
-                                    ^
-                                    |
-                     A 等待 C 释放锁，但 C 被 B 抢占无法运行
-                     结果: A 的实际优先级 < B
+    section Task A (高优先级)
+    尝试获取锁                   :crit, a1, 2, 3
+    阻塞等待 C 释放锁...         :crit, a2, 3, 8
+    获取锁, 执行                 :done, a3, 8, 9
+
+    section Task B (中优先级)
+    抢占 Task C 执行             :active, b1, 3, 7
+
+    section Task C (低优先级)
+    获取锁, 执行                 :done, c1, 0, 3
+    被 B 抢占, 无法运行          :crit, c2, 3, 7
+    恢复执行, 释放锁              :done, c3, 7, 8
 ```
+
+> Task A (高优先级) 等待 Task C 释放锁，但 Task C 被 Task B 抢占无法运行。结果: A 的实际优先级低于 B。
 
 关键: Task A（高优先级）等待 Task C（低优先级）释放锁，但 Task B（中优先级）抢占了 Task C 的 CPU 时间，导致 C 无法执行从而无法释放锁。**高优先级任务实际上被中优先级任务阻塞了**。
 
@@ -494,17 +586,28 @@ void init_pi_mutex() {
 
 启用优先级继承后的时序:
 
-```
-时间轴 -->
+```mermaid
+gantt
+    title 优先级继承 (Priority Inheritance) 修复后
+    dateFormat X
+    axisFormat %s
 
-Task C (低->高):   [=== 持有锁 (优先级提升到80) === 释放锁]
-Task B (中优先级):                                    [====]
-Task A (高优先级):     [等待锁... 获取锁]
-                       ^                ^
-                       |                |
-            C 被提升到与 A 同优先级    C 释放锁后恢复原优先级
-            B 无法抢占 C              A 立即获取锁
+    section Task A (高优先级)
+    尝试获取锁                   :crit, a1, 2, 3
+    等待 C 释放锁               :active, a2, 3, 5
+    获取锁, 执行                 :done, a3, 5, 6
+
+    section Task B (中优先级)
+    等待 (无法抢占已提升的 C)    :active, b1, 3, 6
+    执行                         :done, b2, 6, 8
+
+    section Task C (低->高优先级)
+    获取锁, 执行                 :done, c1, 0, 3
+    优先级提升到 A 级别, 继续    :done, c2, 3, 5
+    释放锁, 恢复原优先级          :milestone, c3, 5, 5
 ```
+
+> C 被提升到与 A 相同的优先级，B 无法抢占 C，C 快速完成并释放锁。A 的等待时间大幅缩短。
 
 **内核要求**: `PTHREAD_PRIO_INHERIT` 需要 Linux 内核配置 `CONFIG_RT_MUTEXES=y`。标准内核通常已启用，PREEMPT_RT 补丁集一定启用。可通过以下命令确认:
 
