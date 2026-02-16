@@ -1,6 +1,9 @@
 // benchmark_five_principles.cpp
 // Benchmark for "Five Counter-Intuitive Principles of High-Performance System Design"
 //
+// Article: content/posts/performance/high_performance_system_design_principles.md
+// Online:  https://deguiliu.github.io/tech-notes/posts/performance/high_performance_system_design_principles/
+//
 // Compile: g++ -O2 -std=c++17 -pthread -o benchmark benchmark_five_principles.cpp
 // Run:     ./benchmark
 //
