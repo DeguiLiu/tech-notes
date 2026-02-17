@@ -69,25 +69,18 @@ graph TD
 
 **Mermaid 工具链集成**：
 
+```bash
+npm install -g @mermaid-js/mermaid-cli
+mmdc -i docs/architecture.mmd -o docs/architecture.svg
+```
+
+**GitHub Actions 示例**：
+
 ```yaml
-# .github/workflows/docs.yml
 - name: Render Mermaid diagrams
-  run: |
-    npm install -g @mermaid-js/mermaid-cli
-    mmdc -i docs/architecture.mmd -o docs/architecture.svg
-```
-
-**draw.io 无头导出**：
-
-```bash
-# 使用 draw.io 桌面版的 CLI 模式
-drawio --export --format svg --output docs/diagrams/ docs/diagrams/src/*.drawio
-```
-
-**PlantUML 批量渲染**：
-
-```bash
-java -jar plantuml.jar -tsvg docs/**/*.puml
+  uses: docker://minlag/mermaid-cli:latest
+  with:
+    args: -i docs/architecture.mmd -o docs/architecture.svg
 ```
 
 ### 3. 复杂图形表现力
@@ -98,39 +91,19 @@ java -jar plantuml.jar -tsvg docs/**/*.puml
 - 不支持自定义图标和复杂样式
 - 大型状态机图（50+ 状态）布局混乱
 
-**适用场景**：
+**适用场景**：流程图（< 20 节点）、时序图（< 10 参与者）、简单状态机（< 15 状态）
 
-- 流程图（< 20 节点）
-- 时序图（< 10 参与者）
-- 简单状态机（< 15 状态）
-
-**draw.io 的优势**：
-
-- 自由拖拽布局，像素级对齐
-- 丰富的图标库（AWS/Azure/网络设备）
-- 支持多页签（一个文件管理多张图）
+**draw.io 的优势**：自由拖拽布局、像素级对齐、丰富的图标库（AWS/Azure/网络设备）、支持多页签。
 
 **典型案例**：嵌入式系统硬件连接图、复杂网络拓扑、高保真 UI 原型。
 
 ### 4. 团队协作模式
 
-**代码审查驱动（Mermaid/PlantUML）**：
+**代码审查驱动（Mermaid/PlantUML）**：图形变更通过 Pull Request 审查，评论直接关联到代码行，适合分布式团队异步协作。
 
-- 图形变更通过 Pull Request 审查
-- 评论直接关联到代码行
-- 适合分布式团队异步协作
+**实时协作驱动（飞书画图）**：多人同时编辑，冲突自动合并，适合头脑风暴和快速原型，但无法纳入代码仓库版本管理。
 
-**实时协作驱动（飞书画图）**：
-
-- 多人同时编辑，冲突自动合并
-- 适合头脑风暴和快速原型
-- 但无法纳入代码仓库版本管理
-
-**混合方案**：
-
-1. 初期设计用飞书画图快速迭代
-2. 方案稳定后迁移到 draw.io 或 Mermaid
-3. 最终版本提交到 Git 仓库
+**混合方案**：初期设计用飞书画图快速迭代 → 方案稳定后迁移到 draw.io 或 Mermaid → 最终版本提交到 Git 仓库。
 
 ## 选型决策树
 
@@ -169,27 +142,17 @@ docs/
 └── README.md
 ```
 
-**提交规范**：
-
-- Mermaid 代码直接嵌入 Markdown
-- draw.io 源文件和导出文件同时提交
-- SVG 优先于 PNG（矢量可缩放）
+**提交规范**：Mermaid 代码直接嵌入 Markdown；draw.io 源文件和导出文件同时提交；SVG 优先于 PNG（矢量可缩放）。
 
 ### 2. 工具链配置
 
-**VSCode 插件推荐**：
-
-- Mermaid Preview
-- Draw.io Integration
-- PlantUML
+**VSCode 插件推荐**：Mermaid Preview、Draw.io Integration、PlantUML
 
 **Pre-commit Hook**：
 
 ```bash
 #!/bin/bash
 # .git/hooks/pre-commit
-# 自动渲染 Mermaid 图并检查是否有未提交的 SVG
-
 for mmd in $(git diff --cached --name-only --diff-filter=ACM | grep '\.mmd$'); do
     svg="${mmd%.mmd}.svg"
     mmdc -i "$mmd" -o "$svg"
@@ -199,17 +162,9 @@ done
 
 ### 3. 性能优化
 
-**Mermaid 大图优化**：
+**Mermaid 大图优化**：拆分子图（subgraph）、使用 LR（左右布局）替代 TD（上下布局）、避免过多交叉连线。
 
-- 拆分子图（subgraph）
-- 使用 LR（左右布局）替代 TD（上下布局）
-- 避免过多交叉连线
-
-**draw.io 文件管理**：
-
-- 单个文件不超过 50 个对象
-- 使用图层（Layers）组织复杂图形
-- 定期清理未使用的样式和连接器
+**draw.io 文件管理**：单个文件不超过 50 个对象、使用图层（Layers）组织复杂图形、定期清理未使用的样式和连接器。
 
 ## 典型场景推荐
 
@@ -222,19 +177,13 @@ done
 | 硬件连接图 | draw.io | 自定义图标，精确布局 |
 | 快速原型讨论 | 飞书画图 | 实时协作，无需本地工具 |
 
-## 迁移成本评估
+## AI 辅助图表生成
 
-**从飞书画图迁移到 draw.io**：
+AI 工具（如 GitHub Copilot、Claude）可以从代码或 YAML 文件自动生成 Mermaid 图表，将文档从手动维护转变为自动维护的资产。
 
-- 手动重绘（无自动转换工具）
-- 时间成本：简单图 10 分钟，复杂图 1 小时
-- 建议：仅迁移需要长期维护的核心架构图
+## Mermaid 性能与限制
 
-**从 PlantUML 迁移到 Mermaid**：
-
-- 语法相似度 60%（流程图/时序图）
-- 状态机语法差异较大
-- 工具辅助：编写脚本批量转换简单图形
+大型图表（超过 50 个节点）渲染性能下降明显，建议拆分为多个子图。浏览器端渲染可能导致页面卡顿，CI 渲染为 SVG 可规避此问题。复杂布局（如交叉边）的自动排版效果有限，此时 draw.io 更合适。
 
 ## 结论
 
@@ -250,17 +199,9 @@ done
 - 优势：专业表现力，自由布局，丰富图标库
 - 代价：需要额外的版本管理策略
 
-**不推荐 PlantUML**：
+**不推荐 PlantUML**：学习曲线陡峭（语法复杂）、布局算法不如 Mermaid 直观、仅在强制要求 UML 标准时使用。
 
-- 学习曲线陡峭（语法复杂）
-- 布局算法不如 Mermaid 直观
-- 仅在强制要求 UML 标准时使用
-
-**不推荐飞书画图用于正式文档**：
-
-- 无法纳入代码仓库
-- 导出格式受限（PNG 有水印）
-- 仅适合临时讨论和头脑风暴
+**不推荐飞书画图用于正式文档**：无法纳入代码仓库、导出格式受限（PNG 有水印）、仅适合临时讨论和头脑风暴。
 
 ## 参考资源
 
@@ -268,119 +209,3 @@ done
 - draw.io 桌面版: https://github.com/jgraph/drawio-desktop
 - mermaid-cli: https://github.com/mermaid-js/mermaid-cli
 - PlantUML: https://plantuml.com/
-
-## CI/CD 自动渲染实践
-
-在持续集成流水线中自动渲染图表可以确保文档与代码同步更新，避免手动导出遗漏。
-
-### Mermaid CLI 使用
-
-```bash
-# 安装
-npm install -g @mermaid-js/mermaid-cli
-
-# 渲染单个文件
-mmdc -i diagram.mmd -o diagram.svg -t dark
-
-# 批量渲染
-find docs/ -name "*.mmd" -exec mmdc -i {} -o {}.svg \;
-```
-
-### GitHub Actions 自动渲染示例
-
-```yaml
-- name: Render Mermaid diagrams
-  uses: docker://minlag/mermaid-cli:latest
-  with:
-    args: -i docs/architecture.mmd -o docs/architecture.svg
-```
-
-### Docker 一致性渲染
-
-使用预配置的 Docker 镜像（包含 Playwright 和 Chrome）确保跨环境渲染一致性。避免因本地字体、浏览器版本差异导致的渲染结果不一致。
-
-```bash
-docker run --rm -v $(pwd):/data minlag/mermaid-cli \
-  -i /data/docs/diagram.mmd -o /data/docs/diagram.svg
-```
-
-### 质量门禁
-
-在 CI 中加入语法验证步骤，在发布前捕获损坏的图表：
-
-```yaml
-- name: Validate Mermaid syntax
-  run: |
-    for mmd in docs/**/*.mmd; do
-      mmdc -i "$mmd" -o /dev/null || exit 1
-    done
-```
-
-## AI 辅助图表生成
-
-现代 AI 工具可以显著降低图表维护成本：
-
-- AI 工具（如 GitHub Copilot、Claude）可以从代码或 YAML 文件自动生成 Mermaid 图表
-- 将文档从手动维护转变为自动维护的资产
-- 结合 C4 模型（Context、Container、Component、Code）组织不同层级的系统文档
-
-**实践案例**：
-
-```bash
-# 从 OpenAPI 规范生成时序图
-curl -X POST https://api.example.com/generate-diagram \
-  -d @openapi.yaml -o api-sequence.mmd
-
-# 从代码注释生成状态机图
-extract-fsm src/protocol.c | ai-to-mermaid > docs/protocol-fsm.mmd
-```
-
-## Mermaid 性能与限制
-
-### 大型图表性能
-
-- 大型图表（超过 50 个节点）渲染性能下降明显，建议拆分为多个子图
-- 浏览器端渲染可能导致页面卡顿，CI 渲染为 SVG 可规避此问题
-
-**优化策略**：
-
-```mermaid
-graph TD
-    subgraph "数据采集层"
-        A1[传感器1] --> B[数据总线]
-        A2[传感器2] --> B
-    end
-
-    subgraph "处理层"
-        B --> C[数据融合]
-        C --> D[算法模块]
-    end
-
-    subgraph "输出层"
-        D --> E[执行器]
-    end
-```
-
-### 复杂布局限制
-
-复杂布局（如交叉边）的自动排版效果有限，此时 draw.io 更合适。Mermaid 的 Dagre 布局引擎无法处理以下场景：
-
-- 多层级交叉连接
-- 需要精确对齐的并行流程
-- 自定义节点形状和图标
-
-### 新特性支持
-
-Mermaid v11.1.0+ 新增 architecture 图表类型，专为云服务和 CI/CD 部署设计：
-
-```mermaid
-architecture-beta
-    service api(server)[API Server]
-    service db(database)[PostgreSQL]
-    service cache(disk)[Redis]
-
-    api:L -- R:db
-    api:R -- L:cache
-```
-
-该类型支持服务拓扑、依赖关系可视化，适合微服务架构文档。
