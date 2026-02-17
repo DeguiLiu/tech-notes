@@ -1,0 +1,60 @@
+// VS Code Copilot 终端命令自动审批配置
+// 使用方法: 将以下内容合并到 VS Code 的 settings.json 中
+// 文章说明: https://deguiliu.github.io/tech-notes/posts/misc/copilot_terminal_auto_approve/
+//
+// 设计原则: 白名单分层策略，默认拒绝所有未列出的操作
+// - 第一层: 全局安全关键词 (Substring Match)
+// - 第二层: 通用操作白名单 (Regex Match, 行首 + 管道链)
+// - 第三层: 本地脚本执行
+// - 第四层: 安全删除规则 (仅允许构建产物/缓存/临时文件)
+// - 第五层: 兜底拒绝 (所有未匹配的 rm 操作)
+{
+  "chat.tools.terminal.autoApprove": {
+    // ================================================================
+    // 第一层: 全局安全关键词 (Substring Match)
+    // 只要命令中包含这些字符串即允许, 适用于无副作用的只读命令
+    // ================================================================
+    "/(\\/dev\\/null|grep|egrep|fgrep|awk|sed|sort|uniq|wc|make|cmake|scons|ninja|maven|gradle|npm|yarn|pnpm|pip|git|echo|printf|cat|less|more|head|tail|which|whereis|whoami)/": {
+      "approve": true,
+      "matchCommandLine": false
+    },
+
+    // ================================================================
+    // 第二层: 通用操作超级白名单 (Regex Match)
+    // 匹配行首, 或管道(|)/逻辑与(&&)/分号(;)之后的命令
+    // 涵盖: 文件管理、系统监控、网络工具、编译器、脚本解释器
+    // ================================================================
+    "/^(\\s*|.*[\\|\\&\\;]\\s*)(cd|ls|ll|la|dir|pwd|cp|mv|mkdir|touch|tree|find|locate|stat|file|du|df|mount|umount|chmod|chown|ln|alias|export|source|\\.|exit|clear|history|ps|top|htop|free|uptime|jobs|fg|bg|kill|killall|shutdown|reboot|curl|wget|ping|telnet|netstat|ss|ifconfig|ip|ssh|scp|rsync|tar|zip|unzip|gzip|gunzip|bzip2|xz|7z|gcc|g\\+\\+|clang|clang\\+\\+|nm|ld|gdb|valgrind|strace|ltrace|python|python3|ruby|perl|php|node|deno|go|rustc|cargo|java|javac|docker|podman|kubectl)(\\s+.*)?$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+
+    // ================================================================
+    // 第三层: 本地脚本执行
+    // 允许运行当前目录或相对路径下的脚本 (如 ./build.sh, ../test.py)
+    // ================================================================
+    "/^(\\s*|.*[\\|\\&\\;]\\s*)(\\.\\/|\\.\\.\\/|bash|sh|zsh|csh|fish)\\s+.*$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+
+    // ================================================================
+    // 第四层: 安全删除规则
+    // 仅允许删除: 构建目录、依赖缓存、临时文件、编译产物
+    // ================================================================
+    "/^(\\s*|.*[\\|\\&\\;]\\s*)rm\\s+(-rf\\s+|-r\\s+|-f\\s+)?(\\*|\\.\\/\\*|build.*|out|output|dist|target|obj|bin|lib|Debug|Release|x64|x86|__pycache__|\\.pytest_cache|\\.venv|venv|node_modules|\\.gradle|\\.m2|\\.cargo|\\.npm|.*\\.(tmp|log|bak|cache|swp|swo|old|orig)|.*\\.(o|a|so|dylib|dll|exe|d|elf|map|bin|hex|lst|dump|pdb|idb|ilk|exp)|.*\\.(cmake|ninja|ninja_deps|ninja_log)|CMakeCache\\.txt|build\\.ninja|compile_commands\\.json|Makefile|\\.DS_Store|Thumbs\\.db|\\/tmp\\/.*)(\\s.*)?$/": {
+      "approve": true,
+      "matchCommandLine": true
+    },
+
+    // ================================================================
+    // 第五层: 兜底拒绝
+    // 禁止任何未明确允许的删除操作, 防止 rm -rf / 或删除源代码
+    // ================================================================
+    "rm": false,
+    "/^(\\s*|.*[\\|\\&\\;]\\s*)rm\\s+.*$/": {
+      "approve": false,
+      "matchCommandLine": true
+    }
+  }
+}
