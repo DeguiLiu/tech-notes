@@ -2,7 +2,7 @@
 title: "告别手动输密码: 嵌入式 SSH/SCP 自动化方案"
 date: 2026-02-16T12:00:00
 draft: false
-categories: ["tools"]
+categories: ["misc"]
 tags: ["SSH", "SCP", "expect", "rsync", "ssh-config", "ProxyJump", "embedded", "Linux", "automation", "security"]
 summary: "嵌入式 Linux 开发中频繁需要在宿主机和目标板之间传输文件、远程调试。本文从实际需求出发，对比 Expect 脚本、sshpass、SSH 密钥认证三种自动化方案的实现与安全性，然后介绍 SSH Config、ProxyJump 跳板机、rsync 增量同步等进阶技术，构建一套完整的嵌入式远程开发工具链。"
 ShowToc: true
