@@ -414,7 +414,82 @@ CAN 帧很小 (8-64 字节)，但频率高 (1000+ msg/s)。SPMC 的 futex 广播
 
 总内存开销约 256KB，对于嵌入式 ARM-Linux 平台 (通常 512MB+ RAM) 完全可接受。
 
-## 9. 相关资源
+## 9. 进阶: JobPool 共享数据块流水线
+
+SPMC 通道解决了跨进程 1:N 数据分发，但工业场景中还有更复杂的需求:
+
+- 多个消费者共享同一份数据，最后一个完成后才释放内存
+- 数据需要经过多个处理阶段 (DAG 流水线)
+- 需要检测处理超时、上报故障
+
+newosp 的 `JobPool` 模块 (`job_pool.hpp`) 提供了这些能力:
+
+```
+DataDispatcher<BlockSize, MaxBlocks>
+  +-- JobPool (固定大小内存池, lock-free CAS alloc/release)
+  +-- Pipeline (静态 DAG: fan-out + serial)
+  +-- FaultReporter (背压 + 超时上报)
+```
+
+### 9.1 核心机制: 引用计数
+
+```
+Submit(block_id, refcount=1)
+  -> entry stage 执行
+  -> AddRef(2) for successors (logging + fusion)
+  -> Release() entry's ref
+  -> logging 执行 -> Release()
+  -> fusion 执行 -> Release() -> refcount=0 -> 回收到 free list
+```
+
+每个数据块有 `atomic<uint32_t> refcount`，消费者通过 `Release()` 递减。最后一个消费者使 refcount 降为 0 时，数据块自动回收。这比 SPMC 的 per-consumer tail 更灵活 -- 支持 DAG 拓扑而非仅 1:N 分发。
+
+### 9.2 与 SPMC 的关系
+
+两者定位不同，共存互补:
+
+| 维度 | ShmSpmcByteChannel | DataDispatcher (JobPool) |
+|------|--------------------|-----------------------|
+| 抽象层级 | 字节流传输 | 数据块生命周期管理 |
+| 数据共享 | 每消费者独立拷贝 | 引用计数零拷贝共享 |
+| 释放时机 | 消费者读完即推进 tail | 最后一个消费者 Release |
+| 流水线 | 无 | DAG (fan-out + pipeline) |
+| 超时检测 | 无 | 每块 deadline + 扫描 |
+| 适用场景 | 简单 1:N 分发 + 故障隔离 | 复杂流水线 + 生命周期管理 |
+
+简单场景 (纯分发，消费者独立处理) 用 SPMC。复杂场景 (多 stage 流水线，共享数据，超时检测) 用 JobPool。
+
+### 9.3 使用示例
+
+```cpp
+#include "osp/job_pool.hpp"
+
+// 创建 dispatcher: 16016B payload, 32 blocks
+osp::DataDispatcher<16016, 32> disp;
+osp::DataDispatcher<16016, 32>::Config cfg;
+cfg.name = "lidar_pipeline";
+cfg.default_timeout_ms = 500;
+cfg.backpressure_threshold = 4;
+disp.Init(cfg);
+
+// 配置 DAG: entry -> logging + fusion (fan-out)
+auto s_entry = disp.AddStage({"entry", nullptr, nullptr, 0});
+auto s_log = disp.AddStage({"logging", LogHandler, &log_ctx, 0});
+auto s_fus = disp.AddStage({"fusion", FusionHandler, &fus_ctx, 0});
+disp.AddEdge(s_entry, s_log);
+disp.AddEdge(s_entry, s_fus);
+disp.SetEntryStage(s_entry);
+
+// 生产: alloc -> fill -> submit (pipeline 自动执行)
+auto bid = disp.AllocBlock();
+FillLidarFrame(disp.GetBlockPayload(bid.value()), seq, ts);
+disp.SubmitBlock(bid.value(), kFrameDataSize);
+// logging 和 fusion 都处理完后，数据块自动回收
+```
+
+完整示例见 `examples/data_visitor_dispatcher/pipeline_demo.cpp`。
+
+## 10. 相关资源
 
 - newosp 项目: [github.com/DeguiLiu/newosp](https://github.com/DeguiLiu/newosp) (Apache-2.0)
 - SPMC 示例: [data_visitor_dispatcher](https://github.com/DeguiLiu/newosp/tree/main/examples/data_visitor_dispatcher)
