@@ -1,7 +1,7 @@
 ---
 title: "高级嵌入式软件工程师面试题: 架构设计与工程深度"
 date: 2025-01-01T08:00:00
-draft: true
+draft: false
 categories: ["interview"]
 tags: ["面试", "嵌入式", "C++", "RTOS", "架构设计"]
 summary: "20 道精选高级嵌入式软件工程师面试题，考察消息总线架构、RTOS 调度、内存管理、多核同步等核心能力。"

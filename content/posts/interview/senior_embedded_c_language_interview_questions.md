@@ -1,7 +1,7 @@
 ---
 title: "嵌入式 C 语言深度面试题: 系统与架构"
 date: 2025-01-02T08:00:00
-draft: true
+draft: false
 categories: ["interview"]
 tags: ["面试", "C语言", "嵌入式", "内存管理", "编译器"]
 summary: "高级嵌入式 C 语言面试题集，涵盖 volatile 本质、内存对齐、链接脚本、中断安全、DMA 一致性等底层核心知识。"
