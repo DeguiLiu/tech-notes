@@ -1,6 +1,6 @@
 ---
 title: "C 语言层次状态机框架: 从过程驱动到数据驱动的重构实践"
-date: 2026-02-16
+date: 2026-02-16T08:30:00
 draft: false
 categories: ["pattern"]
 tags: ["C", "state-machine", "HSM", "embedded", "MISRA-C", "design-pattern", "RT-Thread"]

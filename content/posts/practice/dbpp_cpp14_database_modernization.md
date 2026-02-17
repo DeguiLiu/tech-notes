@@ -1,6 +1,6 @@
 ---
 title: "数据库抽象层的 C++14 重写: 从手动内存管理到 RAII"
-date: 2026-02-16
+date: 2026-02-16T11:30:00
 draft: false
 categories: ["practice"]
 tags: ["C++14", "RAII", "move-semantics", "SQLite3", "embedded", "refactoring", "database"]

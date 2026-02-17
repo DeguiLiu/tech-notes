@@ -1,6 +1,6 @@
 ---
 title: "嵌入式配置序列化选型: struct/TLV/nanopb/capnproto 对比"
-date: 2026-02-16
+date: 2026-02-16T11:50:00
 draft: false
 categories: ["tools"]
 tags: ["C", "embedded", "serialization", "struct", "TLV", "capnproto", "nanopb", "protobuf", "Flash", "persistence", "zero-copy", "NvM"]

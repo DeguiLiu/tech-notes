@@ -1,6 +1,6 @@
 ---
 title: "轻量级 C++14 日志库设计: 可插拔后端与零依赖架构"
-date: 2026-02-15
+date: 2026-02-15T11:10:00
 draft: false
 categories: ["tools"]
 tags: ["ARM", "C++11", "C++14", "embedded", "lock-free", "logging", "performance"]

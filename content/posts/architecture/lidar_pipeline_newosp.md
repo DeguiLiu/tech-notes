@@ -1,6 +1,6 @@
 ---
 title: "激光雷达高吞吐数据处理 Pipeline: 模块化架构与 NEON 向量化"
-date: 2026-02-17
+date: 2026-02-17T08:20:00
 draft: false
 categories: ["architecture"]
 tags: ["C++17", "ARM", "embedded", "lock-free", "zero-copy", "pipeline", "lidar", "state-machine", "SPSC", "NEON", "SoA"]

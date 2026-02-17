@@ -1,6 +1,6 @@
 ---
 title: "嵌入式系统死锁防御: 从有序锁到无锁架构的工程实践"
-date: 2026-02-15
+date: 2026-02-15T09:30:00
 draft: false
 categories: ["performance"]
 tags: ["ARM", "C++17", "RTOS", "callback", "deadlock", "embedded", "lock-free", "message-bus", "newosp", "performance", "scheduler", "serial"]

@@ -1,6 +1,6 @@
 ---
 title: "如何设计嵌入式并发架构: newosp 的事件驱动 + 固定线程池方案"
-date: 2026-02-17
+date: 2026-02-17T08:30:00
 draft: false
 categories: ["architecture"]
 tags: ["newosp", "C++17", "concurrency", "event-driven", "lock-free", "MPSC", "SPSC", "epoll", "poll", "embedded", "ARM-Linux", "zero-allocation", "WorkerPool", "Executor", "IoPoller"]

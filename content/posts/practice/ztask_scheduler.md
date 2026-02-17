@@ -1,6 +1,6 @@
 ---
 title: "ztask: 零动态分配的裸机合作式任务调度器设计分析"
-date: 2026-02-15
+date: 2026-02-15T11:00:00
 draft: false
 categories: ["practice"]
 tags: ["ARM", "embedded", "scheduler", "cooperative-scheduling", "bare-metal", "zero-heap", "RTOS"]

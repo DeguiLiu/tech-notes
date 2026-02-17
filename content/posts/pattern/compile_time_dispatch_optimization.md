@@ -1,6 +1,6 @@
 ---
 title: "嵌入式系统中的编译期分发: 用模板消除虚函数开销"
-date: 2026-02-16
+date: 2026-02-16T08:50:00
 draft: false
 categories: ["pattern"]
 tags: ["C++17", "MISRA", "embedded", "newosp", "template", "compile-time", "performance", "CRTP"]

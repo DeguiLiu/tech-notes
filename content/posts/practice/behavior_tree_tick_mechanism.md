@@ -1,6 +1,6 @@
 ---
 title: "行为树 Tick 机制深度解析: 从原理到 bt-cpp 实践"
-date: 2026-02-16
+date: 2026-02-16T11:10:00
 draft: false
 categories: ["practice"]
 tags: ["behavior-tree", "embedded", "C++14", "cooperative-multitasking", "async", "architecture"]

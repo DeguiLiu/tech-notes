@@ -1,6 +1,6 @@
 ---
 title: "嵌入式线程间消息传递重构: 用 MCCC 无锁消息总线替代 mutex + priority_queue"
-date: 2026-02-16
+date: 2026-02-16T10:20:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "MCCC", "MPSC", "lock-free", "message-bus", "SendMessage", "PostMessage", "embedded", "ring-buffer", "priority", "CAS", "zero-heap"]

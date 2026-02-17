@@ -1,6 +1,6 @@
 ---
 title: "newosp: 面向工业嵌入式的 C++17 Header-Only 基础设施库"
-date: 2026-02-17
+date: 2026-02-17T10:00:00
 draft: false
 categories: ["practice"]
 tags: ["ARM", "C++17", "CRC", "LiDAR", "behavior-tree", "callback", "embedded", "lock-free", "message-bus", "newosp", "scheduler", "serial", "state-machine", "zero-copy"]

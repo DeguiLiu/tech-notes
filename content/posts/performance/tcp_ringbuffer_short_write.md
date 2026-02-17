@@ -1,6 +1,6 @@
 ---
 title: "TCP 非阻塞发送的 Short Write 问题: 环形缓冲区 + epoll 事件驱动方案"
-date: 2026-02-16
+date: 2026-02-16T10:50:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "TCP", "epoll", "ring-buffer", "SPSC", "short-write", "non-blocking", "ARM", "embedded", "zero-copy"]

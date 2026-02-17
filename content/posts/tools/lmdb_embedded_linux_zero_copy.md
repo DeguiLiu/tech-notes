@@ -1,6 +1,6 @@
 ---
 title: "LMDB 在嵌入式 Linux 上的实践: 零拷贝读取与内存映射 I/O"
-date: 2026-02-17
+date: 2026-02-17T10:10:00
 draft: false
 categories: ["tools"]
 tags: ["LMDB", "embedded", "ARM-Linux", "key-value", "database", "mmap", "zero-copy", "crash-safe", "Python", "cross-platform"]

@@ -1,6 +1,6 @@
 ---
 title: "newosp ospgen: YAML 驱动的嵌入式 C++17 零堆分配消息代码生成"
-date: 2026-02-16
+date: 2026-02-16T12:10:00
 draft: false
 categories: ["tools"]
 tags: ["C++17", "code-generation", "YAML", "Jinja2", "embedded", "ARM", "trivially-copyable", "zero-heap", "Protobuf", "FlatBuffers", "nanopb", "IDL", "static_assert", "std-variant", "newosp"]

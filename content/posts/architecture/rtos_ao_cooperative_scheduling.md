@@ -1,6 +1,6 @@
 ---
 title: "RTOS + Active Object 协同调度优化: 从浅层适配到深度融合"
-date: 2026-02-16
+date: 2026-02-16T08:20:00
 draft: false
 categories: ["architecture"]
 tags: ["RTOS", "Active-Object", "embedded", "real-time", "QP/C", "RT-Thread", "scheduling", "lock-free"]

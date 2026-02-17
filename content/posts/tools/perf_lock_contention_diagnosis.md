@@ -1,6 +1,6 @@
 ---
 title: "perf lock 锁竞争诊断: 从 futex 原理到生产定位实战"
-date: 2026-02-16
+date: 2026-02-16T12:20:00
 draft: false
 categories: ["tools"]
 tags: ["Linux", "perf", "perf-lock", "lock-contention", "mutex", "spinlock", "futex", "flame-graph", "off-cpu", "performance", "profiling", "BPF"]

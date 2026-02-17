@@ -1,6 +1,6 @@
 ---
 title: "嵌入式 C++17 设计模式实战: 零虚函数、零堆分配的编译期技术"
-date: 2026-02-16
+date: 2026-02-16T09:00:00
 draft: false
 categories: ["pattern"]
 tags: ["C++17", "CRTP", "MISRA", "RAII", "SBO", "constexpr", "design-pattern", "embedded", "lock-free", "newosp", "template", "type-erasure", "zero-allocation"]

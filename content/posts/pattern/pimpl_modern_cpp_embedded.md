@@ -1,6 +1,6 @@
 ---
 title: "PIMPL 的三种现代实现: 从堆分配到栈内联"
-date: 2026-02-17
+date: 2026-02-17T08:50:00
 draft: false
 categories: ["pattern"]
 tags: ["C++14", "PIMPL", "embedded", "compilation", "ABI", "design-pattern", "cache"]

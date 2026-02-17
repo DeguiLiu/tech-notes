@@ -1,6 +1,6 @@
 ---
 title: "对象池在嵌入式热路径上的三个隐性成本"
-date: 2026-02-17
+date: 2026-02-17T09:30:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "object-pool", "mutex", "shared_ptr", "memory-allocation", "embedded", "ARM-Linux", "zero-allocation", "SPSC", "ring-buffer", "performance"]

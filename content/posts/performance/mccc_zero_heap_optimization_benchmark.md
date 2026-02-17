@@ -1,6 +1,6 @@
 ---
 title: "MCCC 消息总线零堆分配优化与性能实测"
-date: 2026-02-17
+date: 2026-02-17T09:10:00
 draft: false
 categories: ["performance"]
 tags: ["ARM", "C++17", "MCCC", "MISRA", "callback", "embedded", "lock-free", "message-bus", "newosp", "performance", "zero-heap"]

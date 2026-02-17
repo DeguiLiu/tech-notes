@@ -1,6 +1,6 @@
 ---
 title: "告别手动输密码: 嵌入式 SSH/SCP 自动化方案"
-date: 2026-02-16
+date: 2026-02-16T12:00:00
 draft: false
 categories: ["tools"]
 tags: ["SSH", "SCP", "expect", "rsync", "ssh-config", "ProxyJump", "embedded", "Linux", "automation", "security"]

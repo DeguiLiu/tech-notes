@@ -1,6 +1,6 @@
 ---
 title: "C11 做不到的事: 10 项 C++17 语言级不可替代能力"
-date: 2026-02-17
+date: 2026-02-17T08:40:00
 draft: false
 categories: ["pattern"]
 tags: ["C++17", "C11", "embedded", "type-safety", "constexpr", "RAII", "lock-free"]

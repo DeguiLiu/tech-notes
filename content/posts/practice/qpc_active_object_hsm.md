@@ -1,6 +1,6 @@
 ---
 title: "QPC 框架深度解析: Active Object 与层次状态机的嵌入式实践"
-date: 2026-02-16
+date: 2026-02-16T11:40:00
 draft: false
 categories: ["practice"]
 tags: ["QPC", "Active-Object", "HSM", "RT-Thread", "RTOS", "embedded", "lock-free", "zero-copy", "state-machine", "SPSC", "CAS", "Run-to-Completion", "event-driven"]

@@ -1,6 +1,6 @@
 ---
 title: "嵌入式 Telnet 调试 Shell 重构: 纯 POSIX 轻量化实现"
-date: 2026-02-15
+date: 2026-02-15T11:30:00
 draft: false
 categories: ["tools"]
 tags: ["C++17", "callback", "embedded", "lock-free", "logging", "newosp", "state-machine"]

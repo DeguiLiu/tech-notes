@@ -1,6 +1,6 @@
 ---
 title: "无锁异步日志设计: Per-Thread SPSC 环形缓冲与分级路由"
-date: 2026-02-15
+date: 2026-02-15T09:50:00
 draft: false
 categories: ["performance"]
 tags: ["ARM", "C++14", "LiDAR", "embedded", "lock-free", "logging", "newosp", "performance"]

@@ -1,6 +1,6 @@
 ---
 title: "C 语言设计模式实战: 策略模式与状态模式的本质差异"
-date: 2026-02-16
+date: 2026-02-16T08:40:00
 draft: false
 categories: ["pattern"]
 tags: ["C", "design-pattern", "strategy-pattern", "state-pattern", "embedded", "vtable", "polymorphism"]

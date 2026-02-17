@@ -1,6 +1,6 @@
 ---
 title: "如何设计传感器数据流水线: newosp 事件驱动 + 零堆分配方案"
-date: 2026-02-16
+date: 2026-02-16T08:10:00
 draft: false
 categories: ["architecture"]
 tags: ["newosp", "C++17", "event-driven", "HSM", "lock-free", "MPSC", "SPSC", "zero-allocation", "state-machine", "ARM-Linux", "embedded", "pipeline", "sensor", "lidar"]

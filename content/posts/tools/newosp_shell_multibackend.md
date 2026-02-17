@@ -1,6 +1,6 @@
 ---
 title: "newosp 调试 Shell: 多后端架构与运行时控制命令设计"
-date: 2026-02-17
+date: 2026-02-17T10:20:00
 draft: false
 categories: ["tools"]
 tags: ["ARM", "C++17", "MISRA", "RTOS", "callback", "embedded", "lock-free", "memory-pool", "newosp", "serial", "state-machine", "zero-heap", "POSIX", "telnet", "debug"]

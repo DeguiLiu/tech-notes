@@ -1,6 +1,6 @@
 ---
 title: "Unix Domain Socket 实时性优化: 嵌入式 IPC 全链路调优"
-date: 2026-02-16
+date: 2026-02-16T11:00:00
 draft: false
 categories: ["performance"]
 tags: ["ARM", "Linux", "IPC", "Unix-Domain-Socket", "epoll", "SOCK_SEQPACKET", "SCHED_FIFO", "CPU-affinity", "zero-copy", "memfd", "fd-passing", "eventfd", "abstract-namespace", "io_uring", "real-time", "embedded", "RAII"]

@@ -1,6 +1,6 @@
 ---
 title: "多线程死锁与优先级反转实战: 从问题复现到工程解决方案"
-date: 2026-02-16
+date: 2026-02-16T10:00:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "deadlock", "priority-inversion", "mutex", "SCHED_FIFO", "PTHREAD_PRIO_INHERIT", "std::scoped_lock", "TSan", "ARM", "embedded", "RTOS", "lock-ordering", "re-entrancy"]

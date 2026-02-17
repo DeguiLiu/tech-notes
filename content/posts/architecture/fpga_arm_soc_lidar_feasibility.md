@@ -1,6 +1,6 @@
 ---
 title: "FPGA + ARM 双核 SoC 处理激光雷达点云的可行性分析"
-date: 2026-02-15
+date: 2026-02-15T08:10:00
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "CRC", "DMA", "FPGA", "LiDAR", "lock-free", "logging", "message-bus", "newosp", "performance", "scheduler", "serial", "state-machine", "zero-copy"]

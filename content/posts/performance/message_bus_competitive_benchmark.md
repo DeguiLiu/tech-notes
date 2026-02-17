@@ -1,6 +1,6 @@
 ---
 title: "C++ 消息总线性能实测: 6 个开源方案的吞吐量与延迟对比"
-date: 2026-02-15
+date: 2026-02-15T10:20:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "MCCC", "embedded", "lock-free", "message-bus", "performance", "callback", "zero-copy"]

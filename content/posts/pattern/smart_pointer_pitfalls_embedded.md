@@ -1,6 +1,6 @@
 ---
 title: "嵌入式 C++ 智能指针的五个陷阱与零堆分配替代方案"
-date: 2026-02-16
+date: 2026-02-16T09:10:00
 draft: false
 categories: ["pattern"]
 tags: ["C++17", "smart-pointer", "embedded", "memory-management", "RAII", "lock-free", "ARM", "newosp"]

@@ -1,6 +1,6 @@
 ---
 title: "从 C++14 到 C++17: mccc-bus 的四项零堆分配改造"
-date: 2026-02-17
+date: 2026-02-17T09:50:00
 draft: false
 categories: ["practice"]
 tags: ["C++17", "MCCC", "FixedFunction", "lock-free", "message-bus", "zero-copy", "variant", "embedded"]

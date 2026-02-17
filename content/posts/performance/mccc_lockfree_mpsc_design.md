@@ -1,6 +1,6 @@
 ---
 title: "Lock-free MPSC 消息总线的设计与实现: 从 Ring Buffer 到零堆分配"
-date: 2026-02-15
+date: 2026-02-15T10:00:00
 draft: false
 categories: ["performance"]
 tags: ["ARM", "C++17", "MCCC", "MISRA", "embedded", "lock-free", "message-bus", "performance", "zero-copy", "ring-buffer"]

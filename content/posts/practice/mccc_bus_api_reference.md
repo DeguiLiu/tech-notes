@@ -1,6 +1,6 @@
 ---
 title: "MCCC 消息总线 API 全参考: 类型、接口与配置"
-date: 2026-02-15
+date: 2026-02-15T10:40:00
 draft: false
 categories: ["practice"]
 tags: ["C++14", "C++17", "MCCC", "callback", "embedded", "lock-free", "message-bus", "performance", "zero-copy"]

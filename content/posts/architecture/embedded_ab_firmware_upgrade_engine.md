@@ -1,6 +1,6 @@
 ---
 title: "嵌入式 A/B 分区固件升级引擎: HSM 状态机 + 三层掉电保护"
-date: 2026-02-17
+date: 2026-02-17T08:00:00
 draft: false
 categories: ["architecture"]
 tags: ["newosp", "C++17", "HSM", "firmware-upgrade", "A/B-partition", "power-loss-safety", "OTA", "embedded", "ARM-Linux", "zero-allocation", "Ed25519", "mbedtls", "U-Boot", "state-machine"]

@@ -1,6 +1,6 @@
 ---
 title: "C++17 并行矩阵乘法: 从单线程到多进程共享内存的性能实测"
-date: 2026-02-15
+date: 2026-02-15T10:30:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "embedded", "message-bus", "newosp", "performance", "shared-memory", "thread-pool", "parallel-computing"]

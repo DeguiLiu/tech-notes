@@ -1,6 +1,6 @@
 ---
 title: "Clang-Tidy 嵌入式 C++17 实战: 从配置到 CI 集成的完整指南"
-date: 2026-02-16
+date: 2026-02-16T11:20:00
 draft: false
 categories: ["practice"]
 tags: ["C++17", "clang-tidy", "static-analysis", "embedded", "CMake", "CI", "ARM", "code-quality"]

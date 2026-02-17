@@ -1,6 +1,6 @@
 ---
 title: "RTOS vs Linux 异构选型: 三核 SoC 上的双系统设计"
-date: 2026-02-15
+date: 2026-02-15T08:20:00
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "CRC", "DMA", "LiDAR", "RTOS", "heterogeneous", "lock-free", "logging", "message-bus", "newosp", "performance", "scheduler", "serial", "state-machine", "zero-copy"]

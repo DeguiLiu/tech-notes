@@ -1,6 +1,6 @@
 ---
 title: "嵌入式串口协议栈设计: 粘包、缓冲区滑窗与层次状态机"
-date: 2026-02-16
+date: 2026-02-16T12:40:00
 draft: false
 categories: ["tools"]
 tags: ["C99", "CRC", "FSM", "HSM", "MCU", "RTOS", "RT-Thread", "SPSC", "UART", "bare-metal", "embedded", "lock-free", "protocol", "ring-buffer", "state-machine"]

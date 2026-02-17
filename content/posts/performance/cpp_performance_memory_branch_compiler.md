@@ -1,6 +1,6 @@
 ---
 title: "C/C++ 性能优化实战: 内存布局、分支预测与编译器调优"
-date: 2026-02-16
+date: 2026-02-16T09:40:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "ARM", "embedded", "performance", "RTOS", "state-machine", "cache", "lock-free"]

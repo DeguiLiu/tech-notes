@@ -1,6 +1,6 @@
 ---
 title: "将 RT-Thread MSH 移植到 Linux: 嵌入式调试 Shell 的多后端设计"
-date: 2026-02-15
+date: 2026-02-15T11:20:00
 draft: false
 categories: ["tools"]
 tags: ["ARM", "C++17", "RTOS", "embedded", "lock-free", "newosp", "serial"]

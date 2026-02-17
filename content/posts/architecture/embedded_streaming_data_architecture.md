@@ -1,6 +1,6 @@
 ---
 title: "嵌入式流式数据处理架构: 传感器到网络输出的全链路设计"
-date: 2026-02-17
+date: 2026-02-17T08:10:00
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "C++17", "CRC", "DMA", "LiDAR", "MISRA", "behavior-tree", "callback", "embedded", "lock-free", "logging", "memory-pool", "message-bus", "newosp", "performance", "scheduler", "serial", "state-machine", "zero-copy"]

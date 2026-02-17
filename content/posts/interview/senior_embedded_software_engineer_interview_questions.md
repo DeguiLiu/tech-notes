@@ -1,6 +1,6 @@
 ---
 title: "高级嵌入式软件工程师面试题: 架构设计与工程深度"
-date: 2025-01-01
+date: 2025-01-01T08:00:00
 draft: true
 categories: ["interview"]
 tags: ["面试", "嵌入式", "C++", "RTOS", "架构设计"]

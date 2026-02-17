@@ -1,6 +1,6 @@
 ---
 title: "嵌入式消息总线的回调优化: 从 std::function 到零开销分发"
-date: 2026-02-15
+date: 2026-02-15T09:20:00
 draft: false
 categories: ["performance"]
 tags: ["ARM", "callback", "embedded", "lock-free", "message-bus", "performance"]

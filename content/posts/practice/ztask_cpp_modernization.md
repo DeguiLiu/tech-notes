@@ -1,6 +1,6 @@
 ---
 title: "ztask 调度器的 C++14 重写: 类型安全、RAII 与模板化改造"
-date: 2026-02-15
+date: 2026-02-15T10:50:00
 draft: false
 categories: ["practice"]
 tags: ["C++14", "CRC", "RTOS", "callback", "embedded", "lock-free", "memory-pool", "performance", "scheduler"]

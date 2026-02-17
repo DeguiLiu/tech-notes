@@ -1,6 +1,6 @@
 ---
 title: "perf 性能分析实战: 从硬件计数器到火焰图的完整工作流"
-date: 2026-02-16
+date: 2026-02-16T12:30:00
 draft: false
 categories: ["tools"]
 tags: ["Linux", "perf", "PMU", "flame-graph", "IPC", "cache-miss", "ARM", "embedded", "performance", "profiling", "perf-stat", "perf-record", "perf-sched"]

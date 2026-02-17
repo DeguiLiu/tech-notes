@@ -1,6 +1,6 @@
 ---
 title: "双核 ARM SoC 上跑 RT-Thread SMP: MMU、Cache 与调度实战"
-date: 2026-02-15
+date: 2026-02-15T08:00:00
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "CRC", "DMA", "FPGA", "LiDAR", "RTOS", "lock-free", "logging", "performance", "scheduler", "state-machine"]

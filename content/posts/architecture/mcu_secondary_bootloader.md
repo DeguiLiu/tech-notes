@@ -1,6 +1,6 @@
 ---
 title: "MCU 二级 Bootloader 设计: 状态机驱动的 A/B 分区 OTA 与安全启动"
-date: 2026-02-16
+date: 2026-02-16T08:00:00
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "CRC", "RTOS", "embedded", "state-machine", "serial", "performance"]

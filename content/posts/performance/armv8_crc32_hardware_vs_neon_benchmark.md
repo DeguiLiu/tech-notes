@@ -1,6 +1,6 @@
 ---
 title: "ARMv8 CRC 性能实测: 硬件指令快 8 倍, NEON 反而更慢"
-date: 2026-02-15
+date: 2026-02-15T08:50:00
 draft: false
 categories: ["performance"]
 tags: ["ARM", "ARMv8", "CRC32", "NEON", "SIMD", "performance", "embedded"]

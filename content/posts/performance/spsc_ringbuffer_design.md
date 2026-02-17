@@ -1,6 +1,6 @@
 ---
 title: "SPSC 无锁环形缓冲区设计剖析: 从原理到每一行代码的工程抉择"
-date: 2026-02-16
+date: 2026-02-16T10:40:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "SPSC", "ring-buffer", "lock-free", "wait-free", "cache-line", "false-sharing", "memory-order", "acquire-release", "ARM", "embedded", "MCU", "FakeTSO", "memcpy", "batch", "trivially-copyable", "object-pool"]

@@ -1,6 +1,6 @@
 ---
 title: "C++ 单例模式的线程安全实现: 从 DCLP 的历史缺陷到 C++11 的修复"
-date: 2026-02-16
+date: 2026-02-16T09:50:00
 draft: false
 categories: ["performance"]
 tags: ["C++11", "C++17", "DCLP", "MISRA", "acquire-release", "atomic", "double-checked-locking", "embedded", "memory-order", "mutex", "singleton", "thread-safety"]
