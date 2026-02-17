@@ -3,8 +3,8 @@ title: "设计文档画图工具选型"
 date: 2026-02-17T10:30:00
 draft: false
 categories: ["misc"]
-tags: ["工具链", "文档工程", "Mermaid", "draw.io", "PlantUML"]
-summary: "从部署模式、版本管理、CI/CD 集成等工程实践维度对比 Mermaid、draw.io、PlantUML、飞书画图，给出轻量级场景与复杂高保真场景的选型建议。"
+tags: ["工具链", "文档工程", "Mermaid", "draw.io"]
+summary: "从部署模式、版本管理、CI/CD 集成等工程实践维度对比 Mermaid、draw.io、飞书画图，给出轻量级场景与复杂高保真场景的选型建议。"
 ---
 
 ## 问题背景
@@ -20,52 +20,22 @@ summary: "从部署模式、版本管理、CI/CD 集成等工程实践维度对�
 
 ## 工具对比矩阵
 
-| 维度 | Mermaid | draw.io | PlantUML | 飞书画图 |
-|------|---------|---------|----------|----------|
-| 部署模式 | 纯文本 (JS 渲染) | 桌面/Web/VSCode | Java 运行时 | 在线 SaaS |
-| 收费模式 | 开源免费 | 开源免费 | 开源免费 | 企业版收费 |
-| 导出格式 | SVG/PNG (需工具链) | SVG/PNG/PDF | SVG/PNG | PNG (有水印) |
-| Markdown 集成 | 原生支持 (代码块) | 需嵌入图片 | 需嵌入图片 | 需嵌入图片 |
-| 版本管理 | Git 友好 (纯文本) | .drawio XML 可 diff | .puml 文本可 diff | 不支持 |
-| 编辑方式 | 代码 | 拖拽 | 代码 | 拖拽 |
-| 学习曲线 | 低 (语法简单) | 低 (所见即所得) | 中 (语法复杂) | 低 |
-| 复杂图形能力 | 弱 (受语法限制) | 强 (自由布局) | 中 (布局算法) | 中 |
-| CI/CD 集成 | 易 (mermaid-cli) | 中 (headless 导出) | 易 (plantuml.jar) | 不支持 |
-| 协作能力 | 代码审查 | 本地文件共享 | 代码审查 | 实时协作 |
+| 维度 | Mermaid | draw.io | 飞书画图 |
+|------|---------|---------|----------|
+| 部署模式 | 纯文本 (JS 渲染) | 桌面/Web/VSCode | 在线 SaaS |
+| 收费模式 | 开源免费 | 开源免费 | 企业版收费 |
+| 导出格式 | SVG/PNG (需工具链) | SVG/PNG/PDF | PNG (有水印) |
+| Markdown 集成 | 原生支持 (代码块) | 需嵌入图片 | 需嵌入图片 |
+| 版本管理 | Git 友好 (纯文本) | .drawio XML 可 diff | 不支持 |
+| 编辑方式 | 代码 | 拖拽 | 拖拽 |
+| 学习曲线 | 低 (语法简单) | 低 (所见即所得) | 低 |
+| 复杂图形能力 | 弱 (受语法限制) | 强 (自由布局) | 中 |
+| CI/CD 集成 | 易 (mermaid-cli) | 中 (headless 导出) | 不支持 |
+| 协作能力 | 代码审查 | 本地文件共享 | 实时协作 |
 
 ## 核心差异分析
 
-### 1. 版本管理友好性
-
-**Mermaid 和 PlantUML 的优势**：纯文本格式天然适配 Git 工作流。
-
-```mermaid
-graph TD
-    A[需求分析] --> B[架构设计]
-    B --> C[详细设计]
-    C --> D[编码实现]
-    D --> E[测试验证]
-    E --> F{是否通过}
-    F -->|是| G[发布上线]
-    F -->|否| C
-```
-
-上述 Mermaid 代码可直接嵌入 Markdown，Git diff 清晰展示逻辑变更：
-
-```diff
-- A[需求分析] --> B[架构设计]
-+ A[需求分析] --> B[概要设计]
-+ B --> B1[模块划分]
-```
-
-**draw.io 的妥协方案**：`.drawio` 文件本质是 XML，虽然可 diff，但可读性差。实践中建议：
-
-- 关键架构图用 draw.io 绘制（视觉表现力优先）
-- 导出 SVG 提交到 `docs/diagrams/` 目录
-- `.drawio` 源文件单独存放在 `docs/diagrams/src/`
-- Git LFS 管理二进制导出文件（PNG/PDF）
-
-### 2. CI/CD 自动化渲染
+### 1. CI/CD 自动化渲染
 
 **Mermaid 工具链集成**：
 
@@ -83,7 +53,7 @@ mmdc -i docs/architecture.mmd -o docs/architecture.svg
     args: -i docs/architecture.mmd -o docs/architecture.svg
 ```
 
-### 3. 复杂图形表现力
+### 2. 复杂图形表现力
 
 **Mermaid 的局限性**：
 
@@ -97,9 +67,9 @@ mmdc -i docs/architecture.mmd -o docs/architecture.svg
 
 **典型案例**：嵌入式系统硬件连接图、复杂网络拓扑、高保真 UI 原型。
 
-### 4. 团队协作模式
+### 3. 团队协作模式
 
-**代码审查驱动（Mermaid/PlantUML）**：图形变更通过 Pull Request 审查，评论直接关联到代码行，适合分布式团队异步协作。
+**代码审查驱动（Mermaid）**：图形变更通过 Pull Request 审查，评论直接关联到代码行，适合分布式团队异步协作。
 
 **实时协作驱动（飞书画图）**：多人同时编辑，冲突自动合并，适合头脑风暴和快速原型，但无法纳入代码仓库版本管理。
 
@@ -117,10 +87,7 @@ graph TD
     Q2 -->|复杂| Drawio[draw.io]
 
     Q3 -->|是| Mermaid[Mermaid]
-    Q3 -->|否| Q4{是否需要 UML 标准}
-
-    Q4 -->|是| PlantUML[PlantUML]
-    Q4 -->|否| Mermaid
+    Q3 -->|否| Mermaid
 ```
 
 ## 实践建议
@@ -146,7 +113,7 @@ docs/
 
 ### 2. 工具链配置
 
-**VSCode 插件推荐**：Mermaid Preview、Draw.io Integration、PlantUML
+**VSCode 插件推荐**：Mermaid Preview、Draw.io Integration
 
 **Pre-commit Hook**：
 
@@ -173,13 +140,8 @@ done
 | 架构设计文档 | Mermaid | Markdown 原生集成，版本管理友好 |
 | 详细设计评审 | draw.io | 高保真表现，支持复杂布局 |
 | API 时序图 | Mermaid | 语法简洁，自动布局 |
-| 状态机设计 | PlantUML | UML 标准，支持嵌套状态 |
 | 硬件连接图 | draw.io | 自定义图标，精确布局 |
 | 快速原型讨论 | 飞书画图 | 实时协作，无需本地工具 |
-
-## AI 辅助图表生成
-
-AI 工具（如 GitHub Copilot、Claude）可以从代码或 YAML 文件自动生成 Mermaid 图表，将文档从手动维护转变为自动维护的资产。
 
 ## Mermaid 性能与限制
 
@@ -199,8 +161,6 @@ AI 工具（如 GitHub Copilot、Claude）可以从代码或 YAML 文件自动�
 - 优势：专业表现力，自由布局，丰富图标库
 - 代价：需要额外的版本管理策略
 
-**不推荐 PlantUML**：学习曲线陡峭（语法复杂）、布局算法不如 Mermaid 直观、仅在强制要求 UML 标准时使用。
-
 **不推荐飞书画图用于正式文档**：无法纳入代码仓库、导出格式受限（PNG 有水印）、仅适合临时讨论和头脑风暴。
 
 ## 参考资源
@@ -208,4 +168,3 @@ AI 工具（如 GitHub Copilot、Claude）可以从代码或 YAML 文件自动�
 - Mermaid 官方文档: https://mermaid.js.org/
 - draw.io 桌面版: https://github.com/jgraph/drawio-desktop
 - mermaid-cli: https://github.com/mermaid-js/mermaid-cli
-- PlantUML: https://plantuml.com/
