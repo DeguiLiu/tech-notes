@@ -19,7 +19,6 @@ CATEGORIES = [
     ("performance", "性能优化"),
     ("practice", "工程实践"),
     ("pattern", "设计模式"),
-    ("tools", "开发工具"),
     ("interview", "面试题"),
     ("misc", "杂项"),
 ]

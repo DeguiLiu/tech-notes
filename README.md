@@ -9,9 +9,8 @@ architecture/       -- 架构设计 (10 篇)
 performance/        -- 性能优化 (27 篇)
 practice/           -- 工程实践 (10 篇)
 pattern/            -- 设计模式 (8 篇)
-tools/              -- 开发工具 (10 篇)
 interview/          -- 面试题 (2 篇)
-misc/               -- 杂项 (7 篇)
+misc/               -- 杂项 (17 篇)
 ```
 
 共 **74** 篇文章 (74 篇公开, 0 篇草稿)
@@ -93,21 +92,6 @@ misc/               -- 杂项 (7 篇)
 | [c_hsm_data_driven_framework.md](pattern/c_hsm_data_driven_framework.md) | C 语言层次状态机框架: 从过程驱动到数据驱动的重构实践 | 2026-02-16T08:30:00 |
 | [c_oop_nginx_modular_architecture.md](pattern/c_oop_nginx_modular_architecture.md) | C 语言如何实现面向对象: Nginx 模块化架构源码解读 | 2026-02-15T08:30:00 |
 
-### tools/ -- 开发工具 (10 篇)
-
-| 文件 | 标题 | 日期 |
-|------|------|------|
-| [newosp_shell_multibackend.md](tools/newosp_shell_multibackend.md) | newosp 调试 Shell: 多后端架构与运行时控制命令设计 | 2026-02-17T10:20:00 |
-| [lmdb_embedded_linux_zero_copy.md](tools/lmdb_embedded_linux_zero_copy.md) | LMDB 在嵌入式 Linux 上的实践: 零拷贝读取与内存映射 I/O | 2026-02-17T10:10:00 |
-| [uart_protocol_parsing.md](tools/uart_protocol_parsing.md) | 嵌入式串口协议栈设计: 粘包、缓冲区滑窗与层次状态机 | 2026-02-16T12:40:00 |
-| [perf_performance_analysis.md](tools/perf_performance_analysis.md) | perf 性能分析实战: 从硬件计数器到火焰图的完整工作流 | 2026-02-16T12:30:00 |
-| [perf_lock_contention_diagnosis.md](tools/perf_lock_contention_diagnosis.md) | perf lock 锁竞争诊断: 从 futex 原理到生产定位实战 | 2026-02-16T12:20:00 |
-| [newosp_ospgen_codegen.md](tools/newosp_ospgen_codegen.md) | newosp ospgen: YAML 驱动的嵌入式 C++17 零堆分配消息代码生成 | 2026-02-16T12:10:00 |
-| [embedded_config_serialization.md](tools/embedded_config_serialization.md) | 嵌入式配置序列化选型: struct/TLV/nanopb/capnproto 对比 | 2026-02-16T11:50:00 |
-| [telnet_debug_shell_posix_refactoring.md](tools/telnet_debug_shell_posix_refactoring.md) | 嵌入式 Telnet 调试 Shell 重构: 纯 POSIX 轻量化实现 | 2026-02-15T11:30:00 |
-| [rtthread_msh_linux_multibackend.md](tools/rtthread_msh_linux_multibackend.md) | 将 RT-Thread MSH 移植到 Linux: 嵌入式调试 Shell 的多后端设计 | 2026-02-15T11:20:00 |
-| [cpp14_pluggable_log_library_design.md](tools/cpp14_pluggable_log_library_design.md) | 轻量级 C++14 日志库设计: 可插拔后端与零依赖架构 | 2026-02-15T11:10:00 |
-
 ### interview/ -- 面试题 (2 篇)
 
 | 文件 | 标题 | 日期 |
@@ -115,7 +99,7 @@ misc/               -- 杂项 (7 篇)
 | [senior_embedded_c_language_interview_questions.md](interview/senior_embedded_c_language_interview_questions.md) | 嵌入式 C 语言深度面试题: 系统与架构 | 2025-01-02T08:00:00 |
 | [senior_embedded_software_engineer_interview_questions.md](interview/senior_embedded_software_engineer_interview_questions.md) | 高级嵌入式软件工程师面试题: 架构设计与工程深度 | 2025-01-01T08:00:00 |
 
-### misc/ -- 杂项 (7 篇)
+### misc/ -- 杂项 (17 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
@@ -123,9 +107,19 @@ misc/               -- 杂项 (7 篇)
 | [git_advanced_workflow_guide.md](misc/git_advanced_workflow_guide.md) | Git 高级工作流完全指南 | 2026-02-17T11:20:00+08:00 |
 | [vmware_sogou_focus_fix.md](misc/vmware_sogou_focus_fix.md) | VMware 虚拟机搜狗输入法焦点跳转问题分析与解决 | 2026-02-17T11:00:00 |
 | [copilot_terminal_auto_approve.md](misc/copilot_terminal_auto_approve.md) | VS Code Copilot 终端命令自动审批的安全配置 | 2026-02-17T10:50:00 |
-| [vscode_remote_dev_setup.md](misc/vscode_remote_dev_setup.md) | VS Code 远程开发环境配置实战 | 2026-02-17T10:40:00 |
+| [vscode_remote_dev_setup.md](misc/vscode_remote_dev_setup.md) | 嵌入式 C++ 远程开发环境: 从 SSH 到交叉调试 | 2026-02-17T10:40:00 |
 | [design_diagram_tool_selection.md](misc/design_diagram_tool_selection.md) | 设计文档画图工具选型 | 2026-02-17T10:30:00 |
+| [newosp_shell_multibackend.md](misc/newosp_shell_multibackend.md) | newosp 调试 Shell: 多后端架构与运行时控制命令设计 | 2026-02-17T10:20:00 |
+| [lmdb_embedded_linux_zero_copy.md](misc/lmdb_embedded_linux_zero_copy.md) | LMDB 在嵌入式 Linux 上的实践: 零拷贝读取与内存映射 I/O | 2026-02-17T10:10:00 |
+| [uart_protocol_parsing.md](misc/uart_protocol_parsing.md) | 嵌入式串口协议栈设计: 粘包、缓冲区滑窗与层次状态机 | 2026-02-16T12:40:00 |
+| [perf_performance_analysis.md](misc/perf_performance_analysis.md) | perf 性能分析实战: 从硬件计数器到火焰图的完整工作流 | 2026-02-16T12:30:00 |
+| [perf_lock_contention_diagnosis.md](misc/perf_lock_contention_diagnosis.md) | perf lock 锁竞争诊断: 从 futex 原理到生产定位实战 | 2026-02-16T12:20:00 |
+| [newosp_ospgen_codegen.md](misc/newosp_ospgen_codegen.md) | newosp ospgen: YAML 驱动的嵌入式 C++17 零堆分配消息代码生成 | 2026-02-16T12:10:00 |
 | [embedded_ssh_scp_automation.md](misc/embedded_ssh_scp_automation.md) | 告别手动输密码: 嵌入式 SSH/SCP 自动化方案 | 2026-02-16T12:00:00 |
+| [embedded_config_serialization.md](misc/embedded_config_serialization.md) | 嵌入式配置序列化选型: struct/TLV/nanopb/capnproto 对比 | 2026-02-16T11:50:00 |
+| [telnet_debug_shell_posix_refactoring.md](misc/telnet_debug_shell_posix_refactoring.md) | 嵌入式 Telnet 调试 Shell 重构: 纯 POSIX 轻量化实现 | 2026-02-15T11:30:00 |
+| [rtthread_msh_linux_multibackend.md](misc/rtthread_msh_linux_multibackend.md) | 将 RT-Thread MSH 移植到 Linux: 嵌入式调试 Shell 的多后端设计 | 2026-02-15T11:20:00 |
+| [cpp14_pluggable_log_library_design.md](misc/cpp14_pluggable_log_library_design.md) | 轻量级 C++14 日志库设计: 可插拔后端与零依赖架构 | 2026-02-15T11:10:00 |
 
 ## 关联项目
 

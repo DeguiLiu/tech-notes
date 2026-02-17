@@ -20,7 +20,7 @@ summary: "一句话摘要，150 字以内"
 - `title`: 必填，双引号包裹
 - `date`: 必填，ISO 格式 (YYYY-MM-DD)
 - `draft`: 必填，`true` 表示草稿不公开
-- `categories`: 必填，只能是 `architecture` / `performance` / `practice` / `pattern` / `tools` / `interview` / `misc` 之一
+- `categories`: 必填，只能是 `architecture` / `performance` / `practice` / `pattern` / `interview` / `misc` 之一
 - `tags`: 必填，至少 2 个标签
 - `summary`: 必填，简明扼要描述文章核心内容
 
@@ -67,9 +67,8 @@ FPGA + ARM 双核 SoC 处理激光雷达点云的可行性分析
 | `content/posts/performance/` | performance | 性能基准、优化实战、并发编程 |
 | `content/posts/practice/` | practice | 项目实战、框架分析、工程经验 |
 | `content/posts/pattern/` | pattern | 设计模式、语言特性、编程范式 |
-| `content/posts/tools/` | tools | 开发工具、调试设施、基础设施库 |
 | `content/posts/interview/` | interview | 面试题集、技术考察 |
-| `content/posts/misc/` | misc | 未归类的技术笔记和杂项内容 |
+| `content/posts/misc/` | misc | 开发工具、调试设施、未归类的技术笔记 |
 
 - 每个目录包含 `_index.md` 作为分类首页
 - 文章的 `categories` 字段必须与所在目录一致

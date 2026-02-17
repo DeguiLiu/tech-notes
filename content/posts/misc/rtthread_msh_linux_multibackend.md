@@ -2,7 +2,7 @@
 title: "将 RT-Thread MSH 移植到 Linux: 嵌入式调试 Shell 的多后端设计"
 date: 2026-02-15T11:20:00
 draft: false
-categories: ["tools"]
+categories: ["misc"]
 tags: ["ARM", "C++17", "RTOS", "embedded", "lock-free", "newosp", "serial"]
 summary: "RT-Thread 的 MSH (Micro Shell) 是嵌入式领域最成功的命令行交互组件之一。本文剖析 MSH 的核心设计理念，讨论在嵌入式 Linux 上实现同等功能的三种方案 (Embedded CLI 移植、newosp shell、自研 embsh)，并重点介绍 embsh 如何在一个纯头文件库中融合多后端 I/O、telnet 协议、认证、历史导航和 Tab 补全。"
 ShowToc: true

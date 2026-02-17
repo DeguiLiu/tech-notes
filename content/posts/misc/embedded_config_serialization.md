@@ -2,7 +2,7 @@
 title: "嵌入式配置序列化选型: struct/TLV/nanopb/capnproto 对比"
 date: 2026-02-16T11:50:00
 draft: false
-categories: ["tools"]
+categories: ["misc"]
 tags: ["C", "embedded", "serialization", "struct", "TLV", "capnproto", "nanopb", "protobuf", "Flash", "persistence", "zero-copy", "NvM"]
 summary: "嵌入式设备的配置数据需要在 Flash/NvM 与内存之间可靠存取。本文从最简的裸 struct memcpy 出发，逐级递进到自定义 TLV、nanopb (Protocol Buffers C 实现) 和 c-capnproto (零拷贝固定布局)，形成四档方案对比。重点分析各方案在版本兼容、读写性能、维护成本上的取舍，并结合 Flash 扇区擦除特性论证为何整体重写并非性能瓶颈。"
 ShowToc: true

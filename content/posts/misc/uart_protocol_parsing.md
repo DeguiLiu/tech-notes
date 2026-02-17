@@ -2,7 +2,7 @@
 title: "嵌入式串口协议栈设计: 粘包、缓冲区滑窗与层次状态机"
 date: 2026-02-16T12:40:00
 draft: false
-categories: ["tools"]
+categories: ["misc"]
 tags: ["C99", "CRC", "FSM", "HSM", "MCU", "RTOS", "RT-Thread", "SPSC", "UART", "bare-metal", "embedded", "lock-free", "protocol", "ring-buffer", "state-machine"]
 summary: "串口协议解析是嵌入式系统中最基础也最容易被忽视的工程问题。本文基于一个完整的 Linux 模拟工程，深入对比缓冲区滑窗扫描与层次状态机（HSM）两种解析架构，覆盖粘包处理、ISR 设计、环形缓冲区、无锁 SPSC 队列、CRC-CCITT 校验、错误恢复等工程细节，并分别讨论裸机（super-loop）和 RT-Thread RTOS 平台的集成方案。"
 ShowToc: true

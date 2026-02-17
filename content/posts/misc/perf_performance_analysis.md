@@ -2,7 +2,7 @@
 title: "perf 性能分析实战: 从硬件计数器到火焰图的完整工作流"
 date: 2026-02-16T12:30:00
 draft: false
-categories: ["tools"]
+categories: ["misc"]
 tags: ["Linux", "perf", "PMU", "flame-graph", "IPC", "cache-miss", "ARM", "embedded", "performance", "profiling", "perf-stat", "perf-record", "perf-sched"]
 summary: "perf 是 Linux 内核自带的性能分析利器，但多数开发者只停留在 perf top 层面。本文以嵌入式 ARM-Linux 实战为背景，从 PMU 硬件计数器原理出发，系统讲解 perf stat（IPC/缓存/分支预测）、perf record + 火焰图（On-CPU/Off-CPU）、perf sched（调度延迟）三大核心工作流，并给出 ARM 平台缓存访存分析方法和自动化监控脚本。"
 ShowToc: true
