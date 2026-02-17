@@ -298,24 +298,6 @@ jobs                                              # 查看后台任务
 bg                                                # 将暂停的任务转到后台继续运行
 ```
 
-## 会话管理
-
-### tmux 常用操作
-
-```bash
-tmux new -s session_name        # 创建新会话
-tmux attach -t session_name     # 附加到会话
-tmux kill-session -t session_name    # 杀死会话
-```
-
-### screen 常用操作
-
-```bash
-screen -S session_name          # 创建新会话
-screen -r session_name          # 附加到会话
-screen -X -S session_name quit  # 杀死会话
-```
-
 ## 自动化脚本
 
 ### 循环执行命令
