@@ -2,7 +2,7 @@
 title: "LMDB 在嵌入式 Linux 上的实践: 零拷贝读取与内存映射 I/O"
 date: 2026-02-17T10:10:00
 draft: false
-categories: ["misc"]
+categories: ["practice"]
 tags: ["LMDB", "embedded", "ARM-Linux", "key-value", "database", "mmap", "zero-copy", "crash-safe", "Python", "cross-platform"]
 summary: "LMDB 是基于 B+ 树 + mmap 的嵌入式 KV 数据库，编译产物 < 50KB，零拷贝读取，CoW 断电安全。本文从嵌入式 Linux 视角评估 LMDB 的适用场景（标定数据、设备配置、OTA 元数据）、架构原理、工业级代码质量、加密方案，以及跨平台 Python 工具链在工厂标定工位中的实际应用。"
 ShowToc: true

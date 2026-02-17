@@ -2,7 +2,7 @@
 title: "perf lock 锁竞争诊断: 从 futex 原理到生产定位实战"
 date: 2026-02-16T12:20:00
 draft: false
-categories: ["misc"]
+categories: ["performance"]
 tags: ["Linux", "perf", "perf-lock", "lock-contention", "mutex", "spinlock", "futex", "flame-graph", "off-cpu", "performance", "profiling", "BPF"]
 summary: "以 perf lock 为主线的锁竞争诊断实战。从 Linux mutex 的三条路径（fast/mid/slow）和 futex 内核机制出发，详解 perf lock contention 的每个输出字段含义，演示调用栈分析、锁持有者追踪、类型过滤等进阶用法，通过一个完整案例展示从「发现 95% 竞争率」到「无锁架构 3.6x 吞吐提升」的诊断全过程。"
 ShowToc: true

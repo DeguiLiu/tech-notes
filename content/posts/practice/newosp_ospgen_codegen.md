@@ -2,7 +2,7 @@
 title: "newosp ospgen: YAML 驱动的嵌入式 C++17 零堆分配消息代码生成"
 date: 2026-02-16T12:10:00
 draft: false
-categories: ["misc"]
+categories: ["practice"]
 tags: ["C++17", "code-generation", "YAML", "Jinja2", "embedded", "ARM", "trivially-copyable", "zero-heap", "Protobuf", "FlatBuffers", "nanopb", "IDL", "static_assert", "std-variant", "newosp"]
 summary: "newosp ospgen 是一个 200 行 Python 的 YAML->C++ 代码生成器，面向嵌入式 C++17 场景。生成 trivially_copyable POD 结构体、enum class、std::variant Payload、sizeof 编译期断言、event-message 零开销绑定、Validate() 范围检查、Dump() 调试打印。通过 streaming_protocol 流媒体协议示例展示真实应用集成: 删除手写 messages.hpp，用生成代码获得输入校验、结构化调试、类型安全枚举、拓扑常量和编译期保护。对比 Protobuf/FlatBuffers/nanopb，展示为什么嵌入式场景需要比 Protobuf 更轻、比手写更安全的第三条路。"
 ShowToc: true

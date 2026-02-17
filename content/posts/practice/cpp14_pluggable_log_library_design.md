@@ -2,7 +2,7 @@
 title: "轻量级 C++14 日志库设计: 可插拔后端与零依赖架构"
 date: 2026-02-15T11:10:00
 draft: false
-categories: ["misc"]
+categories: ["practice"]
 tags: ["ARM", "C++11", "C++14", "embedded", "lock-free", "logging", "performance"]
 summary: "在嵌入式 ARM Linux 项目中，基于 Boost.Log 的日志方案因临时对象创建、std::regex 解析和动态链接依赖而成为性能瓶颈。本文以 loghelper 的重构为例，将其改造为 C++14 header-only 架构，支持 spdlog/zlog/fallback 三后端编译期切换，实现 10-100 倍性能提升。"
 ShowToc: true

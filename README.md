@@ -6,11 +6,11 @@
 
 ```
 architecture/       -- 架构设计 (10 篇)
-performance/        -- 性能优化 (27 篇)
-practice/           -- 工程实践 (10 篇)
+performance/        -- 性能优化 (29 篇)
+practice/           -- 工程实践 (18 篇)
 pattern/            -- 设计模式 (8 篇)
 interview/          -- 面试题 (2 篇)
-misc/               -- 杂项 (17 篇)
+misc/               -- 杂项 (7 篇)
 ```
 
 共 **74** 篇文章 (74 篇公开, 0 篇草稿)
@@ -32,7 +32,7 @@ misc/               -- 杂项 (17 篇)
 | [fpga_arm_soc_lidar_feasibility.md](architecture/fpga_arm_soc_lidar_feasibility.md) | FPGA + ARM 双核 SoC 处理激光雷达点云的可行性分析 | 2026-02-15T08:10:00 |
 | [dual_core_arm_rtthread_smp.md](architecture/dual_core_arm_rtthread_smp.md) | 双核 ARM SoC 上跑 RT-Thread SMP: MMU、Cache 与调度实战 | 2026-02-15T08:00:00 |
 
-### performance/ -- 性能优化 (27 篇)
+### performance/ -- 性能优化 (29 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
@@ -40,6 +40,8 @@ misc/               -- 杂项 (17 篇)
 | [memory_barrier_hardware.md](performance/memory_barrier_hardware.md) | 内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB | 2026-02-17T09:20:00 |
 | [mccc_zero_heap_optimization_benchmark.md](performance/mccc_zero_heap_optimization_benchmark.md) | MCCC 消息总线零堆分配优化与性能实测 | 2026-02-17T09:10:00 |
 | [high_performance_system_design_principles.md](performance/high_performance_system_design_principles.md) | 高性能系统设计的五个反直觉原则: 从消息队列优化中提炼的通用方法论 | 2026-02-17T09:00:00 |
+| [perf_performance_analysis.md](performance/perf_performance_analysis.md) | perf 性能分析实战: 从硬件计数器到火焰图的完整工作流 | 2026-02-16T12:30:00 |
+| [perf_lock_contention_diagnosis.md](performance/perf_lock_contention_diagnosis.md) | perf lock 锁竞争诊断: 从 futex 原理到生产定位实战 | 2026-02-16T12:20:00 |
 | [unix_domain_socket_realtime.md](performance/unix_domain_socket_realtime.md) | Unix Domain Socket 实时性优化: 嵌入式 IPC 全链路调优 | 2026-02-16T11:00:00 |
 | [tcp_ringbuffer_short_write.md](performance/tcp_ringbuffer_short_write.md) | TCP 非阻塞发送的 Short Write 问题: 环形缓冲区 + epoll 事件驱动方案 | 2026-02-16T10:50:00 |
 | [spsc_ringbuffer_design.md](performance/spsc_ringbuffer_design.md) | SPSC 无锁环形缓冲区设计剖析: 从原理到每一行代码的工程抉择 | 2026-02-16T10:40:00 |
@@ -64,17 +66,25 @@ misc/               -- 杂项 (17 篇)
 | [armv8_crc32_hardware_vs_neon_benchmark.md](performance/armv8_crc32_hardware_vs_neon_benchmark.md) | ARMv8 CRC 性能实测: 硬件指令快 8 倍, NEON 反而更慢 | 2026-02-15T08:50:00 |
 | [arm_linux_lock_contention_benchmark.md](performance/arm_linux_lock_contention_benchmark.md) | ARM-Linux 锁竞争性能实测: Spinlock/Mutex/ConcurrentQueue 对比 | 2026-02-15T08:40:00 |
 
-### practice/ -- 工程实践 (10 篇)
+### practice/ -- 工程实践 (18 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [newosp_shell_multibackend.md](practice/newosp_shell_multibackend.md) | newosp 调试 Shell: 多后端架构与运行时控制命令设计 | 2026-02-17T10:20:00 |
+| [lmdb_embedded_linux_zero_copy.md](practice/lmdb_embedded_linux_zero_copy.md) | LMDB 在嵌入式 Linux 上的实践: 零拷贝读取与内存映射 I/O | 2026-02-17T10:10:00 |
 | [newosp_industrial_embedded_library.md](practice/newosp_industrial_embedded_library.md) | newosp: 面向工业嵌入式的 C++17 Header-Only 基础设施库 | 2026-02-17T10:00:00 |
 | [mccc_bus_cpp17_practice.md](practice/mccc_bus_cpp17_practice.md) | 从 C++14 到 C++17: mccc-bus 的四项零堆分配改造 | 2026-02-17T09:50:00 |
 | [cpp17_claims_in_newosp.md](practice/cpp17_claims_in_newosp.md) | newosp 源码中的 C++17 实践: 8 项能力的工程落地 | 2026-02-17T09:40:00 |
+| [uart_protocol_parsing.md](practice/uart_protocol_parsing.md) | 嵌入式串口协议栈设计: 粘包、缓冲区滑窗与层次状态机 | 2026-02-16T12:40:00 |
+| [newosp_ospgen_codegen.md](practice/newosp_ospgen_codegen.md) | newosp ospgen: YAML 驱动的嵌入式 C++17 零堆分配消息代码生成 | 2026-02-16T12:10:00 |
+| [embedded_config_serialization.md](practice/embedded_config_serialization.md) | 嵌入式配置序列化选型: struct/TLV/nanopb/capnproto 对比 | 2026-02-16T11:50:00 |
 | [qpc_active_object_hsm.md](practice/qpc_active_object_hsm.md) | QPC 框架深度解析: Active Object 与层次状态机的嵌入式实践 | 2026-02-16T11:40:00 |
 | [dbpp_cpp14_database_modernization.md](practice/dbpp_cpp14_database_modernization.md) | 数据库抽象层的 C++14 重写: 从手动内存管理到 RAII | 2026-02-16T11:30:00 |
 | [clang_tidy_embedded_cpp17.md](practice/clang_tidy_embedded_cpp17.md) | Clang-Tidy 嵌入式 C++17 实战: 从配置到 CI 集成的完整指南 | 2026-02-16T11:20:00 |
 | [behavior_tree_tick_mechanism.md](practice/behavior_tree_tick_mechanism.md) | 行为树 Tick 机制深度解析: 从原理到 bt-cpp 实践 | 2026-02-16T11:10:00 |
+| [telnet_debug_shell_posix_refactoring.md](practice/telnet_debug_shell_posix_refactoring.md) | 嵌入式 Telnet 调试 Shell 重构: 纯 POSIX 轻量化实现 | 2026-02-15T11:30:00 |
+| [rtthread_msh_linux_multibackend.md](practice/rtthread_msh_linux_multibackend.md) | 将 RT-Thread MSH 移植到 Linux: 嵌入式调试 Shell 的多后端设计 | 2026-02-15T11:20:00 |
+| [cpp14_pluggable_log_library_design.md](practice/cpp14_pluggable_log_library_design.md) | 轻量级 C++14 日志库设计: 可插拔后端与零依赖架构 | 2026-02-15T11:10:00 |
 | [ztask_scheduler.md](practice/ztask_scheduler.md) | ztask: 零动态分配的裸机合作式任务调度器设计分析 | 2026-02-15T11:00:00 |
 | [ztask_cpp_modernization.md](practice/ztask_cpp_modernization.md) | ztask 调度器的 C++14 重写: 类型安全、RAII 与模板化改造 | 2026-02-15T10:50:00 |
 | [mccc_bus_api_reference.md](practice/mccc_bus_api_reference.md) | MCCC 消息总线 API 全参考: 类型、接口与配置 | 2026-02-15T10:40:00 |
@@ -99,7 +109,7 @@ misc/               -- 杂项 (17 篇)
 | [senior_embedded_c_language_interview_questions.md](interview/senior_embedded_c_language_interview_questions.md) | 嵌入式 C 语言深度面试题: 系统与架构 | 2025-01-02T08:00:00 |
 | [senior_embedded_software_engineer_interview_questions.md](interview/senior_embedded_software_engineer_interview_questions.md) | 高级嵌入式软件工程师面试题: 架构设计与工程深度 | 2025-01-01T08:00:00 |
 
-### misc/ -- 杂项 (17 篇)
+### misc/ -- 杂项 (7 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
@@ -109,17 +119,7 @@ misc/               -- 杂项 (17 篇)
 | [copilot_terminal_auto_approve.md](misc/copilot_terminal_auto_approve.md) | VS Code Copilot 终端命令自动审批的安全配置 | 2026-02-17T10:50:00 |
 | [vscode_remote_dev_setup.md](misc/vscode_remote_dev_setup.md) | 嵌入式 C++ 远程开发环境: 从 SSH 到交叉调试 | 2026-02-17T10:40:00 |
 | [design_diagram_tool_selection.md](misc/design_diagram_tool_selection.md) | 设计文档画图工具选型 | 2026-02-17T10:30:00 |
-| [newosp_shell_multibackend.md](misc/newosp_shell_multibackend.md) | newosp 调试 Shell: 多后端架构与运行时控制命令设计 | 2026-02-17T10:20:00 |
-| [lmdb_embedded_linux_zero_copy.md](misc/lmdb_embedded_linux_zero_copy.md) | LMDB 在嵌入式 Linux 上的实践: 零拷贝读取与内存映射 I/O | 2026-02-17T10:10:00 |
-| [uart_protocol_parsing.md](misc/uart_protocol_parsing.md) | 嵌入式串口协议栈设计: 粘包、缓冲区滑窗与层次状态机 | 2026-02-16T12:40:00 |
-| [perf_performance_analysis.md](misc/perf_performance_analysis.md) | perf 性能分析实战: 从硬件计数器到火焰图的完整工作流 | 2026-02-16T12:30:00 |
-| [perf_lock_contention_diagnosis.md](misc/perf_lock_contention_diagnosis.md) | perf lock 锁竞争诊断: 从 futex 原理到生产定位实战 | 2026-02-16T12:20:00 |
-| [newosp_ospgen_codegen.md](misc/newosp_ospgen_codegen.md) | newosp ospgen: YAML 驱动的嵌入式 C++17 零堆分配消息代码生成 | 2026-02-16T12:10:00 |
 | [embedded_ssh_scp_automation.md](misc/embedded_ssh_scp_automation.md) | 告别手动输密码: 嵌入式 SSH/SCP 自动化方案 | 2026-02-16T12:00:00 |
-| [embedded_config_serialization.md](misc/embedded_config_serialization.md) | 嵌入式配置序列化选型: struct/TLV/nanopb/capnproto 对比 | 2026-02-16T11:50:00 |
-| [telnet_debug_shell_posix_refactoring.md](misc/telnet_debug_shell_posix_refactoring.md) | 嵌入式 Telnet 调试 Shell 重构: 纯 POSIX 轻量化实现 | 2026-02-15T11:30:00 |
-| [rtthread_msh_linux_multibackend.md](misc/rtthread_msh_linux_multibackend.md) | 将 RT-Thread MSH 移植到 Linux: 嵌入式调试 Shell 的多后端设计 | 2026-02-15T11:20:00 |
-| [cpp14_pluggable_log_library_design.md](misc/cpp14_pluggable_log_library_design.md) | 轻量级 C++14 日志库设计: 可插拔后端与零依赖架构 | 2026-02-15T11:10:00 |
 
 ## 关联项目
 

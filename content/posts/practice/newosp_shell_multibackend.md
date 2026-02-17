@@ -2,7 +2,7 @@
 title: "newosp 调试 Shell: 多后端架构与运行时控制命令设计"
 date: 2026-02-17T10:20:00
 draft: false
-categories: ["misc"]
+categories: ["practice"]
 tags: ["ARM", "C++17", "MISRA", "RTOS", "callback", "embedded", "lock-free", "memory-pool", "newosp", "serial", "state-machine", "zero-heap", "POSIX", "telnet", "debug"]
 summary: "工业嵌入式系统需要在 TCP telnet、串口、stdin 等不同环境下统一调试。newosp 的 Shell 模块通过函数指针 I/O 抽象实现多后端统一架构，通过 TCLAP 风格的子命令分发实现运行时控制（日志级别、配置修改、统计重置、生命周期转换），18 个命令覆盖诊断与控制两大需求，全程零堆分配、-fno-exceptions 兼容。"
 ShowToc: true

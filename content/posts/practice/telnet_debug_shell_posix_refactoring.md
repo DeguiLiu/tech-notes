@@ -2,7 +2,7 @@
 title: "嵌入式 Telnet 调试 Shell 重构: 纯 POSIX 轻量化实现"
 date: 2026-02-15T11:30:00
 draft: false
-categories: ["misc"]
+categories: ["practice"]
 tags: ["C++17", "callback", "embedded", "lock-free", "logging", "newosp", "state-machine"]
 summary: "在嵌入式 Linux 产品开发中，telnet 调试 shell 是一个常见需求：通过网络连接到设备，执行诊断命令、查看运行状态、修改配置参数。本文为 C++17 header-only 纯 POSIX 实现的过程，最终产物是 [telsh](https://gitee.com/liudegui/telsh) 项目。"
 ShowToc: true
