@@ -8,6 +8,8 @@ pagination:
 
 params:
   env: production
+  author:
+    name: "DeguiLiu"
   defaultTheme: auto
   ShowReadingTime: true
   ShowWordCount: true
