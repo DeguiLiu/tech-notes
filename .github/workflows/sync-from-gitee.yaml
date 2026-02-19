@@ -15,7 +15,7 @@ jobs:
           token: ${{ secrets.GH_PAT }}
       - name: Pull from Gitee
         run: |
-          git remote add gitee https://${{ secrets.GITEE_TOKEN }}@gitee.com/liudegui/embedded-cpp-articles.git || true
+          git remote add gitee https://${{ secrets.GITEE_TOKEN }}@gitee.com/liudegui/embedded-tech-articles.git || true
           git fetch gitee main
           CHANGES=$(git rev-list HEAD..gitee/main --count 2>/dev/null || echo "0")
           if [ "$CHANGES" -gt "0" ]; then
