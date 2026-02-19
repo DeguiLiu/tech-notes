@@ -1,16 +1,15 @@
 ---
-title: "从 C 到 C++17: 软件 FCCU 故障收集器的演进"
+title: "fccu-cpp: C++17 Header-Only 软件故障收集器"
 date: 2026-02-19T10:00:00
 draft: false
 categories: ["practice"]
 tags: ["C++17", "FCCU", "嵌入式", "故障管理", "HSM", "SPSC", "无锁", "header-only", "裸机", "ringbuffer", "状态机"]
-summary: "硬件 FCCU 是汽车/工业 MCU 的标配安全模块。本文从 C 语言 QPC 事件驱动实现出发，介绍 fccu-cpp -- 一个 C++17 header-only 软件 FCCU 组件，复用 newosp 成熟设计模式，基于外部 SPSC ringbuffer 和两层 HSM 构建，零堆分配、裸机友好。"
+summary: "fccu-cpp 是一个 C++17 header-only 软件 FCCU 组件，复用 newosp 成熟设计模式，基于外部 SPSC ringbuffer 和两层 HSM 构建，零堆分配、裸机友好。本文介绍其架构设计、关键模式和集成方式。"
 ShowToc: true
 TocOpen: true
 ---
 
 > **仓库**: [fccu-cpp](https://github.com/DeguiLiu/fccu-cpp) |
-> **C 版参考**: [fccu_linux_demo](https://gitee.com/liudegui/fccu_linux_demo) |
 > **设计模式来源**: [newosp](https://github.com/DeguiLiu/newosp) fault_collector.hpp
 >
 > **相关文章**: [QPC 事件驱动与活动对象模式](../qpc_active_object_hsm/) |
@@ -43,77 +42,23 @@ FCCU (Fault Collection and Control Unit) 是汽车/工业 MCU 中常见的硬件
 | 看门狗超时 | 任务死锁 | 系统复位 |
 | 温度过高 | 热传感器报警 | 降频/关闭负载 |
 
-这些场景的共性需求: 故障去重、优先级排队、Hook 后处理、状态追踪、统计诊断。
+这些场景的共性需求: 故障去重、优先级排队、Hook 后处理、状态追踪、统计诊断。fccu-cpp 将这些需求封装为一个零依赖的 header-only 组件。
 
-## C 版实现: QPC 事件驱动方案
+## fccu-cpp 设计
 
-[CSDN 原文](https://blog.csdn.net/stallion5632/article/details/149144349) 和 [fccu_linux_demo](https://gitee.com/liudegui/fccu_linux_demo) 给出了 C 语言的完整实现。
+fccu-cpp 的目标: header-only、零堆分配、裸机友好 (无 std::thread)，复用 newosp 中久经测试的设计模式。
 
-### 核心架构
+### 设计特性
 
-C 版 FCCU 基于 QPC 框架构建，采用事件驱动 + 活动对象 (AO) 模式:
-
-```
-故障上报 --> 多级环形队列池 --> 事件对象池分配 --> 多态 AO 后处理
-                                                    |
-                        NVM 日志 / 寄存器控制 / 系统复位 / 用户钩子
-```
-
-### 关键数据结构
-
-```c
-struct FCCU_FaultTableEntry {
-    uint32_t fault_code;
-    uint32_t attr;
-    uint32_t err_threshold;
-    int32_t (*user_hook)(uint32_t, uint64_t, bool);
-};
-
-struct FCCU_QueueSet {
-    struct SpscQueue *queue[FCCU_QUEUE_LEVELS];
-    uint8_t level_count;
-    uint32_t item_size;
-};
-
-struct FCCU_Event {
-    struct QEvt super;       // QPC 事件基类
-    uint8_t priority;
-    uint8_t fault_index;
-    uint64_t fault_detail;
-};
-```
-
-### C 版的设计亮点与局限
-
-**亮点**:
-- 多级 SPSC 环形队列，优先级天然分流
-- QPC 活动对象异步后处理，中断安全
-- NVM 抽象层，支持 FLASH/EEPROM/文件多种后端
-- 用户钩子机制，故障处理可扩展
-
-**局限**:
-- 依赖 QPC 框架 (qpc_stub.h)，移植成本高
-- 手动管理事件对象池，容易泄漏
-- 没有形式化的状态管理 (故障状态用 flag 标记)
-- 队列满时仅告警，无准入控制策略
-- 故障统计和诊断信息有限
-
-## C++ 版: fccu-cpp 设计
-
-fccu-cpp 是对 C 版的重构，目标: header-only、零堆分配、裸机友好 (无 std::thread)，同时引入 newosp 中久经测试的设计模式。
-
-### 设计决策
-
-| 决策点 | C 版方案 | C++ 版方案 | 理由 |
-|--------|---------|-----------|------|
-| 队列实现 | 手写 SPSC 队列 | 外部 [ringbuffer](https://github.com/DeguiLiu/ringbuffer) | 复用经过 Sanitizer 验证的库 |
-| 状态管理 | bool flag | 两层 [hsm-cpp](https://gitee.com/liudegui/hsm-cpp) HSM | 形式化状态转换，避免非法状态 |
-| 事件分发 | QPC AO 模式 | 函数指针 Hook + 外部 ProcessFaults() | 去除框架依赖，裸机友好 |
-| 准入控制 | 无 | 4 级阈值 (60%/80%/99%/always) | 防止低优先级故障淹没关键故障 |
-| 回调机制 | 裸函数指针 | 函数指针 + void* context | 支持有状态回调，保持零开销 |
-| 通知机制 | 无 | mccc AsyncBus (可选) | 解耦故障处理与通知 |
-| 调度方式 | QPC AO 异步 | ztask 周期轮询 (可选) | 无线程，适配裸机/RTOS |
-| 配置方式 | 宏定义 | 模板参数 | 编译期优化，类型安全 |
+| 特性 | 实现方式 |
+|------|---------|
+| Header-only | 仅 `#include "fccu/fccu.hpp"` |
+| 零堆分配 | 所有存储栈/静态分配 |
+| 裸机友好 | 无 `std::thread`，无 OS 依赖 |
+| 编译期配置 | 模板参数: MaxFaults, QueueDepth, QueueLevels, MaxPerFaultHsm |
+| SPSC 线程模型 | 单生产者上报，单消费者处理 |
+| 形式化状态管理 | 两层 HSM，杜绝非法状态组合 |
+| 准入控制 | 4 级阈值，防止低优先级淹没关键故障 |
 
 ### 架构全景
 
@@ -152,15 +97,17 @@ fccu-cpp 不重复造轮子，而是组合已有组件:
 | hsm-cpp | [liudegui/hsm-cpp](https://gitee.com/liudegui/hsm-cpp) | 全局 + Per-Fault 状态机 |
 | mccc | [DeguiLiu/mccc](https://github.com/DeguiLiu/mccc) | 可选故障通知总线 |
 | ztask-cpp | [DeguiLiu/ztask-cpp](https://github.com/DeguiLiu/ztask-cpp) | 可选周期调度 |
-| newosp | [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp) | 设计模式来源 (不作为依赖) |
+| newosp | [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp) | 设计模式来源 (不作为运行时依赖) |
 
-## 关键设计模式 (来自 newosp)
+所有依赖通过 CMake FetchContent 自动拉取。
 
-fccu-cpp 从 newosp `fault_collector.hpp` 复用了多个经过 979 条测试验证的模式，但做了裸机适配。
+## 关键设计模式
+
+fccu-cpp 从 newosp `fault_collector.hpp` 复用了多个经过 979 条测试验证的模式，并做了裸机适配。
 
 ### 1. 优先级准入控制
 
-newosp 的 `AdmitByPriority()` 模式: 队列越满，对低优先级越严格。
+队列越满，对低优先级越严格:
 
 ```cpp
 // fault_queue_set.hpp
@@ -172,16 +119,12 @@ class FaultQueueSet {
 
   bool PushWithAdmission(uint8_t level, const T& item) noexcept {
     auto current_size = queues_[level].size();
-    // Critical (level 0): always admit
-    // High (level 1): reject when >= 99%
-    // Medium (level 2): reject when >= 80%
-    // Low (level 3): reject when >= 60%
     uint32_t threshold = LevelSize;
     switch (level) {
-      case 1U: threshold = kHighThreshold; break;
-      case 2U: threshold = kMediumThreshold; break;
-      case 3U: threshold = kLowThreshold; break;
-      default: break;  // Critical: no limit
+      case 1U: threshold = kHighThreshold; break;   // High: < 99%
+      case 2U: threshold = kMediumThreshold; break;  // Medium: < 80%
+      case 3U: threshold = kLowThreshold; break;     // Low: < 60%
+      default: break;                                 // Critical: always
     }
     if (current_size >= threshold) { return false; }
     return queues_[level].push(item);
@@ -189,11 +132,11 @@ class FaultQueueSet {
 };
 ```
 
-直觉解释: 队列满 60% 时先丢 Low，满 80% 时再丢 Medium，满 99% 时丢 High，Critical 只在物理满时才丢弃。
+队列满 60% 时先丢 Low，满 80% 时再丢 Medium，满 99% 时丢 High，Critical 只在物理满时才丢弃。
 
 ### 2. 原子位图
 
-newosp 的 `SetFaultActive()` / `ClearFaultActive()` + `PopCount64()` 模式:
+`fetch_or` / `fetch_and` + `PopCount64()` 实现高效的活跃故障追踪:
 
 ```cpp
 // fccu.hpp
@@ -219,6 +162,8 @@ uint32_t ActiveFaultCount() const noexcept {
 
 ### 3. HookAction 四路分发
 
+每个故障可注册回调，返回处理动作:
+
 ```cpp
 enum class HookAction : uint8_t {
   kHandled = 0U,   // 已处理，清除故障活跃位
@@ -228,11 +173,11 @@ enum class HookAction : uint8_t {
 };
 ```
 
-对比 C 版的 `int32_t` 返回值，枚举类型保证编译期穷举检查。
+`enum class` 保证编译期穷举检查，避免遗漏分支。Escalate 会将故障以更高优先级重新入队，实现故障自动升级。
 
 ### 4. FaultReporter 注入点
 
-newosp 的 `FaultReporter` POD 模式，用于将故障上报能力注入到子模块:
+将故障上报能力注入到子模块，实现编译防火墙:
 
 ```cpp
 struct FaultReporter {
@@ -245,16 +190,16 @@ struct FaultReporter {
   }
 };
 
-// 使用: 子模块只持有 FaultReporter，不依赖 FaultCollector 头文件
+// 子模块只持有 FaultReporter，不依赖 FaultCollector 头文件
 auto reporter = collector.GetReporter();
 reporter.Report(0U, 0xBEEF, fccu::FaultPriority::kMedium);
 ```
 
-16 字节 POD，零间接调用开销，编译防火墙。
+16 字节 POD，零间接调用开销。子模块无需 `#include "fccu/fccu.hpp"`，只需前向声明 `FaultReporter`。
 
 ## 两层 HSM 设计
 
-C 版用 bool flag 管理故障状态，容易出现非法状态组合。fccu-cpp 引入形式化的层次状态机。
+fccu-cpp 使用 [hsm-cpp](https://gitee.com/liudegui/hsm-cpp) 实现形式化的层次状态机，杜绝非法状态组合。
 
 ### 全局 FCCU 状态机
 
@@ -308,6 +253,7 @@ collector.BindFaultHsm(0U, 3U);  // fault_index=0, threshold=3
 ```cpp
 #include "fccu/fccu.hpp"
 
+// 创建收集器: 16 个最大故障点, 8 深队列, 4 个优先级
 fccu::FaultCollector<16, 8, 4> collector;
 
 // 注册故障点
@@ -326,10 +272,10 @@ collector.SetShutdownCallback([](void*) {
     printf("EMERGENCY SHUTDOWN!\n");
 });
 
-// 上报故障
+// 上报故障 (生产者侧)
 collector.ReportFault(0, 0xDEAD, fccu::FaultPriority::kCritical);
 
-// 处理故障 (在主循环或 ztask 回调中)
+// 处理故障 (消费者侧, 在主循环或 ztask 回调中)
 collector.ProcessFaults();
 
 // 查询状态
@@ -428,7 +374,6 @@ fccu-cpp 与 newosp `fault_collector.hpp` 共享设计模式，但定位不同:
 | 状态管理 | atomic bool | hsm-cpp 两层 HSM |
 | 通知 | 无 | mccc AsyncBus (可选) |
 | 平台 | Linux (依赖 std::thread) | 裸机友好 (无 OS 依赖) |
-| 测试 | newosp 内部测试 | 独立 38 test cases |
 
 选择建议:
 - **已使用 newosp 生态**: 直接使用 newosp 内置的 FaultCollector
@@ -457,16 +402,11 @@ cmake -B build -DFCCU_GITHUB_MIRROR="https://ghfast.top/"
 
 ## 总结
 
-| 演进方向 | C 版 (fccu_linux_demo) | C++ 版 (fccu-cpp) |
-|---------|----------------------|-------------------|
-| 框架依赖 | QPC 事件驱动 | 无框架依赖 |
-| 队列安全 | 手写 SPSC | 复用 ringbuffer 库 |
-| 状态管理 | bool flag | 两层 HSM |
-| 内存模型 | 静态分配 | 零堆分配 (模板参数化) |
-| 准入控制 | 无 | 4 级阈值 |
-| 故障追踪 | 有限 | 原子位图 + PopCount64 |
-| 统计诊断 | 基础 | per-priority 原子计数 + 近期环 |
-| 集成能力 | 绑定 QPC | mccc/ztask 可选集成 |
-| 测试 | demo 验证 | 38 Catch2 tests + Sanitizer |
+fccu-cpp 的核心设计原则:
 
-核心原则不变: 统一收集、优先级分流、Hook 后处理、零堆分配。C++ 版在此基础上引入形式化状态管理和准入控制，将手写基础设施替换为经过验证的外部组件。
+- **统一收集**: 全系统故障通过 `ReportFault()` 统一入口上报
+- **优先级分流**: 4 级 SPSC 队列 + 准入控制，关键故障不被淹没
+- **Hook 后处理**: Handled/Escalate/Defer/Shutdown 四路分发，灵活可扩展
+- **形式化状态管理**: 两层 HSM 杜绝非法状态组合
+- **零堆分配**: 模板参数化编译期配置，所有存储栈/静态分配
+- **可选集成**: mccc 总线通知和 ztask 周期调度按需引入，不引入不付开销
