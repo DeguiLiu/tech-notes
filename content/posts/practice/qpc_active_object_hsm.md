@@ -30,15 +30,21 @@ TocOpen: true
 QP/C 的三大支柱:
 
 ```mermaid
-block-beta
-    columns 3
-    block:ao["Active Object\n(QActive)\n\n线程隔离\nRTC 语义"]:1
+graph TB
+    subgraph AO["Active Object (QActive)"]
+        A1["线程隔离"]
+        A2["RTC 语义"]
     end
-    block:hsm["Hierarchical State Machine\n(QHsm/QMsm)\n\n行为建模\n层次复用"]:1
+    subgraph HSM["Hierarchical State Machine (QHsm/QMsm)"]
+        H1["行为建模"]
+        H2["层次复用"]
     end
-    block:queue["Zero-Copy Event Queue\n(QEQueue)\n\n无锁通信\n指针传递"]:1
+    subgraph EQ["Zero-Copy Event Queue (QEQueue)"]
+        Q1["无锁通信"]
+        Q2["指针传递"]
     end
-    os["OS Abstraction: 裸机 / FreeRTOS / RT-Thread / QXK"]:3
+    OS["OS Abstraction: 裸机 / FreeRTOS / RT-Thread / QXK"]
+    AO & HSM & EQ --> OS
 ```
 
 ### 1.1 Active Object 模型
