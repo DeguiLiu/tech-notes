@@ -7,13 +7,13 @@
 ```
 architecture/       -- 架构设计 (10 篇)
 performance/        -- 性能优化 (29 篇)
-practice/           -- 工程实践 (18 篇)
+practice/           -- 工程实践 (19 篇)
 pattern/            -- 设计模式 (8 篇)
 interview/          -- 面试题 (2 篇)
 misc/               -- 杂项 (7 篇)
 ```
 
-共 **74** 篇文章 (74 篇公开, 0 篇草稿)
+共 **75** 篇文章 (75 篇公开, 0 篇草稿)
 
 ## 文章索引
 
@@ -66,12 +66,13 @@ misc/               -- 杂项 (7 篇)
 | [armv8_crc32_hardware_vs_neon_benchmark.md](performance/armv8_crc32_hardware_vs_neon_benchmark.md) | ARMv8 CRC 性能实测: 硬件指令快 8 倍, NEON 反而更慢 | 2026-02-15T08:50:00 |
 | [arm_linux_lock_contention_benchmark.md](performance/arm_linux_lock_contention_benchmark.md) | ARM-Linux 锁竞争性能实测: Spinlock/Mutex/ConcurrentQueue 对比 | 2026-02-15T08:40:00 |
 
-### practice/ -- 工程实践 (18 篇)
+### practice/ -- 工程实践 (19 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
 | [newosp_shell_multibackend.md](practice/newosp_shell_multibackend.md) | newosp 调试 Shell: 多后端架构与运行时控制命令设计 | 2026-02-17T10:20:00 |
 | [lmdb_embedded_linux_zero_copy.md](practice/lmdb_embedded_linux_zero_copy.md) | LMDB 在嵌入式 Linux 上的实践: 零拷贝读取与内存映射 I/O | 2026-02-17T10:10:00 |
+| [ewss_embedded_websocket_server.md](practice/ewss_embedded_websocket_server.md) | EWSS: 面向嵌入式 Linux 的轻量级 WebSocket 服务器 | 2026-02-19T10:00:00 |
 | [newosp_industrial_embedded_library.md](practice/newosp_industrial_embedded_library.md) | newosp: 面向工业嵌入式的 C++17 Header-Only 基础设施库 | 2026-02-17T10:00:00 |
 | [mccc_bus_cpp17_practice.md](practice/mccc_bus_cpp17_practice.md) | 从 C++14 到 C++17: mccc-bus 的四项零堆分配改造 | 2026-02-17T09:50:00 |
 | [cpp17_claims_in_newosp.md](practice/cpp17_claims_in_newosp.md) | newosp 源码中的 C++17 实践: 8 项能力的工程落地 | 2026-02-17T09:40:00 |
@@ -126,6 +127,7 @@ misc/               -- 杂项 (7 篇)
 | 项目 | 地址 | 说明 |
 |------|------|------|
 | newosp | [GitHub](https://github.com/DeguiLiu/newosp) | C++17 Header-Only 嵌入式基础设施库 |
+| ewss | [GitHub](https://github.com/DeguiLiu/ewss) | 嵌入式 WebSocket 服务器 (C++17, poll Reactor) |
 | mccc-bus | [Gitee](https://gitee.com/liudegui/mccc-bus) | 高性能无锁消息总线 |
 | eventpp (fork) | [Gitee](https://gitee.com/liudegui/eventpp) | eventpp ARM-Linux 优化分支 |
 | message_bus | [Gitee](https://gitee.com/liudegui/message_bus) | C++11 非阻塞消息总线 |
