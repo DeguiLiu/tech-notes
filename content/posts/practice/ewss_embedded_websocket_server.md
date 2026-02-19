@@ -303,6 +303,27 @@ EWSS 的基础类型（`expected`、`optional`、`FixedVector`、`FixedString`�
 
 67KB 二进制 vs Simple-WebSocket-Server 的 ~2MB，差 30 倍。这个差距主要来自 ASIO 的模板实例化和异常处理代码。
 
+### 架构维度对比
+
+| 维度 | EWSS | Simple-WebSocket-Server |
+|------|------|------------------------|
+| I/O 模型 | poll() 单线程 Reactor | ASIO 多线程 |
+| 内存模型 | 固定 RingBuffer (12KB/conn) | 动态 std::string + shared_ptr |
+| 热路径分配 | 零 | 每消息堆分配 |
+| 帧编码 | 栈缓冲 (14B max) | std::ostream + shared_ptr\<SendStream\> |
+| 状态机 | 静态实例 (零分配) | 隐式 ASIO handler 链 |
+| Socket I/O | readv/writev 零拷贝 | ASIO async_read/async_write |
+| 依赖 | sockpp (仅 TCP) | Boost.ASIO 或 standalone ASIO |
+| 二进制大小 (stripped) | 67 KB | ~2 MB |
+| TLS 支持 | 可选 mbedTLS | OpenSSL |
+| 目标平台 | ARM-Linux 嵌入式 | 桌面/服务器 |
+| C++ 标准 | C++17 | C++11/14 |
+| 异常处理 | 可选 (-fno-exceptions) | 必须 |
+
+EWSS 在单线程场景下的吞吐量（~27K msg/s 单客户端，~67K msg/s 多客户端）与 Simple-WebSocket-Server 处于同一量级，但资源占用差距显著：67KB vs 2MB 二进制，12KB vs 动态内存每连接，P50 35us / P99 55us 的确定性延迟 vs 受 GC 和堆分配影响的不确定延迟。
+
+Simple-WebSocket-Server 的优势在多核扩展：4 线程池可以线性提升吞吐量，而 EWSS 的单线程模型在 4-8 客户端后就触及上限。这正是两者的设计定位差异——EWSS 优化的是资源受限场景下的确定性，而非吞吐量天花板。
+
 ## 设计权衡
 
 EWSS 为嵌入式约束做了明确的取舍：
