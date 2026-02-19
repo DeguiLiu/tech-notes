@@ -1,7 +1,7 @@
 ---
 title: "RTOS + Active Object 协同调度优化: 从浅层适配到深度融合"
 date: 2026-02-16T08:20:00
-draft: false
+draft: true
 categories: ["architecture"]
 tags: ["RTOS", "Active-Object", "embedded", "real-time", "QP/C", "RT-Thread", "scheduling", "lock-free"]
 summary: "主动对象 (AO) 框架移植到 RTOS 的主流做法是浅层 API 映射，存在调度开销大、双重内存拷贝、缺乏差异化处理等七项缺陷。本文介绍一种协同调度优化层设计，在 AO 框架与 RTOS 内核之间构建快速路径直接派发、零拷贝传递、分级暂存批处理、可插拔策略引擎四大机制。RISC-V 37MHz 平台实测: 中断响应延迟下降 80.5%，吞吐量提升 314%，上下文切换减少 99%。"
@@ -925,3 +925,4 @@ portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 3. **可观测可调**: 内建完整的度量指标体系 (派发周期数、合并/丢弃/重试事件数、熔断触发次数等)，通过 RTOS Shell 命令实时暴露，支持不停机监控和策略调优
 
 这种设计适用于基于 AO 模式的事件驱动框架 (如 QP/C、QP/C++) 与各类 RTOS (RT-Thread、FreeRTOS、Zephyr) 的组合应用场景，尤其适用于资源受限的 MCU 平台 (ARM Cortex-M、RISC-V)。核心代价是约 3~4KB RAM 和 1KB ROM 的额外开销，换取中断响应延迟降低 80%、吞吐量提升 3 倍以上、上下文切换减少 99% 的收益。对于事件处理函数执行时间短且符合 run-to-completion 语义的系统，该方案的投入产出比最高。
+
