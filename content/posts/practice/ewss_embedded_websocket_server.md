@@ -29,7 +29,7 @@ Server (poll Reactor)
   +-- Connection #N ─┘
         RxBuffer (RingBuffer<4096>)
             | readv 零拷贝接收
-        ProtocolHandler (状态机)
+        StateOps (函数指针表)
             | on_message 回调
         Application
             | send()
@@ -42,7 +42,7 @@ Server (poll Reactor)
 
 - 单线程 Reactor: `poll()` 事件循环，无锁、无上下文切换、Cache 友好
 - 固定内存: 编译期确定的 RingBuffer 大小，运行时零堆分配
-- 状态机驱动: 4 状态协议处理器（Handshaking/Open/Closing/Closed），静态实例零分配
+- 状态机驱动: 4 状态 StateOps 函数指针表（Handshaking/Open/Closing/Closed），编译期常量零分配
 - 零拷贝 I/O: `readv` 直接读入 RingBuffer，`writev` 直接从 RingBuffer 发送
 
 ## 为什么去掉 ASIO
@@ -113,7 +113,7 @@ expected<void, ErrorCode> Connection::handle_read() {
   ssize_t n = ::readv(socket_.handle(), iov, static_cast<int>(iov_count));
   if (n > 0) {
     rx_buffer_.commit_write(static_cast<size_t>(n));
-    protocol_handler_->handle_data_received(*this);
+    ops_->on_data(*this);
     return expected<void, ErrorCode>::success();
   }
   // ... 错误处理
@@ -140,7 +140,7 @@ expected<void, ErrorCode> Connection::handle_write_vectored() {
 
 ### 协议状态机
 
-WebSocket 连接有 4 个状态，每个状态是一个独立的 `ProtocolHandler` 实现：
+WebSocket 连接有 4 个状态，每个状态是一个 `StateOps` 函数指针表：
 
 ```
 Handshaking ──(握手成功)──> Open ──(Close 帧)──> Closing ──> Closed
@@ -149,24 +149,36 @@ Handshaking ──(握手成功)──> Open ──(Close 帧)──> Closing �
 ```
 
 ```cpp
-// 静态实例，零堆分配
-static HandshakeState g_handshake_state;
-static OpenState      g_open_state;
-static ClosingState   g_closing_state;
-static ClosedState    g_closed_state;
+// Function pointer types for state operations
+using StateDataHandler = expected<void, ErrorCode> (*)(Connection& conn);
+using StateSendHandler = expected<void, ErrorCode> (*)(Connection& conn, std::string_view payload);
+using StateCloseHandler = expected<void, ErrorCode> (*)(Connection& conn, uint16_t code);
+
+struct StateOps {
+  ConnectionState state;
+  StateDataHandler on_data;
+  StateSendHandler on_send;
+  StateCloseHandler on_close;
+};
+
+// Compile-time constant state tables (zero allocation, zero virtual)
+inline const StateOps kHandshakeOps = { ConnectionState::kHandshaking, ... };
+inline const StateOps kOpenOps      = { ConnectionState::kOpen, ... };
+inline const StateOps kClosingOps   = { ConnectionState::kClosing, ... };
+inline const StateOps kClosedOps    = { ConnectionState::kClosed, ... };
 ```
 
-状态转换通过指针切换实现，不需要 `new`/`delete`：
+状态转换通过指针切换实现，不需要 `new`/`delete`，也没有 virtual 开销：
 
 ```cpp
 void Connection::transition_to_state(ConnectionState state) {
   switch (state) {
     case ConnectionState::kOpen:
-      protocol_handler_ = &g_open_state;
+      ops_ = &kOpenOps;
       if (on_open) on_open(shared_from_this());
       break;
     case ConnectionState::kClosed:
-      protocol_handler_ = &g_closed_state;
+      ops_ = &kClosedOps;
       if (on_close) on_close(shared_from_this(), true);
       break;
     // ...
@@ -174,7 +186,7 @@ void Connection::transition_to_state(ConnectionState state) {
 }
 ```
 
-每个状态只处理自己关心的事件。`HandshakeState` 解析 HTTP Upgrade 请求，`OpenState` 解析 WebSocket 帧，`ClosingState` 等待对端 Close 帧。职责清晰，不会出现 if-else 嵌套的状态混乱。
+每个状态只处理自己关心的事件。`kHandshakeOps.on_data` 解析 HTTP Upgrade 请求，`kOpenOps.on_data` 解析 WebSocket 帧，`kClosingOps.on_data` 等待对端 Close 帧。职责清晰，不会出现 if-else 嵌套的状态混乱。
 
 ### 帧编码: 栈上完成
 
@@ -296,12 +308,12 @@ EWSS 的基础类型（`expected`、`optional`、`FixedVector`、`FixedString`�
 | 指标 | 值 |
 |------|-----|
 | 二进制大小 (stripped) | 67 KB |
-| 静态库 (libewss.a) | 94 KB |
+| 库类型 | Header-only (单文件 ~1720 行) |
 | 每连接内存 | ~12 KB (4KB RX + 8KB TX RingBuffer) |
 | 热路径堆分配 | 0 |
 | 最大连接数 (编译期) | 64 |
 
-67KB 二进制 vs Simple-WebSocket-Server 的 ~2MB，差 30 倍。这个差距主要来自 ASIO 的模板实例化和异常处理代码。
+67KB 二进制 vs Simple-WebSocket-Server 的 ~2MB，差 30 倍。EWSS 是 header-only 单文件库（~1720 行），无需编译静态库。体积差距主要来自 ASIO 的模板实例化和异常处理代码。
 
 ### 架构维度对比
 
@@ -311,7 +323,7 @@ EWSS 的基础类型（`expected`、`optional`、`FixedVector`、`FixedString`�
 | 内存模型 | 固定 RingBuffer (12KB/conn) | 动态 std::string + shared_ptr |
 | 热路径分配 | 零 | 每消息堆分配 |
 | 帧编码 | 栈缓冲 (14B max) | std::ostream + shared_ptr\<SendStream\> |
-| 状态机 | 静态实例 (零分配) | 隐式 ASIO handler 链 |
+| 状态机 | StateOps 函数指针表 (零分配, 零 virtual) | 隐式 ASIO handler 链 |
 | Socket I/O | readv/writev 零拷贝 | ASIO async_read/async_write |
 | 依赖 | sockpp (仅 TCP) | Boost.ASIO 或 standalone ASIO |
 | 二进制大小 (stripped) | 67 KB | ~2 MB |
@@ -372,7 +384,7 @@ cmake --build build -j
 最小 echo 服务器：
 
 ```cpp
-#include "ewss/server.hpp"
+#include "ewss.hpp"
 
 int main() {
   ewss::Server server(8080);
@@ -388,6 +400,10 @@ int main() {
   server.run();
 }
 ```
+
+## 设计文档
+
+完整的架构设计、数据流、状态机、回压控制、超时管理等详细设计，参见 [EWSS 设计文档](https://github.com/DeguiLiu/ewss/blob/master/docs/design_zh.md)。
 
 ## 适用场景
 
