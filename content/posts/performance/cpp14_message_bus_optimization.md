@@ -33,21 +33,22 @@ TocOpen: true
 ```mermaid
 classDiagram
     class MessageBus {
-        -mutex_ : std::mutex
-        -callbackMap_ : map~int, vector~SubscriptionItemPtr~~
-        -timeoutCallbackList_ : vector~SubscriptionItemPtr~
+        -mutex_ : mutex
+        -callbackMap_ : CallbackMap
+        -timeoutCallbackList_ : SubscriptionList
         -taskScheduler_ : PeriodicTaskScheduler
-        +instance() MessageBus&
+        +instance() MessageBus
         +publishMessage(messageId, content, additionalData)
         +subscribeToMessage(item) bool
         +checkAndHandleTimeouts()
         +clearAllSubscriptions()
-        +start() / stop()
+        +start()
+        +stop()
     }
 
     class PeriodicTaskScheduler {
-        -running_ : atomic~bool~
-        -thread_ : std::thread
+        -running_ : atomic_bool
+        -thread_ : thread
         -cv_ : condition_variable
         +startTask(intervalMs, task)
         +stop()
@@ -59,12 +60,12 @@ classDiagram
         +timeoutCallback : TimeoutCallback
         +timeoutIntervalMilliseconds : int32
         +timeoutTimestampMicroseconds : int64
-        +subscribedMessageIds : vector~int32~
+        +subscribedMessageIds : vector_int32
         +subscriptionType : SubscriptionType
     }
 
     MessageBus "1" --> "1" PeriodicTaskScheduler : owns
-    MessageBus "1" --> "*" SubscriptionItem : manages via shared_ptr
+    MessageBus "1" --> "*" SubscriptionItem : manages
 ```
 
 ### 2.2 核心设计决策
