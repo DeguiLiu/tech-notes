@@ -1,29 +1,79 @@
 ---
-title: "行为树 Tick 机制深度解析: 从原理到嵌入式服务重构实践"
+title: "行为树在嵌入式系统中的工程实践: 从 Tick 机制到服务启动重构"
 date: 2026-02-16T11:10:00
 draft: false
 categories: ["practice"]
-tags: ["behavior-tree", "embedded", "C++14", "cooperative-multitasking", "async", "architecture", "refactoring", "C11"]
-summary: "行为树的 Tick 心跳机制将复杂任务编排抽象为一棵可组合的静态规则树，通过 RUNNING 状态实现协作式并发。本文从 Tick 原理出发，以 bt-cpp (C++14 header-only) 库为主线，深入分析节点遍历语义、PARALLEL 位图优化、异步 I/O 集成模式、性能开销量化，并结合嵌入式视觉平台预览服务重构案例，给出 BT 替代线性流程的完整工程实践。"
+tags: ["behavior-tree", "embedded", "C++14", "C11", "cooperative-multitasking", "async", "architecture", "refactoring", "RTOS"]
+summary: "行为树（Behavior Tree）凭借 Tick 心跳机制和 RUNNING 状态，在单核 MCU 上实现了无需多线程的协作式并发。本文系统梳理 BT 核心原理、节点遍历语义、性能特征，并以嵌入式视觉平台预览服务的真实重构案例为主线，给出从线性流程迁移到行为树的完整工程路径，涵盖 C11 异步节点实现、Fallback 容错设计和 BT+HSM 互补架构。"
 ShowToc: true
 TocOpen: true
 aliases:
   - /posts/practice/behavior_tree_tick_mechanism/
 ---
 
-行为树 (Behavior Tree, BT) 不是游戏引擎的专属技术。在嵌入式设备启动流程、工业控制任务编排、机器人行为规划等单核系统场景中，行为树的 Tick 心跳机制提供了一种结构化的协作式并发方案: 无需多线程，无需操作系统调度器，只靠主循环的周期性 tick 调用就能实现 I/O 并发和复杂决策逻辑。
+行为树（Behavior Tree，BT）起源于游戏 AI，但其 Tick 心跳机制在嵌入式系统中同样大有用武之地。在设备启动流程、工业控制任务编排、机器人行为规划等单核场景中，BT 提供了一种结构化的协作式并发方案：无需多线程，无需 RTOS 调度器，只靠主循环的周期性 `tick()` 调用就能实现 I/O 并发和复杂决策逻辑。
 
-本文以 [bt-cpp](https://gitee.com/liudegui/bt-cpp) (C++14 header-only 行为树库) 为主线，从 Tick 机制原理出发，逐步展开节点遍历语义、异步模式、性能特征和工程实践。第 5 节结合嵌入式视觉平台预览服务的真实重构案例，给出从线性流程迁移到行为树的完整路径，包括 C 语言异步节点实现和 Fallback 容错设计。
+2024 年，[ZephyrBT](https://github.com/ossystems/zephyrbt) 成为首个专为 Zephyr RTOS 设计的开源 BT 框架；[BehaviorTree.CPP v4.6](https://behaviortree.dev/docs/4.0.2/intro) 持续迭代，成为 C++ 生态的事实标准。学术界也在 2025 年发表了 BT 与 FSM 的系统性对比研究（[arXiv:2405.16137](https://arxiv.org/html/2405.16137v1)），为工程选型提供了量化依据。
+
+本文以 [bt-cpp](https://gitee.com/liudegui/bt-cpp)（C++14 header-only 行为树库）为主线，结合嵌入式视觉平台预览服务的真实重构案例，系统讲解 BT 在嵌入式系统中的工程实践。
 
 > 相关文章:
-> - [C 语言层次状态机框架: 从过程驱动到数据驱动](../c_hsm_data_driven_framework/) -- HSM 与 BT 互补的架构基础
-> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- newosp 中 HSM + BT 的实际集成
+> - [C 语言层次状态机框架: 从过程驱动到数据驱动](../c_hsm_data_driven_framework/) — HSM 与 BT 互补的架构基础
+> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) — newosp 中 HSM + BT 的实际集成
 
-## 1. Tick 机制核心原理
+## 1. 为什么嵌入式系统需要行为树
 
-### 1.1 什么是 Tick
+### 1.1 线性流程的三个痛点
 
-Tick 是行为树的"心跳"。每次 tick 代表一次从根节点开始的完整树遍历: 根据节点类型和子节点返回状态，决定下一步执行哪个分支。
+嵌入式系统的初始化代码通常是这样的：
+
+```c
+rt_err_t system_start(void)
+{
+    ret = sys_info_init();       /* 阻塞等待 */
+    ret = sensor_svc_init();     /* 失败则整体中断 */
+    ret = isp_svc_init();        /* 阻塞等待 */
+    ret = video_pipeline_init(); /* 阻塞等待 */
+    return ret;
+}
+```
+
+这种写法在系统简单时没有问题，但随着硬件组合增多、初始化步骤变复杂，会暴露三个结构性缺陷：
+
+**启动瓶颈**：I/O 密集型任务（配置文件加载、传感器上电）与 CPU 密集型任务（寄存器配置）严格串行，CPU 在等待 I/O 期间完全空转。实测某视觉平台启动耗时约 1600ms，其中 I/O 等待占 50% 以上。
+
+**容错缺失**：任一步骤失败即整体中断，无法自动降级。传感器初始化失败时，系统不能切换到无传感器的安全模式继续运行。
+
+**条件编译失控**：为适配不同硬件组合，代码中大量嵌套 `#ifdef`，逻辑割裂，测试覆盖率低。
+
+### 1.2 行为树的解法
+
+行为树通过三个机制解决上述问题：
+
+- **RUNNING 状态**：Action 节点不阻塞，返回 `RUNNING` 表示"我还没完成，下次 Tick 再来"，主循环可在此期间执行其他节点
+- **Fallback 节点**：声明式错误恢复，主路径失败自动尝试降级路径，无需手写 `if-else` 错误处理
+- **Parallel 节点**：在单核上实现协作式并发，多个 I/O 操作交叠执行
+
+### 1.3 BT vs FSM 选型依据
+
+2025 年 IEEE TASE 发表的对比研究（[arXiv:2405.16137](https://arxiv.org/html/2405.16137v1)）给出了量化结论：
+
+| 维度 | FSM | 行为树 (BT) |
+|------|-----|-----------|
+| 内存占用 | 低 | 中等（节点结构体） |
+| CPU 开销 | 极低（直接状态跳转） | 较低（树遍历，百纳秒级） |
+| 可扩展性 | 差（状态爆炸） | 好（节点线性增长） |
+| 并发表达 | 需要并行状态域 | Parallel 节点原生支持 |
+| 错误恢复 | 需要显式转换 | Fallback 内置 |
+| 适用场景 | 协议栈、简单控制流 | 复杂任务编排、多步初始化 |
+
+**选型原则**：决策分支少（< 5 步）、有严格状态转换协议 → FSM；多步并发初始化、需要容错降级 → BT；两者互补，BT 管任务编排，FSM 管系统级状态转换。
+
+## 2. Tick 机制核心原理
+
+### 2.1 什么是 Tick
+
+Tick 是行为树的"心跳"。每次 `tick()` 从根节点开始递归遍历，根据节点类型和子节点返回状态决定执行路径。
 
 ```mermaid
 sequenceDiagram
@@ -44,10 +94,9 @@ sequenceDiagram
     Note over Main: 任务完成
 ```
 
-bt-cpp 中的 tick 入口:
+bt-cpp 中的 tick 入口：
 
 ```cpp
-// BehaviorTree<Context>::Tick()
 Status Tick() noexcept {
     ++tick_count_;
     last_status_ = root_->Tick(context_);
@@ -55,499 +104,234 @@ Status Tick() noexcept {
 }
 ```
 
-每次 `Tick()` 递增计数器，从根节点开始递归遍历。返回值决定整棵树的执行状态。
-
-### 1.2 四种状态
+### 2.2 四种状态
 
 ```cpp
 enum class Status : uint8_t {
     kSuccess = 0,  // 执行成功
     kFailure = 1,  // 执行失败
-    kRunning = 2,  // 仍在执行 (异步操作的关键)
+    kRunning = 2,  // 仍在执行（异步操作的关键）
     kError   = 3   // 配置错误
 };
 ```
 
-`RUNNING` 是行为树区别于普通 if-else 的核心: 叶子节点返回 `RUNNING` 表示"我还没完成，下次 tick 再来问我"。树会保存当前进度，下次 tick 从中断处恢复，而非从头开始。
+`RUNNING` 是行为树区别于普通 `if-else` 的核心：叶子节点返回 `RUNNING` 时，树保存当前进度；下次 tick 从中断处恢复，期间主循环可执行其他节点。
 
-### 1.3 六种节点类型
+### 2.3 六种节点类型
 
 | 类型 | 分类 | 语义 | 等价逻辑 |
 |------|------|------|----------|
 | Action | 叶子 | 执行具体操作 | 函数调用 |
-| Condition | 叶子 | 检查条件 (不应返回 RUNNING) | if 判断 |
+| Condition | 叶子 | 检查条件（不应返回 RUNNING） | if 判断 |
 | Sequence | 组合 | 全部子节点成功才成功 | AND + 短路求值 |
 | Selector | 组合 | 第一个成功的子节点即可 | OR + 短路求值 |
 | Parallel | 组合 | 每帧 tick 所有子节点 | 协作式并发 |
 | Inverter | 装饰 | 反转 SUCCESS/FAILURE | NOT |
 
-## 2. bt-cpp 库设计
+## 3. 节点遍历语义与协作式并发
 
-[bt-cpp](https://gitee.com/liudegui/bt-cpp) 是一个 C++14 header-only 行为树库 (单文件 `bt/behavior_tree.hpp`，约 960 行)，面向嵌入式系统设计。核心设计原则:
+### 3.1 Sequence：记忆性推进
 
-- **模板化类型安全上下文**: `Node<Context>` 消除 `void*` 类型转换
-- **固定容量内联子节点数组**: 无外部生命周期依赖
-- **可配置回调类型**: 函数指针 (默认) 或 `std::function` (宏开关)
-- **缓存友好内存布局**: 热数据字段前置
-- **兼容 `-fno-exceptions -fno-rtti`**
-
-### 2.1 类型安全上下文 vs void*
-
-C 语言行为树的传统做法是 `void* user_data` + `void* blackboard`，需要手动类型转换:
-
-```c
-// C 风格: 运行时类型转换, 编译器无法检查
-static bt_status_t action_load(bt_node_t *self) {
-    file_ctx_t *ctx = (file_ctx_t *)self->user_data;  // 不安全
-    // ...
-}
-```
-
-bt-cpp 用模板参数替代:
+Sequence 按顺序执行子节点，`current_child_` 字段保存执行进度，下次 tick 从中断处恢复：
 
 ```cpp
-// C++14: 编译期类型安全, 无需转换
-struct DeviceContext {
-    bool system_ok = true;
-    bool config_loaded = false;
-    int total_operations = 0;
-};
-
-bt::Node<DeviceContext> node("Check");
-node.set_type(bt::NodeType::kCondition)
-    .set_tick([](DeviceContext& ctx) {
-        return ctx.system_ok ? bt::Status::kSuccess
-                             : bt::Status::kFailure;
-    });
-```
-
-`static_assert` 在编译期阻止传入指针类型:
-
-```cpp
-static_assert(!std::is_pointer<Context>::value,
-              "Context must not be a pointer type; use the pointed-to type");
-```
-
-### 2.2 双模式回调
-
-bt-cpp 支持两种回调模式，通过宏在编译期选择:
-
-```cpp
-// 默认模式: 函数指针 (零堆分配, 确定性延迟)
-using TickFn = Status(*)(Context&);
-
-// 可选模式: std::function (支持 lambda 捕获, 定义 BT_USE_STD_FUNCTION)
-using TickFn = std::function<Status(Context&)>;
-```
-
-**函数指针模式**适合嵌入式场景: 零间接开销，节点状态存放在 Context 而非 lambda 捕获。**std::function 模式**适合应用层: 支持有状态 lambda，API 更灵活。
-
-```cpp
-// 函数指针模式: 状态放 Context, tick 函数是普通函数
-static bt::Status ReadFlashTick(AsyncContext& ctx) {
-    if (!ctx.flash_started) {
-        ctx.flash_future = std::async(std::launch::async, SimFlashRead, 256);
-        ctx.flash_started = true;
-        return bt::Status::kRunning;
-    }
-    // ...
-}
-
-// std::function 模式: 状态可以用 lambda 捕获
-int progress = 0;
-bt::factory::MakeAction(node, [&progress](DeviceContext& c) {
-    ++progress;
-    return (progress >= 3) ? bt::Status::kSuccess : bt::Status::kRunning;
-});
-```
-
-### 2.3 缓存友好的节点布局
-
-bt-cpp 的 `Node` 类将高频访问字段置于结构体前部:
-
-```
-Node<Context> 内存布局 (热数据前置):
-+00: type_              (uint8_t,  1B)  -- 每次 tick 访问
-+01: status_            (uint8_t,  1B)  -- 每次 tick 访问
-+02: children_count_    (uint16_t, 2B)  -- 每次 tick 访问
-+04: current_child_     (uint16_t, 2B)  -- Sequence/Selector 用
-+06: success_policy_    (uint8_t,  1B)
-+08: child_done_bits_   (uint32_t, 4B)  -- Parallel 位图
-+12: child_success_bits_(uint32_t, 4B)  -- Parallel 位图
-+16: tick_              (指针, 8B)      -- 叶子节点回调
-+24: on_enter_          (指针, 8B)      -- 生命周期回调
-+32: on_exit_           (指针, 8B)      -- 生命周期回调
-+40: children_[]        (指针数组)      -- 固定容量内联
-+xx: name_              (const char*)   -- 冷数据, 仅调试用
-```
-
-type, status, children_count 这些每次 tick 都会访问的字段集中在前 16 字节，对 CPU 指令缓存友好。name 作为冷数据放在最后。
-
-### 2.4 构建时校验
-
-bt-cpp 提供 `Validate()` 和 `ValidateTree()` 在首次 tick 前检查树结构:
-
-```cpp
-enum class ValidateError : uint8_t {
-    kNone = 0,              // 无错误
-    kLeafMissingTick,       // 叶子节点缺少 tick 回调
-    kInverterNotOneChild,   // Inverter 必须恰好 1 个子节点
-    kParallelExceedsBitmap, // Parallel 子节点超过 32 (位图宽度)
-    kChildrenExceedMax,     // 子节点数超过 BT_MAX_CHILDREN
-    kNullChild              // 子节点数组中有空指针
-};
-
-// 构建后一次性验证, 运行时零开销
-bt::BehaviorTree<Context> tree(root, ctx);
-bt::ValidateError err = tree.ValidateTree();
-if (err != bt::ValidateError::kNone) {
-    std::printf("Validation failed: %s\n", bt::ValidateErrorToString(err));
-}
-```
-
-这些检查在构建时运行一次，热路径零开销。
-
-### 2.5 流式 API 与工厂辅助函数
-
-bt-cpp 提供两种节点配置风格:
-
-**流式 API** (链式调用):
-
-```cpp
-bt::Node<Ctx> node("Name");
-node.set_type(bt::NodeType::kAction)
-    .set_tick(MyTickFn)
-    .set_on_enter(MyEnterFn)
-    .set_on_exit(MyExitFn);
-```
-
-**工厂辅助函数** (一行配置):
-
-```cpp
-bt::Node<Ctx> node("Name");
-bt::factory::MakeAction(node, MyTickFn);
-bt::factory::MakeCondition(node, MyCheckFn);
-bt::factory::MakeSequence(node, children, count);
-bt::factory::MakeParallel(node, children, count, bt::ParallelPolicy::kRequireAll);
-bt::factory::MakeInverter(node, child);
-```
-
-## 3. 节点遍历语义
-
-### 3.1 Sequence: 全部成功才成功
-
-Sequence 节点按顺序执行子节点，遇到失败或 RUNNING 立即返回。关键: `current_child_` 字段保存执行进度，下次 tick 从上次中断处恢复。
-
-```cpp
-// bt-cpp TickSequence 核心逻辑 (简化)
 Status TickSequence(Context& ctx) noexcept {
     if (status_ != Status::kRunning) {
-        current_child_ = 0;       // 首次进入, 从第一个子节点开始
-        CallEnter(ctx);
+        current_child_ = 0;
     }
-
     for (uint16_t i = current_child_; i < children_count_; ++i) {
-        Status child_status = children_[i]->Tick(ctx);
-
-        if (child_status == Status::kRunning) {
-            current_child_ = i;   // 保存进度, 下次从这里继续
-            status_ = Status::kRunning;
+        Status s = children_[i]->Tick(ctx);
+        if (s == Status::kRunning) {
+            current_child_ = i;   // 保存进度
             return Status::kRunning;
         }
-
-        if (child_status != Status::kSuccess) {
-            status_ = child_status;
-            CallExit(ctx);
-            return child_status;  // 子节点失败, Sequence 失败
+        if (s != Status::kSuccess) {
+            return s;             // 子节点失败，Sequence 失败
         }
     }
-
-    status_ = Status::kSuccess;   // 全部子节点成功
-    CallExit(ctx);
     return Status::kSuccess;
 }
 ```
 
-`current_child_` 递增的过程就是 Sequence "看起来在动态推进"的本质。实际上树结构完全是静态的，"动态"只是状态保存的视觉效果。
+`current_child_` 递增就是 Sequence "动态推进"的本质——树结构完全静态，"动态"只是状态保存的视觉效果。
 
-### 3.2 Selector: 第一个成功即可
+### 3.2 Selector：声明式 Fallback
 
-Selector 是 Sequence 的对偶: 依次尝试子节点，第一个成功就返回成功。适合实现 fallback 逻辑。
+Selector 依次尝试子节点，第一个成功即返回。天然适合"主路径失败 → 降级路径"：
 
 ```
-Selector (尝试多种方案)
-+-- TryPrimary  (Condition: 检查主路径是否可行)
-+-- DoFallback  (Action: 主路径不可行时的降级方案)
+Selector: 传感器初始化
+ ├─ Sequence: 正常路径（上电 → 复位 → 加载配置）
+ ├─ Sequence: 重试路径（等待 100ms → 软复位）
+ └─ Action: 进入无传感器安全模式  ← 始终返回 SUCCESS
 ```
 
-### 3.3 Parallel: 协作式并发的核心
+最终分支始终 SUCCESS，确保主流程不因传感器故障中断。
 
-PARALLEL 节点是行为树实现协作式并发的关键。它在每次 tick 中遍历所有子节点，用 `uint32_t` 位图跟踪完成状态:
+### 3.3 Parallel：单核协作式并发
+
+Parallel 在每次 tick 中遍历所有子节点，用 `uint32_t` 位图跟踪完成状态：
 
 ```cpp
-// bt-cpp TickParallel 核心逻辑 (简化)
 Status TickParallel(Context& ctx) noexcept {
-    if (status_ != Status::kRunning) {
-        child_done_bits_ = 0;      // 首次进入, 重置位图
-        child_success_bits_ = 0;
-        CallEnter(ctx);
-    }
-
-    uint16_t running_count = 0, success_count = 0, failure_count = 0;
-
     for (uint16_t i = 0; i < children_count_; ++i) {
-        const uint32_t bit_mask = (static_cast<uint32_t>(1) << i);
+        const uint32_t bit = (1u << i);
+        if (child_done_bits_ & bit) continue;  // O(1) 跳过已完成节点
 
-        // O(1) 跳过已完成的子节点
-        if ((child_done_bits_ & bit_mask) != 0U) {
-            if ((child_success_bits_ & bit_mask) != 0U) ++success_count;
-            else ++failure_count;
-            continue;
-        }
-
-        Status child_status = children_[i]->Tick(ctx);
-
-        if (child_status == Status::kRunning) {
-            ++running_count;
-        } else if (child_status == Status::kSuccess) {
-            child_done_bits_ |= bit_mask;       // 标记完成
-            child_success_bits_ |= bit_mask;     // 标记成功
-            ++success_count;
-        } else {
-            child_done_bits_ |= bit_mask;        // 标记完成
-            ++failure_count;
+        Status s = children_[i]->Tick(ctx);
+        if (s != Status::kRunning) {
+            child_done_bits_ |= bit;
+            if (s == Status::kSuccess) child_success_bits_ |= bit;
         }
     }
-
-    // 根据策略判定
-    if (success_policy_ == ParallelPolicy::kRequireAll) {
-        if (failure_count > 0) return Status::kFailure;
-        if (running_count > 0) return Status::kRunning;
-        return Status::kSuccess;
-    } else {  // kRequireOne
-        if (success_count > 0) return Status::kSuccess;
-        if (running_count > 0) return Status::kRunning;
-        return Status::kFailure;
-    }
+    // 按策略（RequireAll / RequireOne）判定返回值
 }
 ```
 
-三个关键设计:
+三个关键设计：
+- **零内存分配**：位图内嵌在节点结构体中
+- **O(1) 跳过**：已完成子节点通过位测试快速跳过
+- **双策略**：`kRequireAll`（全部成功）和 `kRequireOne`（一个成功即可）
 
-1. **零内存分配**: `child_done_bits_` 和 `child_success_bits_` 是 `uint32_t` 位图，内嵌在节点结构体中
-2. **O(1) 跳过**: 已完成的子节点通过位测试快速跳过，不会重复 tick
-3. **双策略**: `kRequireAll` (全部成功才成功) 和 `kRequireOne` (一个成功即可)
+位图宽度 32 位，单个 Parallel 节点最多支持 32 个子节点。
 
-位图宽度 32 位意味着单个 Parallel 节点最多支持 32 个子节点。`ValidateTree()` 会在构建时检查这个约束。
+### 3.4 协作式并发的本质
 
-### 3.4 Inverter: 装饰器模式
-
-Inverter 将子节点的 SUCCESS 反转为 FAILURE，FAILURE 反转为 SUCCESS。RUNNING 和 ERROR 透传。
+对比传统阻塞方式：
 
 ```
-Inverter(NoErrorCheck)
-+-- CheckError (Condition, 返回 FAILURE 表示无错误)
-=> Inverter 将 FAILURE 转为 SUCCESS, 意思是"无错误=通过"
+阻塞方式（串行）:
+  加载配置文件  800ms ████████████████
+  传感器初始化  300ms                 ██████
+  ISP 初始化    500ms                       ██████████
+  总耗时: 1600ms
+
+行为树 Parallel（协作式并发）:
+  加载配置文件  800ms ██░░░░░░░░░░░░░░░░░░  （分片执行）
+  传感器初始化  300ms   ██████
+  ISP 初始化    500ms         ██████████
+  总耗时: ~950ms（受最慢任务限制，而非三者之和）
 ```
 
-## 4. RUNNING 状态与异步操作
+每个 Action 节点每次 tick 只执行一小片工作就返回 `RUNNING`，Parallel 节点在下次 tick 继续驱动所有未完成的子节点，实现 I/O 与计算的交叠。
 
-### 4.1 RUNNING: 协作式多任务的关键
+## 4. bt-cpp 库设计
 
-`RUNNING` 状态让行为树天然支持非阻塞操作。叶子节点返回 `RUNNING` 时，树保存当前进度; 下次 tick 自动从中断处恢复，期间主循环可以执行其他工作。
+[bt-cpp](https://gitee.com/liudegui/bt-cpp) 是一个 C++14 header-only 行为树库（单文件 `bt/behavior_tree.hpp`，约 960 行），面向嵌入式系统设计。核心原则：
 
-对比传统阻塞方式:
+- **模板化类型安全上下文**：`Node<Context>` 消除 `void*` 类型转换
+- **固定容量内联子节点数组**：无外部生命周期依赖
+- **可配置回调类型**：函数指针（默认）或 `std::function`（宏开关）
+- **兼容 `-fno-exceptions -fno-rtti`**
+
+### 4.1 类型安全上下文
+
+C 语言传统做法是 `void* user_data`，需要手动类型转换。bt-cpp 用模板参数替代：
 
 ```cpp
-// 阻塞方式: CPU 在等待 I/O 时空闲
-void load_all_blocking() {
-    read_flash();    // 阻塞 150ms, CPU 大部分时间空闲
-    read_sensor();   // 阻塞 80ms
-    load_network();  // 阻塞 200ms
-    // 总耗时: 430ms (串行)
+// C 风格：运行时类型转换，编译器无法检查
+static bt_status_t action_load(bt_node_t *self) {
+    file_ctx_t *ctx = (file_ctx_t *)self->user_data;  // 不安全
 }
 
-// 行为树 RUNNING 方式: Parallel 节点同时驱动三个 I/O
-// Tick 1: 三个 Action 各自提交 I/O -> 返回 RUNNING
-// Tick 2: 轮询各自的 future -> sensor 完成, 其他仍 RUNNING
-// Tick 3: flash 完成
-// Tick 4: network 完成 -> Parallel 返回 SUCCESS
-// 总耗时: ~200ms (受最慢的 I/O 限制, 而非三者之和)
-```
-
-### 4.2 异步 I/O 模式: std::async + std::future
-
-bt-cpp 的 `async_example.cpp` 演示了标准异步模式: 首次 tick 提交 I/O 任务到后台线程，后续 tick 非阻塞轮询 `std::future`:
-
-```cpp
-// 异步状态存放在类型安全的 Context 中
-struct AsyncContext {
-    std::future<std::string> flash_future;
-    bool flash_started = false;
-    std::string flash_data;
-    // ... 其他节点的异步状态
+// bt-cpp：编译期类型安全
+struct DeviceContext {
+    bool sensor_ready = false;
+    bool config_loaded = false;
 };
 
-// 异步 Action 的 tick 函数 (函数指针模式, 无 lambda 捕获)
-static bt::Status ReadFlashTick(AsyncContext& ctx) {
-    // 首次 tick: 提交 I/O 任务到后台线程
-    if (!ctx.flash_started) {
-        ctx.flash_future = std::async(std::launch::async, SimFlashRead, 256);
-        ctx.flash_started = true;
-        return bt::Status::kRunning;  // 告诉树: 我还没完成
-    }
-
-    // 后续 tick: 非阻塞轮询
-    if (ctx.flash_future.wait_for(std::chrono::seconds(0)) ==
-        std::future_status::ready) {
-        ctx.flash_data = ctx.flash_future.get();
-        return bt::Status::kSuccess;  // I/O 完成
-    }
-
-    return bt::Status::kRunning;      // 继续等待
-}
+bt::Node<DeviceContext> node("Check");
+node.set_tick([](DeviceContext& ctx) {
+    return ctx.sensor_ready ? bt::Status::kSuccess : bt::Status::kFailure;
+});
 ```
 
-这个模式的关键: `wait_for(std::chrono::seconds(0))` 是非阻塞的，如果 future 未就绪则立即返回，不会挂起主线程。
-
-### 4.3 完整异步树示例
-
-以下树结构演示了 Parallel + Selector 组合处理多路异步 I/O 和 fallback 逻辑 (来自 bt-cpp `async_example.cpp`):
-
-```
-Root (Sequence)
-+-- CheckSystem    (Condition, 同步)
-+-- ParallelIO     (Parallel, RequireAll)
-|   +-- ReadFlash  (Action, async 150ms)
-|   +-- ReadSensor (Action, async 80ms)
-|   +-- LoadNetwork(Action, async 200ms, 可能失败)
-+-- ProcessResults (Selector)
-    +-- ProcessAll     (Condition: 三路数据都加载成功?)
-    +-- ProcessPartial (Action: 降级处理, 只用 flash + sensor)
-```
-
-构建和运行:
+`static_assert` 在编译期阻止传入指针类型：
 
 ```cpp
-AsyncContext ctx;
+static_assert(!std::is_pointer<Context>::value,
+              "Context must not be a pointer type");
+```
 
-// 构建节点
-bt::Node<AsyncContext> check_sys("CheckSystem");
-check_sys.set_type(bt::NodeType::kCondition).set_tick(CheckSystemTick);
+### 4.2 双模式回调
 
-bt::Node<AsyncContext> read_flash("ReadFlash");
-read_flash.set_type(bt::NodeType::kAction).set_tick(ReadFlashTick);
+```cpp
+// 默认：函数指针（零堆分配，确定性延迟）
+using TickFn = Status(*)(Context&);
 
-bt::Node<AsyncContext> read_sensor("ReadSensor");
-read_sensor.set_type(bt::NodeType::kAction).set_tick(ReadSensorTick);
+// 可选：std::function（支持 lambda 捕获，定义 BT_USE_STD_FUNCTION）
+using TickFn = std::function<Status(Context&)>;
+```
 
-bt::Node<AsyncContext> load_net("LoadNetwork");
-load_net.set_type(bt::NodeType::kAction).set_tick(LoadNetworkTick);
+函数指针模式适合嵌入式场景：零间接开销，节点状态存放在 Context 而非 lambda 捕获。
 
-// Parallel: 三路 I/O 并发
-bt::Node<AsyncContext> parallel_io("ParallelIO");
-parallel_io.set_type(bt::NodeType::kParallel)
-    .AddChild(read_flash)
-    .AddChild(read_sensor)
-    .AddChild(load_net)
-    .set_parallel_policy(bt::ParallelPolicy::kRequireAll);
+### 4.3 缓存友好的节点布局
 
-// Selector: 优先全量处理, 失败则降级
-bt::Node<AsyncContext> process("ProcessResults");
-process.set_type(bt::NodeType::kSelector)
-    .AddChild(process_all)
-    .AddChild(process_partial);
+```
+Node<Context> 内存布局（热数据前置）:
++00: type_              (1B)  -- 每次 tick 访问
++01: status_            (1B)  -- 每次 tick 访问
++02: children_count_    (2B)  -- 每次 tick 访问
++04: current_child_     (2B)  -- Sequence/Selector 用
++08: child_done_bits_   (4B)  -- Parallel 位图
++12: child_success_bits_(4B)  -- Parallel 位图
++16: tick_              (8B)  -- 叶子节点回调
++40: children_[]        (指针数组，固定容量内联)
++xx: name_              (冷数据，仅调试用)
+```
 
-// Root
-bt::Node<AsyncContext> root("Root");
-root.set_type(bt::NodeType::kSequence)
-    .AddChild(check_sys)
-    .AddChild(parallel_io)
-    .AddChild(process);
+### 4.4 构建时校验
 
-// 验证 + 运行
-bt::BehaviorTree<AsyncContext> tree(root, ctx);
+```cpp
+bt::BehaviorTree<Context> tree(root, ctx);
 bt::ValidateError err = tree.ValidateTree();
-
-bt::Status result = bt::Status::kRunning;
-while (result == bt::Status::kRunning) {
-    result = tree.Tick();
-    if (result == bt::Status::kRunning) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
-}
+// 检查：叶子节点缺少 tick 回调、Inverter 子节点数、Parallel 位图溢出等
 ```
 
-当 `LoadNetwork` 失败时，`ProcessResults` Selector 会跳过 `ProcessAll` (返回 FAILURE)，自动执行 `ProcessPartial` 降级方案。整棵树不需要任何手动错误处理代码。
+构建时运行一次，热路径零开销。
 
-## 5. 工程案例: 嵌入式视觉平台预览服务重构
+## 5. 工程案例：嵌入式视觉平台预览服务重构
 
-### 5.1 现状分析
+### 5.1 现状与痛点
 
-某嵌入式视觉平台的预览服务模块（`preview_svc`）采用线性流程控制，存在三类典型问题。
+某嵌入式视觉平台的预览服务模块采用线性流程控制，实测启动耗时约 1600ms，主要瓶颈在于：
 
-**串行流程导致启动瓶颈**
-
-`preview_svc_start` 函数严格按顺序执行初始化，若非关键服务（如传感器服务）初始化失败，会导致整个流程中断。I/O 密集型任务（配置文件加载）与 CPU 密集型任务（硬件寄存器配置）无法交叠，CPU 在等待 I/O 期间完全空转。
-
-```c
-/* 现有线性流程（伪代码） */
-rt_err_t preview_svc_start(void)
-{
-    ret = sys_info_init();          /* 阻塞等待 */
-    ret = sensor_svc_init();        /* 阻塞等待，失败则整体中断 */
-    ret = image_proc_svc_init();    /* 阻塞等待 */
-    ret = video_pipeline_init();    /* 阻塞等待 */
-    return ret;
-}
-```
-
-**缺乏状态管理与降级机制**
-
-消息处理逻辑仅基于简单 `if-else`，均为阻塞操作。当传感器服务初始化失败时，系统无法自动切换到无传感器的降级模式，只能整体失败。
-
-**条件编译导致代码割裂**
-
-为适配不同硬件组合，代码中大量嵌套条件编译宏，逻辑分支难以追踪，测试覆盖率低。
+- 配置文件加载（约 800ms I/O 等待）与硬件初始化严格串行
+- 传感器服务初始化失败时整体中断，无降级路径
+- 适配不同硬件组合的条件编译宏嵌套 3-4 层，难以测试
 
 ### 5.2 行为树架构设计
 
-**并发启动模型**
-
-在单核 MCU 环境下，通过行为树的异步节点机制，将配置文件加载等 I/O 操作与计算任务交替执行。当 I/O 操作阻塞时，行为树调度器切换至其他就绪任务。
+**分层架构**
 
 ```mermaid
-gantt
-    title 启动流程耗时对比
-    dateFormat X
-    axisFormat %Lms
-
-    section 串行方案 (约1600ms)
-    配置文件加载 (阻塞) :a1, 0, 800
-    传感器初始化 (等待) :a2, after a1, 300
-    图像处理器初始化 (等待) :a3, after a2, 500
-
-    section 行为树并发方案 (约950ms)
-    配置文件加载 (分片1) :b1, 0, 100
-    传感器初始化 (执行) :b2, after b1, 300
-    配置文件加载 (分片2) :b3, after b2, 100
-    图像处理器初始化 (执行) :b4, after b3, 400
-    配置文件加载 (剩余) :b5, after b4, 50
+graph TB
+    subgraph 行为树控制层
+        BT["预览行为树"]
+        BB["Blackboard（共享状态）"]
+    end
+    subgraph 服务层
+        C["系统信息服务"]
+        D["传感器服务"]
+        E["图像处理服务"]
+        F["视频流服务"]
+        G["输出接口服务"]
+    end
+    subgraph 硬件抽象层
+        H["传感器驱动"]
+        I["图像处理器"]
+        J["视频编码器"]
+        L["输出接口"]
+    end
+    BT --> BB
+    BT --> C & D & E & F & G
+    D --> H
+    E --> I
+    F --> J
+    G --> L
 ```
 
-**方案对比**
-
-| 维度 | 线性流程 | 状态机 (HSM) | 行为树 (BT) |
-|------|--------|------------|-----------|
-| **并发处理** | 不支持 | 难以表达 | 原生支持 |
-| **错误恢复** | 单点故障 | 状态转换复杂 | 内置 Fallback |
-| **可扩展性** | 需修改主流程 | 存在状态爆炸风险 | 模块化节点 |
-| **维护成本** | 高耦合 | 状态图复杂 | 低耦合，结构清晰 |
-| **条件编译** | 大量嵌套宏 | 仍需宏控制 | 节点级特性开关 |
-
-**核心逻辑设计**
-
-主流程采用四阶段 Sequence：
+**四阶段主流程**
 
 ```mermaid
 graph TD
@@ -570,29 +354,39 @@ graph TD
     E --> E2[Action: 启动图像处理器]
 ```
 
-- **主流程**：Sequence 节点串联四个阶段，任一阶段失败则整体中止
-- **并发初始化**：Parallel 节点同时 Tick 多个服务初始化 Action，利用 RUNNING 状态交叠 I/O 等待
-- **错误恢复**：Fallback 节点包裹易出错步骤，传感器初始化失败后自动尝试重试或进入安全模式
-- **数据共享**：Blackboard 维护全局状态、配置参数及错误码，节点间无直接耦合
+**启动耗时对比**
 
-### 5.3 C 语言实现要点
+```mermaid
+gantt
+    title 启动流程耗时对比
+    dateFormat X
+    axisFormat %Lms
+
+    section 串行方案 (约1600ms)
+    配置文件加载 (阻塞) :a1, 0, 800
+    传感器初始化 (等待) :a2, after a1, 300
+    图像处理器初始化 (等待) :a3, after a2, 500
+
+    section 行为树并发方案 (约950ms)
+    配置文件加载 (分片1) :b1, 0, 100
+    传感器初始化 (执行) :b2, after b1, 300
+    配置文件加载 (分片2) :b3, after b2, 100
+    图像处理器初始化 (执行) :b4, after b3, 400
+    配置文件加载 (剩余) :b5, after b4, 50
+```
+
+### 5.3 C11 实现要点
 
 **异步 Action 节点**
 
-耗时操作（硬件复位、文件读取）封装为异步 Action 节点。节点执行期间返回 `BT_RUNNING`，由 Tick 循环持续轮询，直至完成。
+耗时操作封装为异步 Action，通过 `static` 状态变量跨 Tick 保持进度：
 
 ```c
-/* Action 节点：传感器异步初始化 (C11 实现) */
+/* 传感器异步初始化节点（C11） */
 bt_status_t action_sensor_init_async(bt_node_t *node)
 {
-    typedef enum
-    {
-        INIT_IDLE,
-        INIT_STARTED,
-        INIT_COMPLETED
-    } sensor_init_state_e;
-
-    static sensor_init_state_e s_state = INIT_IDLE;
+    typedef enum { INIT_IDLE, INIT_STARTED, INIT_DONE } state_e;
+    static state_e s_state = INIT_IDLE;
 
     switch (s_state)
     {
@@ -607,12 +401,12 @@ bt_status_t action_sensor_init_async(bt_node_t *node)
         case INIT_STARTED:
             if (sensor_svc_is_ready())
             {
-                s_state = INIT_COMPLETED;
+                s_state = INIT_DONE;
                 return BT_SUCCESS;
             }
             return BT_RUNNING;
 
-        case INIT_COMPLETED:
+        case INIT_DONE:
             s_state = INIT_IDLE;  /* 重置，支持树重启 */
             return BT_SUCCESS;
 
@@ -622,14 +416,10 @@ bt_status_t action_sensor_init_async(bt_node_t *node)
 }
 ```
 
-状态变量必须为 `static`，跨 Tick 保持。`INIT_COMPLETED` 分支需重置状态以支持树重启。超时保护建议通过外层 `Timeout` 装饰节点添加，而非在 Action 内部硬编码。
-
 **Condition 节点**
 
-Condition 节点执行快速的前置条件检查，不产生副作用，只返回 SUCCESS / FAILURE。
-
 ```c
-/* Condition 节点：检查系统信息有效性 */
+/* 系统信息有效性检查 */
 bt_status_t cond_system_info_valid(bt_node_t *node)
 {
     const sys_info_t *info = sys_info_get();
@@ -641,394 +431,252 @@ bt_status_t cond_system_info_valid(bt_node_t *node)
 }
 ```
 
-**Fallback 容错子树**
-
-传感器初始化的 Fallback 子树结构：
-
-```
-Fallback: 传感器初始化
- ├─ Sequence: 正常初始化路径
- │   ├─ Action: 传感器上电
- │   ├─ Action: 传感器复位 (异步)
- │   └─ Action: 加载传感器配置
- ├─ Sequence: 重试路径
- │   ├─ Action: 等待 100ms
- │   └─ Action: 传感器软复位
- └─ Action: 进入无传感器安全模式  ← 始终返回 SUCCESS
-```
-
-最终 Fallback 分支（安全模式）始终返回 SUCCESS，确保主流程不因传感器故障中断。
-
 **条件编译替代方案**
 
-用节点级特性开关替代嵌套宏：
-
 ```c
-/* 旧方案：嵌套条件编译散布于业务逻辑 */
+/* 旧方案：嵌套宏散布于业务逻辑 */
 #ifdef SENSOR_ENABLED
     sensor_svc_init();
 #endif
 
-/* 新方案：宏只控制节点是否加入树 */
+/* 新方案：宏只控制节点是否加入树，业务逻辑无宏 */
 #ifdef SENSOR_ENABLED
     bt_sequence_add_child(init_seq, &sensor_init_node);
 #endif
 ```
 
+### 5.4 重构效果
 
-## 6. 设备启动流程: bt-cpp 实战
+| 指标 | 重构前 | 重构后 |
+|------|--------|--------|
+| 启动耗时 | ~1600ms | ~950ms（-40%） |
+| 传感器故障处理 | 整体中断 | 自动降级安全模式 |
+| 条件编译层级 | 3-4 层嵌套 | 节点注册处 1 层 |
+| 新增硬件适配 | 修改主流程 | 添加/替换节点 |
 
-以下示例来自 bt-cpp 的 `bt_example.cpp`，模拟嵌入式设备启动序列:
+## 6. 异步 I/O 集成模式
 
-```
-Root (Sequence)
-+-- SystemCheck      (Condition: 系统自检)
-+-- ParallelLoad     (Parallel, RequireAll)
-|   +-- LoadConfig   (Action: 加载配置, 3 个 tick 完成)
-|   +-- LoadCalib    (Action: 加载校准, 2 个 tick 完成)
-+-- InitModules      (Sequence)
-|   +-- Inverter     (装饰器)
-|   |   +-- CheckError (Condition: FAILURE=无错误, 经 Inverter 转为 SUCCESS)
-|   +-- InitISP      (Action: 初始化 ISP)
-+-- StartPreview     (Action: 启动预览)
-```
+### 6.1 std::async + std::future（C++ 环境）
 
-Context 作为类型安全的共享黑板:
+bt-cpp 的标准异步模式：首次 tick 提交 I/O 任务到后台线程，后续 tick 非阻塞轮询 `std::future`：
 
 ```cpp
-struct DeviceContext {
-    bool system_ok = true;
-    bool config_loaded = false;
-    bool calib_loaded = false;
-    bool isp_initialized = false;
-    bool preview_started = false;
-    int total_operations = 0;
+struct AsyncContext {
+    std::future<std::string> config_future;
+    bool config_started = false;
+    std::string config_data;
 };
-```
 
-使用工厂辅助函数配置节点:
-
-```cpp
-DeviceContext ctx;
-
-// 条件节点
-bt::Node<DeviceContext> sys_check("SystemCheck");
-bt::factory::MakeCondition(sys_check, [](DeviceContext& c) {
-    return c.system_ok ? bt::Status::kSuccess : bt::Status::kFailure;
-});
-
-// 异步 Action (3 个 tick 完成, 用 lambda 捕获局部进度)
-int config_progress = 0;
-bt::Node<DeviceContext> load_config("LoadConfig");
-bt::factory::MakeAction(load_config,
-    [&config_progress](DeviceContext& c) {
-        ++config_progress;
-        if (config_progress >= 3) {
-            c.config_loaded = true;
-            ++c.total_operations;
-            return bt::Status::kSuccess;
-        }
+static bt::Status LoadConfigTick(AsyncContext& ctx) {
+    if (!ctx.config_started) {
+        ctx.config_future = std::async(std::launch::async, load_config_file);
+        ctx.config_started = true;
         return bt::Status::kRunning;
-    });
-
-// 生命周期回调
-load_config
-    .set_on_enter([](DeviceContext&) { std::printf("[Enter] LoadConfig\n"); })
-    .set_on_exit([](DeviceContext&)  { std::printf("[Exit]  LoadConfig\n"); });
-
-// Parallel: 配置和校准并发加载
-bt::Node<DeviceContext> parallel_load("ParallelLoad");
-bt::Node<DeviceContext>* par_children[] = {&load_config, &load_calib};
-bt::factory::MakeParallel(parallel_load, par_children, 2,
-                           bt::ParallelPolicy::kRequireAll);
-
-// Inverter: 将 CheckError 的 FAILURE (无错误) 转为 SUCCESS
-bt::Node<DeviceContext> inverter("NoErrorCheck");
-bt::factory::MakeInverter(inverter, check_error);
-```
-
-运行结果 (3 次 tick 完成启动):
-
-```
---- Tick 1 ---
-    [Condition] SystemCheck: PASS
-  >> ParallelLoad: begin
-    [Enter] LoadConfig started
-    [Action] LoadConfig: progress 1/3    (RUNNING)
-    [Enter] LoadCalib started
-    [Action] LoadCalib: progress 1/2     (RUNNING)
-  -> Tree status: RUNNING
-
---- Tick 2 ---
-    [Action] LoadConfig: progress 2/3    (RUNNING)
-    [Action] LoadCalib: progress 2/2     (SUCCESS)
-    [Exit]  LoadCalib finished
-  -> Tree status: RUNNING
-
---- Tick 3 ---
-    [Action] LoadConfig: progress 3/3    (SUCCESS)
-    [Exit]  LoadConfig finished
-  << ParallelLoad: done
-    [Condition] CheckError: no errors found (FAILURE -> Inverter -> SUCCESS)
-    [Action] InitISP
-    [Action] StartPreview
-  -> Tree status: SUCCESS
-```
-
-Parallel 节点在 Tick 1 同时启动 LoadConfig 和 LoadCalib。LoadCalib 在 Tick 2 完成 (2 个 tick)，LoadConfig 在 Tick 3 完成 (3 个 tick)。整个并行加载阶段耗时等于最慢的子任务 (3 tick)，而非两者之和 (5 tick)。
-
-## 7. 行为树的静态本质
-
-### 6.1 静态规则树，非动态 AI
-
-行为树的"动态"是一种误解。树结构在构建时固定，运行时不会创建或销毁节点。所谓的"动态推进"只是 `current_child_` 索引在递增:
-
-```
-Tick 1: current_child_=0, 执行子节点 0
-Tick 2: current_child_=1, 执行子节点 1  (子节点 0 已完成)
-Tick 3: current_child_=2, 执行子节点 2  (子节点 0,1 已完成)
-```
-
-bt-cpp 的子节点存储是固定容量内联数组，不依赖外部分配:
-
-```cpp
-// 固定容量, 编译期可配置 (默认 8)
-static constexpr uint16_t kMaxChildren = static_cast<uint16_t>(BT_MAX_CHILDREN);
-Node* children_[kMaxChildren];  // 内联在节点结构体内
-```
-
-### 6.2 行为树 = if-else 的结构化替代
-
-5 步以内的线性流程用 if-else 更直接。当流程包含并行分支、条件降级、异步等待时，行为树的结构化优势才体现出来:
-
-```cpp
-// if-else: 无法表达并行加载
-if (check() && load_config() && load_calib() && init() && start()) {
-    return OK;
-}
-// 问题: load_config 和 load_calib 只能串行执行
-
-// 行为树: 并行加载是一等公民
-Root (Sequence)
-+-- Check
-+-- Parallel(RequireAll)     // 自然表达并行
-|   +-- LoadConfig
-|   +-- LoadCalib
-+-- Init
-+-- Start
-```
-
-## 8. 性能特征
-
-### 7.1 框架开销量化
-
-以下数据来自 bt-cpp 的 `benchmark_example.cpp`，每个场景运行 100,000 次迭代 (含 1,000 次 warmup)，叶子节点执行极简操作 (递增计数器) 以隔离框架开销:
-
-| 场景 | avg (ns) | p50 (ns) | p99 (ns) | 说明 |
-|------|----------|----------|----------|------|
-| Flat Sequence (8 actions) | 130 | -- | 222 | 最佳顺序分发 |
-| Deep Nesting (5 levels) | 78 | -- | 136 | 嵌套深度影响 |
-| Parallel (4 children) | 75 | -- | 131 | 位图跟踪开销 |
-| Selector early exit (1/8) | 58 | -- | 106 | 短路求值收益 |
-| Realistic tree (8 nodes) | 97 | -- | 174 | 混合节点类型 |
-| Hand-written if-else | 30 | -- | 36 | 基准对照 |
-
-*数据来源: bt-cpp `examples/benchmark_example.cpp`，x86-64 平台。ARM 平台性能特征类似。*
-
-关键结论:
-
-- 一次完整树 tick 开销在**百纳秒量级** (8 节点混合树 ~97ns avg)
-- BT 相对手写 if-else 约 **4 倍开销** (130ns vs 30ns)
-- 在 20Hz tick 频率 (50ms 间隔) 下，框架开销占 tick 预算 **< 0.001%**
-- Selector 短路求值有效减少不必要的节点遍历
-
-### 7.2 性能有利面与代价
-
-**有利:**
-
-- 短路求值: Sequence/Selector 遇到终止条件立即返回
-- 顺序遍历: 对 CPU 指令缓存友好 (对比 FSM 的间接跳转表)
-- 函数指针模式零间接开销
-- 固定容量子节点数组，无动态内存分配
-
-**代价:**
-
-- 每帧从根节点开始遍历 (FSM 直接从当前状态开始)
-- Parallel 节点每帧 tick 所有未完成子节点
-
-这些代价在百纳秒级别，对绝大多数嵌入式 tick 频率 (10-100Hz) 可忽略不计。
-
-## 9. 行为树 vs 状态机: 选型与互补
-
-### 8.1 选型对比
-
-| 维度 | 行为树 | 状态机 (FSM/HSM) |
-|------|--------|-----------------|
-| 状态爆炸 | 节点线性增长 | N 状态 x M 事件 = O(NM) 转换 |
-| 可组合性 | 强，子树可复用 | 弱，状态间强耦合 |
-| 并发行为 | Parallel 节点原生支持 | 需要并行状态域 |
-| 异步操作 | RUNNING 一等公民 | 需要额外"等待"状态 |
-| 事件驱动 | 不擅长 | 天然适合 |
-| 状态循环 | 不适合 | 天然适合 |
-
-### 8.2 BT + HSM 互补架构
-
-bt-cpp 推荐的工程实践: HSM 管理系统级状态转换，BT 管理运行态内的复杂决策和任务编排。
-
-```
-HSM (系统级状态管理)              BT (运行态内的决策)
-+-- Init                          Root (Sequence)
-+-- Running  ----BT 驱动--->      +-- CheckSensors
-+-- Error                         +-- Parallel(I/O)
-+-- Shutdown                      +-- Selector(Fallback)
-```
-
-- **HSM** 处理状态转换有严格协议约束的场景 (初始化->运行->错误->关机)
-- **BT** 处理运行态内的任务编排、并发 I/O、条件降级
-
-这种分层避免了两种架构各自的弱点: BT 不擅长循环状态转换，HSM 不擅长并发任务编排。
-
-相关项目:
-- [bt-cpp](https://gitee.com/liudegui/bt-cpp) -- C++14 行为树库 (header-only, MIT)
-- [bt_simulation](https://gitee.com/liudegui/bt_simulation) -- C 语言版本 (含嵌入式设备模拟)
-- [hsm-cpp](https://gitee.com/liudegui/hsm-cpp) -- C++14 层次状态机库
-
-### 8.3 不适合行为树的场景
-
-- 状态转换有严格协议约束 (通信协议栈) -- 用 HSM
-- 纯事件驱动、无需周期性轮询 -- FSM 更高效
-- 决策分支少 (< 5 个行为) -- if-else 更简单直接
-
-## 10. 工程实践要点
-
-### 9.1 关键: Action 节点必须非阻塞
-
-行为树协作式并发的前提是每个叶子节点快速返回。阻塞调用会打破整棵树的并发能力:
-
-```cpp
-// 错误: 阻塞等待, 主循环挂起
-static bt::Status BadAction(Context& ctx) {
-    auto data = blocking_read(fd);  // 阻塞 100ms, 其他节点无法执行
-    return bt::Status::kSuccess;
-}
-
-// 正确: 非阻塞, 返回 RUNNING
-static bt::Status GoodAction(Context& ctx) {
-    if (!ctx.started) {
-        ctx.future = std::async(std::launch::async, blocking_read, fd);
-        ctx.started = true;
-        return bt::Status::kRunning;  // 立即返回, 不阻塞
     }
-    if (ctx.future.wait_for(std::chrono::seconds(0)) ==
+    if (ctx.config_future.wait_for(std::chrono::seconds(0)) ==
         std::future_status::ready) {
-        ctx.data = ctx.future.get();
+        ctx.config_data = ctx.config_future.get();
         return bt::Status::kSuccess;
     }
     return bt::Status::kRunning;
 }
 ```
 
-### 9.2 主循环驱动模式
+`wait_for(std::chrono::seconds(0))` 是非阻塞的，未就绪时立即返回，不挂起主线程。
 
-最简单的 tick 驱动方式: 主循环 + 固定间隔:
+### 6.2 裸机/RTOS 环境的异步模式
 
-```cpp
-bt::BehaviorTree<Context> tree(root, ctx);
+在无 `std::async` 的裸机环境，用 DMA 完成回调 + 标志位替代：
 
-bt::Status result = bt::Status::kRunning;
-while (result == bt::Status::kRunning) {
-    result = tree.Tick();
-    if (result == bt::Status::kRunning) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));  // 20Hz
+```c
+static volatile rt_bool_t s_dma_done = RT_FALSE;
+
+/* DMA 完成中断回调 */
+void dma_complete_callback(void)
+{
+    s_dma_done = RT_TRUE;
+}
+
+bt_status_t action_dma_read(bt_node_t *node)
+{
+    static rt_bool_t s_started = RT_FALSE;
+
+    if (RT_FALSE == s_started)
+    {
+        s_dma_done = RT_FALSE;
+        dma_start_read(buf, size, dma_complete_callback);
+        s_started = RT_TRUE;
+        return BT_RUNNING;
     }
+    if (RT_TRUE == s_dma_done)
+    {
+        s_started = RT_FALSE;
+        return BT_SUCCESS;
+    }
+    return BT_RUNNING;
 }
 ```
 
-在 RTOS 环境中，`sleep_for` 替换为 `rt_thread_mdelay()` 或定时器回调。
+### 6.3 线程池替代 std::async
 
-### 9.3 超时保护
-
-长时间 RUNNING 的任务需要超时机制:
-
-```cpp
-auto start = std::chrono::steady_clock::now();
-bt::Status result = bt::Status::kRunning;
-
-while (result == bt::Status::kRunning) {
-    result = tree.Tick();
-    auto elapsed = std::chrono::steady_clock::now() - start;
-    if (elapsed > std::chrono::seconds(10)) {
-        // 超时处理
-        break;
-    }
-    if (result == bt::Status::kRunning) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    }
-}
-```
-
-### 9.4 线程池替代 std::async
-
-`std::async` 每次创建新线程，对高频任务提交有开销。bt-cpp 的 `threadpool_example.cpp` 演示了用固定线程池替代:
+`std::async` 每次创建新线程，高频任务提交有开销。固定线程池方案：
 
 ```cpp
 struct PoolContext {
-    std::unique_ptr<ThreadPool> pool;  // 2 个 worker 线程
+    std::unique_ptr<ThreadPool> pool;  // 固定 2 个 worker 线程
     std::future<std::string> config_future;
     bool config_started = false;
-    // ...
-    PoolContext() : pool(std::unique_ptr<ThreadPool>(new ThreadPool(2))) {}
+
+    PoolContext() : pool(new ThreadPool(2)) {}
 };
 
 static bt::Status LoadConfigTick(PoolContext& ctx) {
     if (!ctx.config_started) {
-        ctx.config_future = ctx.pool->enqueue(SimLoadConfig);  // 提交到线程池
+        ctx.config_future = ctx.pool->enqueue(load_config_file);
         ctx.config_started = true;
         return bt::Status::kRunning;
     }
-    // 后续 tick: 同样用 wait_for(0s) 非阻塞轮询
-    // ...
+    // 同样用 wait_for(0s) 非阻塞轮询
 }
 ```
 
-线程池方案的优势: 线程创建一次复用多次，资源使用有上限 (bounded concurrency)。
+线程池优势：线程创建一次复用多次，资源使用有上限（bounded concurrency）。
 
-## 11. 从 C 到 C++14 的演进
+## 7. 性能特征与工程约束
 
-bt-cpp 的 C 语言前身 [bt_simulation](https://gitee.com/liudegui/bt_simulation) 面向资源极度受限的 MCU (几十 KB RAM)。bt-cpp 保留了 C 版本的核心设计 (节点结构、位图跟踪、状态保存)，在 C++14 层面做了类型安全和易用性提升:
+### 7.1 框架开销量化
 
-| 设计点 | C 版本 (bt_simulation) | C++14 版本 (bt-cpp) |
-|--------|----------------------|---------------------|
-| 上下文传递 | `void* user_data` + `void* blackboard` | 模板 `Context` 参数 |
-| 节点数据 | 函数指针 + `void*` | Lambda 捕获或 Context 成员 |
-| 子节点存储 | 外部指针数组 (生命周期需用户管理) | 固定容量内联数组 (无外部依赖) |
-| 回调类型 | 函数指针 | 函数指针 (默认) / `std::function` (宏开关) |
-| 节点配置 | `BT_INIT_ACTION()` 宏 | 流式 API + 工厂辅助函数 |
-| 编译器提示 | 无 | `BT_LIKELY` / `BT_UNLIKELY` / `BT_HOT` |
-| 构建时校验 | 无 | `Validate()` / `ValidateTree()` + `static_assert` |
+以下数据来自 bt-cpp 的 `benchmark_example.cpp`，100,000 次迭代，叶子节点执行极简操作以隔离框架开销：
 
-两者共享相同的 Tick 语义和节点遍历逻辑。选择依据:
+| 场景 | avg (ns) | p99 (ns) | 说明 |
+|------|----------|----------|------|
+| Flat Sequence（8 actions） | 130 | 222 | 最佳顺序分发 |
+| Deep Nesting（5 levels） | 78 | 136 | 嵌套深度影响 |
+| Parallel（4 children） | 75 | 131 | 位图跟踪开销 |
+| Selector early exit（1/8） | 58 | 106 | 短路求值收益 |
+| 混合树（8 节点） | 97 | 174 | 典型场景 |
+| 手写 if-else | 30 | 36 | 基准对照 |
 
-- **MCU / 裸机 / 纯 C 环境**: 使用 bt_simulation
-- **ARM-Linux / 嵌入式 C++ 环境**: 使用 bt-cpp
+*x86-64 平台，ARM 平台性能特征类似。*
 
-## 总结
+关键结论：
+- 一次完整树 tick 约 **97ns**（8 节点混合树）
+- 相对手写 if-else 约 **3-4 倍开销**
+- 在 20Hz tick 频率（50ms 间隔）下，框架开销占 tick 预算 **< 0.001%**
 
-行为树 Tick 机制的价值在于用**可忽略的运行时开销换取显著的架构清晰度**:
+### 7.2 单核 MCU 适配要点
 
-1. **Tick 心跳**: 每次 tick 从根节点遍历，节点通过 RUNNING 保存进度，实现协作式并发
-2. **静态规则树**: 结构编译时固定，"动态"只是状态保存的视觉效果
-3. **PARALLEL 位图**: 零分配、O(1) 跳过已完成子节点，单核系统上实现 I/O 并发
-4. **百纳秒开销**: 8 节点混合树 tick 约 97ns，对 20Hz 主循环占比 < 0.001%
-5. **BT + HSM 互补**: BT 管任务编排和并发调度，HSM 管系统级状态转换
-6. **线性流程迁移**: 渐进式替换，先包装整体为单 Action，再逐步拆分为异步节点和 Fallback 子树
+**Tick 频率选择**
 
-选型决策:
+| Tick 间隔 | 适用场景 | CPU 占用 |
+|----------|--------|---------|
+| 1ms | 高实时性要求 | 较高，需评估 |
+| 10ms | 一般启动流程 | 低 |
+| 50ms | 低频状态轮询 | 极低 |
+
+启动阶段建议 10ms Tick，进入稳态后可降低频率。
+
+**静态内存池**
+
+```c
+/* 静态分配节点池，避免堆碎片 */
+#define BT_MAX_NODES 32U
+static bt_node_t s_node_pool[BT_MAX_NODES];
+static rt_uint8_t s_node_count = 0U;
+
+bt_node_t *bt_alloc_node(void)
+{
+    if (s_node_count >= BT_MAX_NODES)
+    {
+        return RT_NULL;
+    }
+    return &s_node_pool[s_node_count++];
+}
+```
+
+**Action 节点必须非阻塞**
+
+行为树协作式并发的前提是每个叶子节点快速返回。阻塞调用会打破整棵树的并发能力：
+
+```c
+/* 错误：阻塞等待，主循环挂起 */
+bt_status_t bad_action(bt_node_t *node)
+{
+    rt_uint8_t *data = blocking_read(fd, size);  /* 阻塞 100ms */
+    return BT_SUCCESS;
+}
+
+/* 正确：非阻塞，返回 RUNNING */
+bt_status_t good_action(bt_node_t *node)
+{
+    static rt_bool_t s_started = RT_FALSE;
+    if (RT_FALSE == s_started)
+    {
+        async_read_start(fd, size);
+        s_started = RT_TRUE;
+        return BT_RUNNING;
+    }
+    if (async_read_done())
+    {
+        s_started = RT_FALSE;
+        return BT_SUCCESS;
+    }
+    return BT_RUNNING;
+}
+```
+
+## 8. BT + HSM 互补架构与迁移策略
+
+### 8.1 BT + HSM 分层架构
+
+BT 和 HSM 不是竞争关系，而是互补：
 
 ```
-任务编排 (启动/初始化/多步流程)  -> 行为树
-状态转换 (运行/暂停/错误/恢复)   -> 状态机
-单核 I/O 并发                    -> 行为树 Parallel + RUNNING
-决策分支少 (< 5 步线性)          -> if-else
+HSM（系统级状态管理）              BT（运行态内的任务编排）
+┌─────────────────┐               ┌──────────────────────┐
+│ Init            │               │ Root (Sequence)      │
+│ Running ────────┼──BT 驱动────▶│  ├─ CheckSensors     │
+│ Error           │               │  ├─ Parallel(I/O)    │
+│ Shutdown        │               │  └─ Selector(降级)   │
+└─────────────────┘               └──────────────────────┘
 ```
 
+- **HSM** 处理状态转换有严格协议约束的场景（初始化→运行→错误→关机）
+- **BT** 处理运行态内的任务编排、并发 I/O、条件降级
+
+这种分层避免了两种架构各自的弱点：BT 不擅长循环状态转换，HSM 不擅长并发任务编排。
+
+### 8.2 渐进式迁移策略
+
+不建议一次性重写，推荐四阶段迁移：
+
+**阶段一：包装验证**
+将现有线性流程整体包装为一个 Action 节点，验证行为树框架可运行，不改变任何业务逻辑。
+
+**阶段二：异步化**
+将耗时最长的初始化步骤（配置文件加载）改为异步 Action，引入第一个 RUNNING 状态。
+
+**阶段三：容错化**
+引入 Fallback 节点替换现有 `if-else` 错误处理，实现自动降级。
+
+**阶段四：并发化**
+引入 Parallel 节点实现并发初始化，完成启动耗时优化。
+
+### 8.3 不适合行为树的场景
+
+- 状态转换有严格协议约束（通信协议栈）→ 用 HSM
+- 纯事件驱动、无需周期性轮询 → FSM 更高效
+- 决策分支少（< 5 个行为）→ if-else 更简单直接
+- 极度资源受限（< 8KB RAM）→ 考虑 C 语言版本 [bt_simulation](https://gitee.com/liudegui/bt_simulation)
+
+### 8.4 相关资源
+
+- [bt-cpp](https://gitee.com/liudegui/bt-cpp) — C++14 行为树库（header-only，MIT）
+- [bt_simulation](https://gitee.com/liudegui/bt_simulation) — C 语言版本（含嵌入式设备模拟）
+- [ZephyrBT](https://github.com/ossystems/zephyrbt) — Zephyr RTOS 专用 BT 框架（2024）
+- [BehaviorTree.CPP](https://behaviortree.dev/docs/4.0.2/intro) — C++ 生态事实标准
+- [BT vs FSM 对比研究](https://arxiv.org/html/2405.16137v1) — IEEE TASE 2025
+
+---
+
+行为树 Tick 机制的价值在于用**可忽略的运行时开销换取显著的架构清晰度**。对于多步骤初始化、多硬件组合、容错要求高的嵌入式场景，BT 相比线性流程和状态机具有明显的工程优势。迁移的关键不是一次性重写，而是从最痛的瓶颈点开始，渐进式引入异步节点和 Fallback 子树。
