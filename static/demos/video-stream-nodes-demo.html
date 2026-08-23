@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>视频流与节点交互演示</title>
+  <style>
+    :root {
+      --bg:#0f172a; --panel:#1e293b; --panel2:#1a2740; --border:#334155;
+      --text:#e2e8f0; --muted:#94a3b8;
+      --business:#2563eb; --firmware:#7c3aed; --driver:#0d9488; --hardware:#ea580c;
+      --command:#3b82f6; --data:#22c55e; --event:#eab308; --error:#ef4444;
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; color:var(--text); background:var(--bg); font-family:"Microsoft YaHei","PingFang SC",Arial,sans-serif; }
+    button { font:inherit; }
+    .page { width:min(1640px,100%); margin:auto; padding:20px; }
+    header { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-bottom:16px; }
+    h1 { margin:0 0 8px; font-size:clamp(22px,2.2vw,34px); }
+    header p { margin:0; color:var(--muted); line-height:1.65; }
+    .legend { max-width:660px; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px 14px; color:var(--muted); font-size:13px; }
+    .legend span { display:inline-flex; align-items:center; gap:6px; }
+    .swatch { width:13px; height:13px; border-radius:4px; }
+    .line { width:28px; border-top:3px solid; }
+    .dashed { border-top-style:dashed; }
+    .main { display:grid; grid-template-columns:minmax(800px,1.7fr) minmax(370px,.8fr); gap:16px; }
+    .board,.detail,.timeline { border:1px solid var(--border); border-radius:14px; background:var(--panel); box-shadow:0 12px 32px rgba(0,0,0,.22); }
+    .board { padding:14px; min-height:700px; }
+    .detail { padding:18px; min-height:700px; }
+    .board-head { display:flex; justify-content:space-between; margin-bottom:8px; }
+    .board-head span { color:var(--muted); font-size:13px; }
+    svg { display:block; width:100%; height:646px; }
+    .layer { fill:rgba(26,39,64,.55); stroke-width:1.5; stroke-dasharray:7 5; rx:12; }
+    .layer-title { font-size:14px; font-weight:700; }
+    .node rect { fill:#0f172a; rx:9; stroke-width:2; }
+    .node text { fill:#e2e8f0; text-anchor:middle; font-size:12.5px; font-weight:700; }
+    .node .sub { fill:#94a3b8; font-size:10px; font-weight:400; }
+    .node.business rect { stroke:var(--business); }
+    .node.firmware rect { stroke:var(--firmware); }
+    .node.driver rect { stroke:var(--driver); }
+    .node.hardware rect { stroke:var(--hardware); }
+    .node.dma rect { stroke:#fbbf24; }
+    .node.active rect { stroke-width:4; }
+    .node.dim { opacity:.26; }
+    .node .modtag rect { stroke:none; stroke-dasharray:none; }
+    .node .modtag text { font-size:8px; font-weight:700; fill:#fff; text-anchor:middle; }
+    .node .modtag.app rect { fill:#2563eb; }
+    .node .modtag.svc rect { fill:#7c3aed; }
+    .node .modtag.drv rect { fill:#0d9488; }
+    .node .modtag.hw rect { fill:#ea580c; }
+    .node .modtag.dma rect { fill:#a16207; }
+    .node .modtag.dma text { fill:#fbbf24; }
+    .node .modtag.pc rect { fill:#db2777; }
+    .edge { fill:none; stroke-width:3; opacity:.15; }
+    .edge.command { stroke:var(--command); marker-end:url(#cmdArrow); }
+    .edge.data { stroke:var(--data); stroke-width:4; marker-end:url(#dataArrow); }
+    .edge.event { stroke:var(--event); stroke-dasharray:8 5; marker-end:url(#eventArrow); }
+    .edge.error { stroke:var(--error); stroke-dasharray:5 4; marker-end:url(#errorArrow); }
+    .edge.active { opacity:1; }
+    .edge-label { font-size:10.5px; font-weight:700; opacity:.15; }
+    .edge-label.command { fill:#93c5fd; }
+    .edge-label.data { fill:#86efac; }
+    .edge-label.event { fill:#fde047; }
+    .edge-label.error { fill:#fca5a5; }
+    .edge-label.active { opacity:1; }
+    .scene-no { color:#93c5fd; font-size:13px; font-weight:700; }
+    .detail h2 { margin:7px 0 8px; font-size:23px; }
+    .summary { margin:0 0 14px; color:#cbd5e1; line-height:1.72; }
+    .badges { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+    .badge { border:1px solid; border-radius:999px; padding:4px 9px; font-size:12px; font-weight:700; opacity:.3; }
+    .badge.active { opacity:1; }
+    .badge.command { color:#93c5fd; border-color:var(--command); }
+    .badge.data { color:#86efac; border-color:var(--data); }
+    .badge.event { color:#fde047; border-color:var(--event); }
+    .badge.error { color:#fca5a5; border-color:var(--error); }
+    .notes { display:grid; gap:9px; }
+    .note { border-left:5px solid; border-radius:8px; background:var(--panel2); padding:10px 12px; }
+    .note strong { display:block; margin-bottom:4px; font-size:13px; }
+    .note p { margin:0; color:#cbd5e1; font-size:13px; line-height:1.55; }
+    .note.business { border-color:var(--business); }
+    .note.firmware { border-color:var(--firmware); }
+    .note.driver { border-color:var(--driver); }
+    .note.hardware { border-color:var(--hardware); }
+    .evidence,.warning { margin-top:12px; padding:11px 12px; border-radius:8px; font-size:12px; line-height:1.55; }
+    .evidence { background:#1a2740; border:1px solid #334155; color:#cbd5e1; }
+    .warning { background:#3c2f0b; border:1px solid #a47c14; color:#fde68a; }
+    code { color:#bae6fd; overflow-wrap:anywhere; }
+    .timeline { margin-top:16px; padding:14px; }
+    .steps { display:grid; grid-template-columns:repeat(9,1fr); gap:8px; }
+    .step { min-height:64px; padding:8px; text-align:left; color:var(--muted); background:#0f172a; border:1px solid var(--border); border-radius:8px; cursor:pointer; line-height:1.35; }
+    .step.active { color:#fff; background:#1a2740; border-color:#60a5fa; }
+    .step b { display:block; margin-bottom:3px; }
+    .controls { display:flex; justify-content:center; align-items:center; gap:10px; margin-top:12px; }
+    .controls button { min-width:100px; padding:9px 14px; color:#fff; background:#1e293b; border:1px solid #334155; border-radius:8px; cursor:pointer; }
+    .controls button:hover { background:#2b3f5e; }
+    .controls button:disabled { opacity:.4; cursor:not-allowed; }
+    .progress { min-width:90px; color:var(--muted); text-align:center; font-size:13px; }
+    .speedbar { display:flex; align-items:center; gap:8px; padding:4px 10px; border:1px solid var(--border); border-radius:8px; background:var(--panel); color:var(--muted); font-size:13px; }
+    .speedbar input[type="range"] { width:130px; accent-color:var(--business); cursor:pointer; }
+    .speedbar #spdv { min-width:50px; color:var(--text); font-weight:700; }
+    @media(max-width:1160px){ header{display:block}.legend{justify-content:flex-start;margin-top:12px}.main{grid-template-columns:1fr}.board,.detail{min-height:auto}.steps{grid-template-columns:repeat(2,1fr)} }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div>
+        <h1>视频流与节点交互演示</h1>
+        <p>PIC、TEMP、VS 从 ISP 一级 DMA，经 Video 节点和输出路由到外部设备；OSD 能力按当前 handler 实现逐项标注。</p>
+      </div>
+      <div class="legend" aria-label="颜色和流向图例">
+        <span><i class="swatch" style="background:var(--business)"></i>外部系统/上位机</span>
+        <span><i class="swatch" style="background:var(--firmware)"></i>Service/Component</span>
+        <span><i class="swatch" style="background:var(--driver)"></i>driver/HAL</span>
+        <span><i class="swatch" style="background:var(--hardware)"></i>硬件/IP</span>
+        <span><i class="line" style="border-color:var(--command)"></i>命令</span>
+        <span><i class="line" style="border-color:var(--data)"></i>图像数据</span>
+        <span><i class="line dashed" style="border-color:var(--event)"></i>事件</span>
+        <span><i class="line dashed" style="border-color:var(--error)"></i>错误</span>
+      </div>
+    </header>
+
+    <section class="main">
+      <div class="board">
+        <div class="board-head"><strong>业务、软件、驱动与硬件的真实边界</strong><span>每步仅高亮当前有效路径</span></div>
+        <svg viewBox="0 0 1020 646" role="img" aria-label="Video stream 和 node 四层交互图">
+          <defs>
+            <marker id="cmdArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9Z" fill="#3b82f6"/></marker>
+            <marker id="dataArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9Z" fill="#22c55e"/></marker>
+            <marker id="eventArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9Z" fill="#eab308"/></marker>
+            <marker id="errorArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9Z" fill="#ef4444"/></marker>
+          </defs>
+
+          <rect class="layer" x="8" y="8" width="1004" height="100" stroke="#2563eb"/>
+          <text class="layer-title" x="22" y="30" fill="#93c5fd">业务应用 / Windows 上位机 / 外部接收硬件</text>
+          <rect class="layer" x="8" y="120" width="1004" height="128" stroke="#7c3aed"/>
+          <text class="layer-title" x="22" y="143" fill="#c4b5fd">固件 Service / Component</text>
+          <rect class="layer" x="8" y="260" width="1004" height="108" stroke="#0d9488"/>
+          <text class="layer-title" x="22" y="283" fill="#67e8f9">driver / HAL</text>
+          <rect class="layer" x="8" y="380" width="1004" height="256" stroke="#ea580c"/>
+          <text class="layer-title" x="22" y="403" fill="#fdba74">硬件 IP / DMA / 物理接口</text>
+
+          <g id="app" class="node business"><rect x="45" y="44" width="180" height="48"/><g class="modtag app"><rect x="108" y="36" width="54" height="15" rx="7.5"/><text x="135" y="48">SW·应用</text></g><text x="135" y="65">预览/测温业务<tspan class="sub" x="135" dy="16">init / start / set</tspan></text></g>
+          <g id="win" class="node business"><rect x="650" y="44" width="150" height="48"/><g class="modtag pc"><rect x="702" y="36" width="47" height="15" rx="7.5"/><text x="725" y="48">SW·PC</text></g><text x="725" y="65">Windows UVC<tspan class="sub" x="725" dy="16">USB 免驱摄像头</tspan></text></g>
+          <g id="csirx" class="node business"><rect x="825" y="44" width="160" height="48"/><g class="modtag pc"><rect x="882" y="36" width="47" height="15" rx="7.5"/><text x="905" y="48">SW·PC</text></g><text x="905" y="65">外部 CSI-2 RX<tspan class="sub" x="905" dy="16">桥片 / 主控 / FPGA</tspan></text></g>
+
+          <g id="lsv" class="node firmware"><rect x="40" y="168" width="175" height="54"/><g class="modtag svc"><rect x="100" y="160" width="54" height="15" rx="7.5"/><text x="127" y="172">SW·服务</text></g><text x="127" y="191">视频流服务<tspan class="sub" x="127" dy="17">Stream Manager API</tspan></text></g>
+          <g id="fsm" class="node firmware"><rect x="245" y="168" width="185" height="54"/><g class="modtag svc"><rect x="310" y="160" width="54" height="15" rx="7.5"/><text x="337" y="172">SW·服务</text></g><text x="337" y="191">Stream FSM<tspan class="sub" x="337" dy="17">IDLE/READY/RUNNING</tspan></text></g>
+          <g id="nodes" class="node firmware"><rect x="460" y="158" width="240" height="58"/><g class="modtag svc"><rect x="553" y="150" width="54" height="15" rx="7.5"/><text x="580" y="162">SW·服务</text></g><text x="580" y="182">Node Sequence<tspan class="sub" x="580" dy="18">Cut/Zoom→PSD→OSD→SOUT→OUT</tspan></text></g>
+          <g id="outmgr" class="node firmware"><rect x="735" y="168" width="230" height="54"/><g class="modtag svc"><rect x="823" y="160" width="54" height="15" rx="7.5"/><text x="850" y="172">SW·服务</text></g><text x="850" y="191">输出接口管理<tspan class="sub" x="850" dy="17">SINGLE / COMPOSE</tspan></text></g>
+
+          <g id="ispdrv" class="node driver"><rect x="65" y="301" width="205" height="45"/><g class="modtag drv"><rect x="140" y="293" width="54" height="15" rx="7.5"/><text x="167" y="305">SW·驱动</text></g><text x="167" y="321">ISP 流驱动 / HAL<tspan class="sub" x="167" dy="15">S0–S3 DMA / ISR / 设备事件</tspan></text></g>
+          <g id="videodrv" class="node driver"><rect x="370" y="301" width="220" height="45"/><g class="modtag drv"><rect x="453" y="293" width="54" height="15" rx="7.5"/><text x="480" y="305">SW·驱动</text></g><text x="480" y="321">视频驱动 / HAL<tspan class="sub" x="480" dy="15">P/T/VS/O 与处理模块</tspan></text></g>
+          <g id="itfdrv" class="node driver"><rect x="690" y="301" width="245" height="45"/><g class="modtag drv"><rect x="785" y="293" width="54" height="15" rx="7.5"/><text x="812" y="305">SW·驱动</text></g><text x="812" y="321">USB/MIPI/CVBS 驱动<tspan class="sub" x="812" dy="15">接口时钟 / 协议 / ISR</tspan></text></g>
+
+          <g id="ispdma" class="node hardware dma"><rect x="35" y="442" width="175" height="58"/><g class="modtag dma"><rect x="92" y="434" width="61" height="15" rx="7.5"/><text x="122" y="446">HW·DMA</text></g><text x="122" y="466">ISP Stream DMA<tspan class="sub" x="122" dy="18">一级三帧 DMA → PIC/TEMP/VS</tspan></text></g>
+          <g id="videoip" class="node hardware"><rect x="250" y="430" width="250" height="58"/><g class="modtag hw"><rect x="348" y="422" width="54" height="15" rx="7.5"/><text x="375" y="434">HW·硬件</text></g><text x="375" y="455">Video P/T/VS IP<tspan class="sub" x="375" dy="18">Cut/Zoom·PSD·FMT·OSD·Video O</tspan></text></g>
+          <g id="sout" class="node hardware dma"><rect x="545" y="442" width="180" height="58"/><g class="modtag dma"><rect x="605" y="434" width="61" height="15" rx="7.5"/><text x="635" y="446">HW·DMA</text></g><text x="635" y="466">Stream Out<tspan class="sub" x="635" dy="18">二级 DMA · 位宽转换</tspan></text></g>
+          <g id="mux" class="node hardware"><rect x="770" y="442" width="205" height="58"/><g class="modtag hw"><rect x="845" y="434" width="54" height="15" rx="7.5"/><text x="872" y="446">HW·硬件</text></g><text x="872" y="466">Stream MUX / SEL<tspan class="sub" x="872" dy="18">源流→接口路由</tspan></text></g>
+          <g id="usb" class="node hardware"><rect x="650" y="552" width="105" height="54"/><g class="modtag hw"><rect x="675" y="544" width="54" height="15" rx="7.5"/><text x="702" y="556">HW·硬件</text></g><text x="702" y="575">USB 封装<tspan class="sub" x="702" dy="17">UVC payload</tspan></text></g>
+          <g id="mipi" class="node hardware"><rect x="770" y="552" width="105" height="54"/><g class="modtag hw"><rect x="795" y="544" width="54" height="15" rx="7.5"/><text x="822" y="556">HW·硬件</text></g><text x="822" y="575">MIPI CSI TX<tspan class="sub" x="822" dy="17">CSI-2 packet</tspan></text></g>
+          <g id="cvbs" class="node hardware"><rect x="890" y="552" width="90" height="54"/><g class="modtag hw"><rect x="908" y="544" width="54" height="15" rx="7.5"/><text x="935" y="556">HW·硬件</text></g><text x="935" y="575">CVBS<tspan class="sub" x="935" dy="17">可选</tspan></text></g>
+          <g id="irq" class="node hardware"><rect x="280" y="552" width="270" height="54"/><g class="modtag hw"><rect x="388" y="544" width="54" height="15" rx="7.5"/><text x="415" y="556">HW·硬件</text></g><text x="415" y="575">DONE / ERR / FIFO / update done<tspan class="sub" x="415" dy="17">硬件状态与中断 flag</tspan></text></g>
+
+          <path id="e-app-lsv" class="edge command" d="M135 92V130H127V168"/>
+          <path id="e-lsv-fsm" class="edge command" d="M215 195H245"/>
+          <path id="e-fsm-nodes" class="edge command" d="M430 195H460"/>
+          <path id="e-nodes-outmgr" class="edge command" d="M700 195H735"/>
+          <path id="e-fsm-ispdrv" class="edge command" d="M300 222L185 301"/>
+          <path id="e-nodes-videodrv" class="edge command" d="M555 216L490 301"/>
+          <path id="e-outmgr-itfdrv" class="edge command" d="M840 222L815 301"/>
+          <path id="e-ispdrv-dma" class="edge command" d="M160 346L130 442"/>
+          <path id="e-videodrv-videoip" class="edge command" d="M465 346L400 430"/>
+          <path id="e-videodrv-sout" class="edge command" d="M535 346L620 442"/>
+          <path id="e-itfdrv-mux" class="edge command" d="M825 346L865 442"/>
+          <path id="e-itfdrv-usb" class="edge command" d="M780 346C700 400 680 500 700 552"/>
+          <path id="e-itfdrv-mipi" class="edge command" d="M815 346V552"/>
+          <path id="e-itfdrv-cvbs" class="edge command" d="M850 346C930 410 945 500 935 552"/>
+
+          <path id="e-dma-video" class="edge data" d="M210 475H250"/>
+          <path id="e-video-sout" class="edge data" d="M500 475H545"/>
+          <path id="e-video-mux" class="edge data" d="M500 470 C620 520 730 520 790 480"/>
+          <path id="e-sout-mux" class="edge data" d="M725 475H770"/>
+          <path id="e-mux-usb" class="edge data" d="M825 500L725 552"/>
+          <path id="e-mux-mipi" class="edge data" d="M872 500L835 552"/>
+          <path id="e-mux-cvbs" class="edge data" d="M925 500L935 552"/>
+          <path id="e-usb-win" class="edge data" d="M680 552C620 390 625 145 710 92"/>
+          <path id="e-mipi-csirx" class="edge data" d="M840 552C980 390 990 145 920 92"/>
+
+          <path id="e-irq-videodrv" class="edge event" d="M415 552L480 346"/>
+          <path id="e-irq-ispdrv" class="edge event" d="M345 552L190 346"/>
+          <path id="e-irq-error" class="edge error" d="M520 552L560 346"/>
+
+          <text id="l-init" class="edge-label command" x="145" y="132">init/start/set</text>
+          <text id="l-rtdev" class="edge-label command" x="490" y="275">设备控制</text>
+          <text id="l-frame" class="edge-label data" x="216" y="463">帧</text>
+          <text id="l-bypass" class="edge-label data" x="585" y="528">SOUT bypass</text>
+          <text id="l-usb" class="edge-label data" x="635" y="250">USB → Windows</text>
+          <text id="l-mipi" class="edge-label data" x="922" y="250">MIPI → CSI-2 RX</text>
+          <text id="l-done" class="edge-label event" x="342" y="410">DONE / 设备事件</text>
+          <text id="l-error" class="edge-label error" x="515" y="445">ERR/FIFO</text>
+        </svg>
+      </div>
+
+      <aside class="detail">
+        <div id="sceneNo" class="scene-no"></div>
+        <h2 id="sceneTitle"></h2>
+        <p id="sceneSummary" class="summary"></p>
+        <div class="badges">
+          <span id="badge-command" class="badge command">命令流</span>
+          <span id="badge-data" class="badge data">图像数据流</span>
+          <span id="badge-event" class="badge event">中断事件流</span>
+          <span id="badge-error" class="badge error">错误流</span>
+        </div>
+        <div class="notes">
+          <div class="note business"><strong>业务应用 / 上位机</strong><p id="noteBusiness"></p></div>
+          <div class="note firmware"><strong>Service / Component</strong><p id="noteFirmware"></p></div>
+          <div class="note driver"><strong>driver / HAL</strong><p id="noteDriver"></p></div>
+          <div class="note hardware"><strong>硬件 / 外部接收硬件</strong><p id="noteHardware"></p></div>
+        </div>
+        <div id="evidence" class="evidence"></div>
+        <div id="warning" class="warning"></div>
+      </aside>
+    </section>
+
+    <section class="timeline">
+      <div id="steps" class="steps"></div>
+      <div class="controls">
+        <button id="prevBtn" type="button">上一步</button>
+        <button id="playBtn" type="button">播放</button>
+        <button id="nextBtn" type="button">下一步</button>
+        <span id="progress" class="progress"></span>
+        <div class="speedbar">
+          <span>自动播放速度</span>
+          <input type="range" id="spd" min="5" max="100" value="100">
+          <span id="spdv">1.00x</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    "use strict";
+    const scenes = [
+      {
+        short:"业务选择", title:"选择 PIC、TEMP 或 VS 业务流",
+        summary:"业务先定输出对象、尺寸、帧率、格式、midout、节点参数与目标接口；PIC 是观察图，TEMP 是测温面阵，VS1/2/3 是视频转接。",
+        flows:["command"], nodes:["app","lsv"], edges:["e-app-lsv"], labels:["l-init"],
+        business:"应用经视频流服务 API 提交 stream 配置；Windows UVC 与外部 CSI-2 尚未收到数据。",
+        firmware:"视频流服务按 stream ID 取静态句柄，把配置交给流管理。",
+        driver:"本步未写硬件；driver 命令在 stream/node 初始化阶段发生。",
+        hardware:"本步只表业务选择；硬件状态以随后 INIT/START 实际执行为准。",
+        evidence:"要点：应用经流服务 API 提交配置，按流 ID 取句柄，再交给流管理装配。",
+        warning:"注意：PIP 是 PIC 子流语义，当前不是与 PIC/TEMP/VS 同级的独立 stream。"
+      },
+      {
+        short:"静态装配", title:"Stream FSM 按生成序列装配节点",
+        summary:"当前配置固定 PIC 7 节点、TEMP 4 节点、VS1/2/3 各 3 节点，初始化按 流初始化→节点初始化→驱动初始化 顺序执行、失败逆序回滚。",
+        flows:["command"], nodes:["lsv","fsm","nodes","outmgr","videodrv","itfdrv","mux","usb","mipi"], edges:["e-lsv-fsm","e-fsm-nodes","e-nodes-outmgr","e-nodes-videodrv","e-outmgr-itfdrv","e-itfdrv-mux","e-itfdrv-usb","e-itfdrv-mipi"], labels:["l-rtdev"],
+        business:"业务等 init 结果；成功从 IDLE 进 READY，不代表正在送帧。",
+        firmware:"流基类从生成资源建节点序列；节点基类静态池分配并正序初始化，输出接口的驱动初始化进入启动生命周期。",
+        driver:"初始化先配 ISP/Video 再配处理节点，最后配 MUX/SEL 路由；UVC 流在此只完成初始化，真正发送由主机 Commit 触发。",
+        hardware:"READY 前 MIPI/CVBS 可能已启动；UVC 只完成初始化，Windows Commit 后才开始非 MJPEG 发送。ISP stream 仍等业务 START。",
+        evidence:"要点：节点序列由配置驱动，按流初始化→节点初始化→驱动初始化顺序装配，失败逆序回滚。",
+        warning:"注意：接口生命周期不能一概写成“INIT 即开始送帧”。UVC 的 Commit 与业务 START 是两个独立门槛。"
+      },
+      {
+        short:"启动运行", title:"READY 经 START 进入 RUNNING",
+        summary:"PIC/TEMP 的 START 只对 ISP 流下发使能，Video 节点与输出接口已在初始化阶段配置好；STOP 只关对应 ISP 流。",
+        flows:["command"], nodes:["app","lsv","fsm","ispdrv","ispdma"], edges:["e-app-lsv","e-lsv-fsm","e-fsm-ispdrv","e-ispdrv-dma"], labels:["l-init","l-rtdev"],
+        business:"START 把 READY 切到 RUNNING；STOP 回 READY；DEINIT 才停并解绑输出接口、回 IDLE。",
+        firmware:"FSM 执行 stream 专属 start；PIC 同步管理内部 ISO 支路，TEMP 封装自身 ISP stream 启停。",
+        driver:"PIC/TEMP 的 START 下发流使能、STOP 下发失能；不重复启动已配置好的输出接口。",
+        hardware:"本步只开对应 ISP Stream DMA 数据门；目标物理接口可能已在 INIT 阶段 Ready。",
+        evidence:"要点：START 只打开对应 ISP 流数据门；目标物理接口可能在初始化阶段已就绪。",
+        warning:"READY、RUNNING、物理接口 Ready、接收端看到完整帧是四个独立成功边界。"
+      },
+      {
+        short:"PIC 数据", title:"PIC 经过完整的观察图处理节点",
+        summary:"ISP midout 先写一级三帧缓冲，PIC 再经两级 Cut/Zoom、PSD/FMT、两个 OSD、SOUT 和 OUT；SOUT 可重组为 NV12/NV16 等并写二级 DMA。",
+        flows:["data"], nodes:["ispdma","videoip","sout","mux","usb","mipi","win","csirx"], edges:["e-dma-video","e-video-sout","e-sout-mux","e-mux-usb","e-mux-mipi","e-usb-win","e-mipi-csirx"], labels:["l-frame","l-usb","l-mipi"],
+        business:"USB 分支进 Windows UVC；MIPI 分支只到外部 CSI-2，不能合成同一个“PC 接收端”。",
+        firmware:"PIC 序列：一级 Cut/Zoom→二级 Cut/Zoom→PSD→OSD×2→SOUT→OUT；节点只配硬件，CPU 不逐节点复制像素。",
+        driver:"把 Cut/Zoom、伪彩表、格式转换、OSD 地址、SOUT 模式与输出接口参数写入对应设备。",
+        hardware:"Video P 实时处理；SOUT 做平面/半平面或位宽重组；MUX/SEL 把源流接到目标接口。",
+        evidence:"要点：视频处理节点只配置硬件，数据在硬件链路流动；SOUT 是否启用决定是否发生二级重组与再搬运。",
+        warning:"ISP Zoom 与 Video Zoom 是两个软件阶段，但共享芯片物理 Zoom 资源，当前不能同时使能。"
+      },
+      {
+        short:"OSD 能力", title:"OSD Type2 与 Rec 已实现，Type1 与 Time 仍为占位",
+        summary:"PIC 序列含两个 OSD 节点，路由已覆盖 Type2/Type1/Time/Rec，但实际可执行的只有 Type2 与 Rec，其余为占位。",
+        flows:["command","data","error"], nodes:["app","lsv","fsm","nodes","videodrv","ispdma","videoip"], edges:["e-app-lsv","e-lsv-fsm","e-fsm-nodes","e-nodes-videodrv","e-videodrv-videoip","e-dma-video"], labels:["l-init","l-rtdev","l-frame"],
+        business:"业务可配 Type2 图块与 Rec 矩形；Type1/Time 当前返回不支持，不能写成现行业务能力。",
+        firmware:"OSD 节点把 Type2 与 Rec 分别交给对应处理器；Type1/Time 已接路由但处理器仍是占位。",
+        driver:"Rec 先切到 422 格式再下发初始化；Type2 按数据类型直接改格式。",
+        hardware:"Type2/Rec 驱动 OSD 硬件叠加；Rec 输入固定 YUV422。格式切换绕过 stream 统一状态，PSD 与 OSD 共享 FORMAT 资源有竞争风险。",
+        evidence:"要点：路由与处理器分离——路由表可先行覆盖全部类型，处理器能力逐步补齐；占位类型应返回明确的不支持状态而非静默。",
+        warning:"格式统一管理仍是待办目标；不要把设计目标描述为已实现的能力。"
+      },
+      {
+        short:"TEMP/VS", title:"TEMP 与 VS 走精简且不同的数据路径",
+        summary:"TEMP 现经两级 Cut/Zoom、PSD、OUT，VS1/2/3 只经两级 Cut/Zoom、OUT，都不默认走 PIC 的 OSD 与 SOUT。",
+        flows:["data"], nodes:["ispdma","videoip","mux","usb","mipi","win","csirx"], edges:["e-dma-video","e-video-mux","e-mux-usb","e-mux-mipi","e-usb-win","e-mipi-csirx"], labels:["l-frame","l-bypass","l-usb","l-mipi"],
+        business:"TEMP 传测温单分量面阵；VS 可接 VIDEO_IN、MIPI RX、ISP PIP/PIC/TEMP 等输入。",
+        firmware:"各 stream 共享框架但用不同 vtable 与生成序列。TEMP 的 PSD 走 simple PSD/PSDC 初始化，不是 PIC 完整等温伪彩链。",
+        driver:"按 PIC/TEMP/VS 选不同视频设备命令；相同节点类型映射到不同硬件路径。",
+        hardware:"TEMP 走 Video T，VS 走 Video VS；fixed-pattern 只是 VS 可选测试覆盖源。",
+        evidence:"要点：各流共享同一框架，以不同处理序列与接口命令区分；VS 是轻量视频转接流，不默认走 OSD 与 SOUT。",
+        warning:"TEMP 序列含 PSD 是结构事实，不代表 TEMP 必然转成显示伪彩；Y16 也不等于摄氏温度。"
+      },
+      {
+        short:"格式缓冲", title:"区分一级 DMA、SOUT 二级 DMA 与格式语义",
+        summary:"一级 DMA 与二级流输出 DMA 都是三帧地址 + 长度的配置，但分属不同数据边界；二级是否启用决定是否发生重组与再搬运。",
+        flows:["command","data"], nodes:["nodes","ispdrv","videodrv","ispdma","videoip","sout","mux"], edges:["e-fsm-ispdrv","e-nodes-videodrv","e-ispdrv-dma","e-videodrv-videoip","e-videodrv-sout","e-dma-video","e-video-sout","e-sout-mux"], labels:["l-rtdev","l-frame"],
+        business:"业务配 Y16/YUV/RGB/NV12 等目标语义，保证分辨率、信息行与接收端解释一致。",
+        firmware:"一级 length 按 ISP→Video 帧算；二级 length 按 SOUT 后的平面、采样与有效高度算。",
+        driver:"配置 DMA 读写模式、三帧地址、冲突策略、SOUT 数据格式与流模式。",
+        hardware:"一级 DMA 向 Video 供帧；SOUT 可做 NV12/NV21、NV16/NV61、平面格式及 24→16、16→8 转换。",
+        evidence:"要点：一级 DMA 向视频域供帧，二级流输出 DMA 做格式重组；两个长度需逐层核对，不能把最终输出长度反推为所有 DMA 长度。",
+        warning:"短帧/半帧须逐层核对两个 length，不能把最终 USB payload 长度反推为所有 DMA 长度。"
+      },
+      {
+        short:"输出接口", title:"OUT 管软件资源，MUX/SEL 管硬件路由",
+        summary:"输出接口管理负责接口的绑定、共享、启动、停止与回滚，驱动配置 Stream MUX/SEL 及 USB、MIPI、CVBS 物理设备；软件输出口不是硬件 MUX/SEL。",
+        flows:["command","data"], nodes:["outmgr","itfdrv","mux","usb","mipi","cvbs","win","csirx","videoip","sout"], edges:["e-outmgr-itfdrv","e-itfdrv-mux","e-itfdrv-usb","e-itfdrv-mipi","e-itfdrv-cvbs","e-video-sout","e-sout-mux","e-mux-usb","e-mux-mipi","e-mux-cvbs","e-usb-win","e-mipi-csirx"], labels:["l-usb","l-mipi"],
+        business:"一条流可绑一个或多个接口；USB 直连 Windows UVC，MIPI 直连外部 CSI-2。",
+        firmware:"输出接口检查共享的宽度/帧率/模式，维护消费方与激活/就绪状态，失败时回滚。",
+        driver:"接口类型配时钟、协议参数与底层设备；SSEL 按源流写自身有效像素数。",
+        hardware:"MUX/SEL 路由到 USB、MIPI TX 或 CVBS；VOC、VOSPI、MJPEG 属可选接口类型，是否支持取决于具体实现。",
+        evidence:"要点：软件输出接口负责资源绑定与生命周期，硬件 MUX/SEL 负责源流到物理接口的路由，两者分层解耦。",
+        warning:"MIPI 进 Windows 必须加外部桥片/主控并自行实现 USB/UVC；不能画成 MIPI 直连 Windows。"
+      },
+      {
+        short:"事件反馈", title:"DONE 与错误进入设备事件，不自动改 FSM",
+        summary:"DMA、Video、OSD、SOUT 与输出接口可产生完成/错误状态，以 ISP Stream 为例：ISR 清 flag、映射 mask，接收回调记日志并发送设备事件。",
+        flows:["event","error"], nodes:["irq","ispdrv","videodrv"], edges:["e-irq-videodrv","e-irq-ispdrv","e-irq-error"], labels:["l-done","l-error"],
+        business:"业务不能假设 FRAME_READY/ERROR/BUFFER_OVERFLOW callback 会自动触发；须用已实现的等待、查询与状态接口。",
+        firmware:"事件不直接驱动状态机，也不自动写错误记录；状态表没有 READY/RUNNING→ERROR 的自动转移。",
+        driver:"ISR 读/清 DONE、WR ERR、FIFO OVERFLOW、update done，经接收指示回调把掩码写入设备事件对象。",
+        hardware:"事件 flag 只表状态变化；整帧像素仍在绿色 DMA/硬件通路，不经 callback 传递。",
+        evidence:"要点：完成/错误事件进入设备事件对象后，状态机仍由显式命令驱动；事件与状态转移解耦。",
+        warning:"事实边界：只有状态变更回调有明确触发点；不要补画未被调用的错误记录或错误回调。"
+      }
+    ];
+
+    let current=0;
+    let timer=null;
+    const ORIGINAL_INTERVAL=5200;
+    let SPEED=1;
+    const nodeIds=["app","win","csirx","lsv","fsm","nodes","outmgr","ispdrv","videodrv","itfdrv","ispdma","videoip","sout","mux","usb","mipi","cvbs","irq"];
+    const edgeIds=["e-app-lsv","e-lsv-fsm","e-fsm-nodes","e-nodes-outmgr","e-fsm-ispdrv","e-nodes-videodrv","e-outmgr-itfdrv","e-ispdrv-dma","e-videodrv-videoip","e-videodrv-sout","e-itfdrv-mux","e-itfdrv-usb","e-itfdrv-mipi","e-itfdrv-cvbs","e-dma-video","e-video-sout","e-video-mux","e-sout-mux","e-mux-usb","e-mux-mipi","e-mux-cvbs","e-usb-win","e-mipi-csirx","e-irq-videodrv","e-irq-ispdrv","e-irq-error"];
+    const labelIds=["l-init","l-rtdev","l-frame","l-bypass","l-usb","l-mipi","l-done","l-error"];
+    function put(id,value){document.getElementById(id).innerHTML=value;}
+    function render(){
+      const s=scenes[current];
+      put("sceneNo",`场景 ${current+1} / ${scenes.length}`); put("sceneTitle",s.title); put("sceneSummary",s.summary);
+      put("noteBusiness",s.business); put("noteFirmware",s.firmware); put("noteDriver",s.driver); put("noteHardware",s.hardware);
+      put("evidence",s.evidence); put("warning",s.warning); put("progress",`${current+1} / ${scenes.length}`);
+      nodeIds.forEach((id)=>{const n=document.getElementById(id);n.classList.toggle("active",s.nodes.includes(id));n.classList.toggle("dim",!s.nodes.includes(id));});
+      edgeIds.forEach((id)=>document.getElementById(id).classList.toggle("active",s.edges.includes(id)));
+      labelIds.forEach((id)=>document.getElementById(id).classList.toggle("active",s.labels.includes(id)));
+      ["command","data","event","error"].forEach((f)=>document.getElementById(`badge-${f}`).classList.toggle("active",s.flows.includes(f)));
+      document.querySelectorAll(".step").forEach((el,i)=>el.classList.toggle("active",i===current));
+      document.getElementById("prevBtn").disabled=current===0; document.getElementById("nextBtn").disabled=current===scenes.length-1;
+    }
+    function stop(){if(timer!==null){window.clearInterval(timer);timer=null;}document.getElementById("playBtn").textContent="播放";}
+    function go(index){current=Math.max(0,Math.min(index,scenes.length-1));render();}
+    function tick(){if(current===scenes.length-1){stop();}else{current+=1;render();}}
+    function togglePlay(){
+      if(timer!==null){stop();return;}
+      if(current===scenes.length-1)current=0;
+      document.getElementById("playBtn").textContent="暂停";render();
+      timer=window.setInterval(tick,Math.round(ORIGINAL_INTERVAL/SPEED));
+    }
+    const steps=document.getElementById("steps");
+    scenes.forEach((s,i)=>{const b=document.createElement("button");b.type="button";b.className="step";b.innerHTML=`<b>${i+1}. ${s.short}</b>${s.title}`;b.addEventListener("click",()=>{stop();go(i);});steps.appendChild(b);});
+    document.getElementById("prevBtn").addEventListener("click",()=>{stop();go(current-1);});
+    document.getElementById("nextBtn").addEventListener("click",()=>{stop();go(current+1);});
+    document.getElementById("playBtn").addEventListener("click",togglePlay);
+    document.addEventListener("keydown",(event)=>{if(event.key==="ArrowLeft"){stop();go(current-1);}if(event.key==="ArrowRight"){stop();go(current+1);}if(event.key===" "){event.preventDefault();togglePlay();}});
+    const spd=document.getElementById("spd");
+    const spdv=document.getElementById("spdv");
+    spd.addEventListener("input",()=>{SPEED=spd.value/100;spdv.textContent=SPEED.toFixed(2)+"x";if(timer!==null){window.clearInterval(timer);timer=window.setInterval(tick,Math.round(ORIGINAL_INTERVAL/SPEED));}});
+    render();
+  </script>
+</body>
+</html>

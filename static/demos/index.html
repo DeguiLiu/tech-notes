@@ -11,9 +11,10 @@
   }
   *{box-sizing:border-box; margin:0; padding:0;}
   body{background:var(--bg); color:var(--text); font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif; padding:40px 24px; line-height:1.6;}
-  .wrap{max-width:900px; margin:0 auto;}
+  .wrap{max-width:1000px; margin:0 auto;}
   h1{font-size:24px; margin-bottom:6px;}
   .tagline{color:var(--dim); font-size:14px; margin-bottom:28px;}
+  .sec{font-size:15px; font-weight:700; color:var(--cyan); margin:22px 0 10px;}
   .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
   @media (max-width:700px){.grid{grid-template-columns:1fr;}}
   .card{display:block; text-decoration:none; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px; transition:border-color .2s, transform .2s;}
@@ -21,23 +22,101 @@
   .tag{display:inline-block; font-size:11px; padding:2px 10px; border-radius:99px; margin-bottom:10px; font-weight:700;}
   .tag-demo{background:linear-gradient(90deg,#0891b2,#2563eb); color:#fff;}
   .tag-article{background:linear-gradient(90deg,#ea580c,#7c3aed); color:#fff;}
-  .card h2{font-size:16px; margin-bottom:6px;}
-  .card p{font-size:13px; color:var(--dim); line-height:1.65;}
-  .card .url{font-size:11px; color:var(--cyan); margin-top:10px; word-break:break-all; font-family:Consolas,monospace;}
+  .card h2{font-size:15.5px; margin-bottom:6px;}
+  .card p{font-size:12.5px; color:var(--dim); line-height:1.65;}
+  .card .url{font-size:10.5px; color:var(--cyan); margin-top:10px; word-break:break-all; font-family:Consolas,monospace;}
   footer{color:var(--dim); font-size:12px; margin-top:30px; text-align:center;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>嵌入式技术演示合集</h1>
-  <p class="tagline">交互式动画演示与技术文章，覆盖命令传输、GUI 线程模型、MCU 内存架构等工程实践。</p>
+  <p class="tagline">交互式动画演示与技术文章：UVC/MIPI 视频输出、命令协议、系统启动、ISP 管线、内存架构等工程实践。</p>
 
+  <div class="sec">动画演示</div>
   <div class="grid">
+    <a class="card" href="uvc-software-hardware-interaction.html">
+      <span class="tag tag-demo">动画演示</span>
+      <h2>UVC 业务与软硬件交互图</h2>
+      <p>四泳道（PC/固件/驱动/硬件）UVC 交互：命令从哪进、像素流向哪、硬件状态如何返回，六类场景逐步高亮。</p>
+      <div class="url">uvc-software-hardware-interaction.html</div>
+    </a>
+
+    <a class="card" href="uvc-pipeline-demo.html">
+      <span class="tag tag-demo">动画演示</span>
+      <h2>UVC 业务链路</h2>
+      <p>控制链（PC→应用→UVC 服务→驱动→硬件）+ 数据流（像素经 WRAPE→EP FIFO→PC），含封帧、带宽与提前封帧规避。</p>
+      <div class="url">uvc-pipeline-demo.html</div>
+    </a>
+
+    <a class="card" href="vdcmd-command-video-demo.html">
+      <span class="tag tag-demo">动画演示</span>
+      <h2>VDCMD 命令与视频交互</h2>
+      <p>命令协议路由 → 业务动作 → 视频输出的完整交互：命令结果、stream 状态、视频数据三条独立回传路径。</p>
+      <div class="url">vdcmd-command-video-demo.html</div>
+    </a>
+
+    <a class="card" href="vdcmd-serial-cci-demo.html">
+      <span class="tag tag-demo">动画演示</span>
+      <h2>VDCMD 串口与 CCI</h2>
+      <p>命令双通道：串口(UCI) 与 I2C(CCI) 的收发、拆帧与回传对比，控制通道各自的时序与校验。</p>
+      <div class="url">vdcmd-serial-cci-demo.html</div>
+    </a>
+
     <a class="card" href="vdcmd-cci-uci-demo.html">
       <span class="tag tag-demo">动画演示</span>
       <h2>VDCMD 命令传输原理</h2>
-      <p>CCI（I2C 硬件信箱 · 主机轮询）vs UCI（UART 软件拆帧 · 固件回推）：命令解析核心相同，差别在硬件/软件分工与结果回传。</p>
+      <p>CCI（I2C 硬件信箱 · 主机轮询）vs UCI（UART 软件拆帧 · 固件回推）：pull 与 push 两种同步模型的本质差异。</p>
       <div class="url">vdcmd-cci-uci-demo.html</div>
+    </a>
+
+    <a class="card" href="mipi-csi-tx-output.html">
+      <span class="tag tag-demo">动画演示</span>
+      <h2>MIPI CSI TX 图像输出</h2>
+      <p>控制链（配置如何推到硬件）+ 数据链路（像素经 Stream SEL → CSI TX → D-PHY）双演示，含 VC 模式与 data type 映射。</p>
+      <div class="url">mipi-csi-tx-output.html</div>
+    </a>
+
+    <a class="card" href="system-panorama-pipeline-demo.html">
+      <span class="tag tag-demo">动画演示</span>
+      <h2>系统全景与图像链路</h2>
+      <p>系统模块全景与图像链路：从业务 stream 到 USB/MIPI 双输出的完整路径，硬件节点独立展示。</p>
+      <div class="url">system-panorama-pipeline-demo.html</div>
+    </a>
+
+    <a class="card" href="system-boot-init-demo.html">
+      <span class="tag tag-demo">动画演示</span>
+      <h2>系统启动与初始化</h2>
+      <p>复位→SRAM 段→SystemInit→实时操作系统→组件自动初始化→预览门控，七个场景的连续交付链。</p>
+      <div class="url">system-boot-init-demo.html</div>
+    </a>
+
+    <a class="card" href="infrared-isp-demo.html">
+      <span class="tag tag-demo">动画演示</span>
+      <h2>红外图像与 ISP 处理</h2>
+      <p>红外探测器 → ISP 管线（校正/增强/测温）→ 输出的处理架构，含 IRSC 时序与像素格式。</p>
+      <div class="url">infrared-isp-demo.html</div>
+    </a>
+
+    <a class="card" href="video-stream-nodes-demo.html">
+      <span class="tag tag-demo">动画演示</span>
+      <h2>视频流与节点</h2>
+      <p>视频流节点分层架构：PIC/TEMP/VS 各流的生命周期、节点管理与输出接口的交互。</p>
+      <div class="url">video-stream-nodes-demo.html</div>
+    </a>
+
+    <a class="card" href="memory-image-buffers-demo.html">
+      <span class="tag tag-demo">动画演示</span>
+      <h2>内存与图像缓冲</h2>
+      <p>构建变体→LMA/VMA→静态池/Heap→Cache 属性→DMA 连续布局→失效与闭环，内存管理八步主线。</p>
+      <div class="url">memory-image-buffers-demo.html</div>
+    </a>
+
+    <a class="card" href="stm32f407-sram-ccm-demo.html">
+      <span class="tag tag-demo">动画演示</span>
+      <h2>STM32F407 内存寻路演示</h2>
+      <p>一块数据该放 CCM 还是 SRAM：DMA 可见缓冲与 CPU 热数据的两条寻路动画，含总线拓扑、三问决策与踩坑清单。</p>
+      <div class="url">stm32f407-sram-ccm-demo.html</div>
     </a>
 
     <a class="card" href="pyside6-thread-model-video-pipeline.html">
@@ -46,7 +125,10 @@
       <p>GIL 真/假多线程、控制面与数据面分离、零拷贝帧链、复合帧 frame_id 对齐，以及 1920×1440 @ 30fps 的原理。</p>
       <div class="url">pyside6-thread-model-video-pipeline.html</div>
     </a>
+  </div>
 
+  <div class="sec">技术文章</div>
+  <div class="grid">
     <a class="card" href="stm32f407-sram-ccm-memory-architecture.md">
       <span class="tag tag-article">技术文章</span>
       <h2>STM32F407 内存架构</h2>
@@ -66,20 +148,6 @@
       <h2>PySide6 工业上位机实战经验</h2>
       <p>线程与背压、零拷贝的真实定义、OpenGL 上传坑、NumPy LUT 归一化，以及跨语言硬约束 E1–E5。</p>
       <div class="url">tech_blog_pyside6_lessons.md</div>
-    </a>
-
-    <a class="card" href="mipi-csi-tx-output.html">
-      <span class="tag tag-demo">动画演示</span>
-      <h2>MIPI CSI TX 图像输出</h2>
-      <p>控制链（配置如何推到硬件）+ 数据链路（像素经 Stream SEL → CSI TX → D-PHY）双演示，含 VC 模式与 data type 映射。</p>
-      <div class="url">mipi-csi-tx-output.html</div>
-    </a>
-
-    <a class="card" href="stm32f407-sram-ccm-demo.html">
-      <span class="tag tag-demo">动画演示</span>
-      <h2>STM32F407 内存寻路演示</h2>
-      <p>一块数据该放 CCM 还是 SRAM：DMA 可见缓冲与 CPU 热数据的两条寻路动画，含总线拓扑、三问决策与踩坑清单。</p>
-      <div class="url">stm32f407-sram-ccm-demo.html</div>
     </a>
   </div>
 

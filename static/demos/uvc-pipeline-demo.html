@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>视频处理芯片 · 红外 UVC 业务链路 · 控制链 + 图像数据流</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --panel2:#1a2740; --line:#334155;
+    --pc:#db2777; --app:#2563eb; --svc:#7c3aed; --drv:#0d9488; --hw:#ea580c;
+    --ddr:#a16207; --ddr2:#fbbf24;
+    --cmd:#3b82f6; --data:#22c55e; --event:#eab308; --error:#ef4444;
+    --text:#e2e8f0; --dim:#94a3b8;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif; padding:24px; line-height:1.6;}
+  h1{font-size:22px; margin-bottom:4px;}
+  h1 .s{color:var(--dim); font-size:14px; font-weight:normal;}
+  .tagline{color:var(--dim); font-size:14px; margin-bottom:14px;}
+  .tagline .pc{color:var(--pc);} .tagline .ddr{color:var(--ddr2);} .tagline .hw{color:var(--hw);}
+
+  .speedbar{display:flex; align-items:center; gap:14px; margin-bottom:20px; padding:10px 16px; background:var(--panel); border:1px solid var(--line); border-radius:10px; font-size:13px; color:var(--dim); flex-wrap:wrap;}
+  .speedbar b{color:var(--text);}
+  .speedbar input{width:240px; accent-color:#38bdf8; cursor:pointer;}
+  .spdv{font-weight:700; color:var(--cyan,var(--text)); min-width:48px; font-size:15px;}
+  .spdtip{color:var(--dim); font-size:12px;}
+
+  section{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px 20px; margin-bottom:26px;}
+  section h2{font-size:18px; margin-bottom:2px; display:flex; align-items:center; gap:10px;}
+  .chip-tag{font-size:12px; padding:2px 10px; border-radius:99px; color:#fff; background:linear-gradient(90deg,#0891b2,#2563eb);}
+  .chip-tag.flow{background:linear-gradient(90deg,#f59e0b,#ef4444);}
+  .intro{color:var(--dim); font-size:13px; margin:6px 0 12px;}
+  .intro b{color:var(--text);}
+
+  .layers{display:flex; border-radius:10px; overflow:hidden; font-size:12px; border:1px solid var(--line); margin-bottom:12px;}
+  .layers .hw,.layers .sw{flex:1; padding:7px 12px;}
+  .layers .taghw,.layers .tagsw{font-weight:700; font-size:12px; display:block;}
+  .layers .detail{font-weight:400; font-size:11px; display:block; margin-top:2px; color:var(--dim);}
+  .layers .sw{background:#101828; border-right:1px dashed var(--line);}
+  .layers .hw{background:#0c1a2e;}
+  .layers .tagsw{color:#f0abfc;} .layers .taghw{color:var(--hw);}
+  .layers .sw .detail{color:#fbcfe8;} .layers .hw .detail{color:#fdba74;}
+
+  /* control chain: horizontal cols */
+  .stage{display:flex; align-items:stretch; gap:2px; padding:24px 10px; border:1px dashed var(--line); border-radius:10px; background:linear-gradient(180deg,#0b1220,#101a2e); overflow-x:auto;}
+  .col{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:16px 12px 14px; border:1px dashed; border-radius:12px; min-width:196px; max-width:240px;}
+  .col .coltitle{font-size:12px; font-weight:700; padding:2px 12px; border-radius:99px; color:#fff; margin-bottom:4px; white-space:nowrap;}
+  .col-pc{border-color:rgba(219,39,119,.55); background:rgba(219,39,119,.06);}
+  .col-app{border-color:rgba(59,130,246,.5); background:rgba(59,130,246,.04);}
+  .col-svc{border-color:rgba(167,139,250,.5); background:rgba(167,139,250,.04);}
+  .col-drv{border-color:rgba(13,148,136,.5); background:rgba(13,148,136,.04);}
+  .col-hw{border-color:rgba(234,88,12,.65); background:rgba(234,88,12,.08);}
+  .col-pc .coltitle{background:#be185d;}
+  .col-app .coltitle{background:#1d4ed8;}
+  .col-svc .coltitle{background:#6d28d9;}
+  .col-drv .coltitle{background:#0f766e;}
+  .col-hw .coltitle{background:#c2410c;}
+
+  .node{width:186px; padding:8px 10px; border:2px solid var(--line); border-radius:10px; background:#0f172a; text-align:center; position:relative; transition:box-shadow .3s, transform .3s;}
+  .node .modtag{display:inline-block; font-size:9px; font-weight:700; padding:0 8px; border-radius:99px; color:#fff; margin-bottom:3px;}
+  .node .t{font-size:13px; font-weight:700; color:var(--text); font-family:Consolas,"SFMono-Regular",monospace; word-break:break-word; line-height:1.3;}
+  .node .m{font-size:10px; color:var(--dim); margin-top:3px; line-height:1.4;}
+  .node.done{background:#0e2a1c; border-color:var(--data)!important;}
+  .node.done .t{color:#4ade80;}
+  .node.active{box-shadow:0 0 16px rgba(255,255,255,.28); animation:nodePulse 1s ease-in-out infinite;}
+  .mod-pc{border-color:var(--pc);} .mod-pc .modtag{background:var(--pc);}
+  .mod-app{border-color:var(--app);} .mod-app .modtag{background:var(--app);}
+  .mod-svc{border-color:var(--svc);} .mod-svc .modtag{background:var(--svc);}
+  .mod-drv{border-color:var(--drv);} .mod-drv .modtag{background:var(--drv);}
+  .mod-hw{border-color:var(--hw);} .mod-hw .modtag{background:var(--hw); box-shadow:inset 0 0 0 1px rgba(234,88,12,.25);}
+  .mod-ddr{border-color:var(--ddr2);} .mod-ddr .modtag{background:var(--ddr); color:#fff;}
+  .mod-ddr .t{color:var(--ddr2);}
+  @keyframes nodePulse{0%,100%{transform:scale(1);}50%{transform:scale(1.05);}}
+  .vlink{width:2px; height:18px; background:var(--line); transition:background .3s;}
+  .vlink.done{background:var(--data);}
+  .hl{display:flex; align-items:center; justify-content:center; width:26px; min-width:26px; color:var(--dim); font-size:18px; transition:color .3s;}
+  .hl.done{color:var(--data);}
+
+  /* data flow rows */
+  .flowstage{padding:18px 12px; border:1px dashed var(--line); border-radius:10px; background:linear-gradient(180deg,#0b1220,#101a2e); overflow-x:auto;}
+  .frow-label{font-size:12px; font-weight:700; color:var(--ddr2); margin:8px 0 4px; letter-spacing:.5px;}
+  .frow{display:flex; align-items:center; justify-content:center; gap:8px; flex-wrap:nowrap;}
+  .fnode{min-width:126px; max-width:150px; padding:6px 8px; border:2px solid var(--line); border-radius:10px; background:#0f172a; text-align:center; transition:box-shadow .3s, transform .3s;}
+  .fnode .ft{font-size:11px; font-weight:700; color:var(--text); font-family:Consolas,monospace; line-height:1.3;}
+  .fnode .fm{font-size:9px; color:var(--dim); margin-top:2px; line-height:1.35;}
+  .fnode.done{background:#0e2a1c; border-color:var(--data)!important;}
+  .fnode.done .ft{color:#4ade80;}
+  .fnode.active{box-shadow:0 0 14px rgba(255,255,255,.3); animation:nodePulse 1s ease-in-out infinite;}
+  .mod-hw{border-color:var(--hw);}
+  .mod-ddr{border-color:var(--ddr2);} .mod-ddr .ft{color:var(--ddr2);}
+  .farr{color:var(--dim); font-size:16px; flex:none; transition:color .3s; min-width:14px; text-align:center;}
+  .farr.done{color:var(--data);}
+  .fvj{color:var(--dim); font-size:11px; text-align:center; padding:4px 0; transition:color .3s;}
+  .fvj.done{color:var(--data);}
+  .fnode .tag{display:inline-block; font-size:8px; font-weight:700; padding:0 6px; margin-left:4px; border-radius:4px; vertical-align:1px; background:#7c2d12; color:#fb923c; border:1px solid rgba(251,146,60,.5);}
+
+  /* X2 边界 Identity Zoom 规避面板 */
+  .t37{margin-top:14px; border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#0b1426;}
+  .t37-title{padding:8px 14px; font-size:13px; font-weight:700; color:var(--event); background:#0b1426; border-bottom:1px solid var(--line);}
+  .t37-row{display:flex; align-items:center; gap:16px; padding:9px 14px; font-size:12px; flex-wrap:wrap;}
+  .t37-row .k{font-weight:700; min-width:150px; color:#e2e8f0;}
+  .t37-row .tag{font-size:11px; padding:1px 8px; border-radius:99px; color:#fff; font-family:Consolas,monospace;}
+  .t37-row .modes{color:var(--dim); font-family:Consolas,monospace; font-size:11px; line-height:1.6;}
+  .t37-row.prod{background:rgba(234,179,8,.06);} .t37-row.prod .k{color:#fde68a;} .t37-row.prod .tag{background:#a16207;}
+  .t37-row.err{background:rgba(239,68,68,.06);} .t37-row.err .k{color:#fca5a5;} .t37-row.err .tag{background:#b91c1c;}
+  .t37-row.hw{background:rgba(234,88,12,.06);} .t37-row.hw .k{color:#fb923c;} .t37-row.hw .tag{background:#c2410c;}
+
+  .capwrap{text-align:center; margin-top:14px;}
+  .cap{display:inline-block; font-size:13px; color:var(--text); background:#0b1426; border:1px solid var(--line); padding:5px 16px; border-radius:99px; min-height:26px; max-width:100%;}
+  .controls{display:flex; align-items:center; gap:12px; margin-top:12px; flex-wrap:wrap;}
+  .controls .spd2{width:150px; accent-color:#38bdf8;}
+  button{cursor:pointer; border:none; border-radius:8px; padding:8px 16px; font-size:14px; font-weight:700; color:#fff; transition:transform .1s;}
+  button:active{transform:scale(.96);}
+  .btn-play{background:linear-gradient(90deg,#0891b2,#2563eb);}
+  .btn-play.flow{background:linear-gradient(90deg,#f59e0b,#ef4444);}
+  .btn-step{background:#334155;}
+  .stepno{font-size:12px; color:var(--dim);}
+  .stepno b{color:var(--text); font-size:15px;}
+  .hint{font-size:11px; color:var(--dim);}
+</style>
+</head>
+<body>
+
+<h1>视频处理芯片 · 红外 UVC 业务链路 <span class="s">控制链 + 图像数据流（DDR / DMA 硬件独立展示）</span></h1>
+<div class="tagline">两维：①<b>控制链</b>（命令如何推进）②<b>数据流</b>（图像如何经 <span class="ddr">DDR</span> / <span class="hw">WRAPE·USB</span> 流转到上位机）。硬件设备独立成节点。</div>
+
+<div class="speedbar">
+  <span><b>全局播放速度</b></span>
+  <input type="range" id="spd" min="5" max="100" value="25">
+  <span class="spdv" id="spdv">0.25x</span>
+  <span class="spdtip">仅影响"▶ 播放"自动循环；手动单步由你控制节奏</span>
+</div>
+
+<!-- ============ ① 控制链 ============ -->
+<section>
+  <h2><span class="chip-tag">① 控制链</span> UVC 业务：从触发到启动的横向链路（7 节点）</h2>
+  <div class="intro">谁触发 → 固件应用 → UVC 服务 → 驱动 → <b>硬件</b>(WRAPE / Stream SEL / USB) → PC 采集。颜色区分 PC / 应用 / 服务 / 驱动 / 硬件。</div>
+
+  <div class="layers">
+    <div class="sw"><span class="tagsw">软件层 · SW</span>
+      <span class="detail">上位机(触发) + 固件应用 → UVC Class 服务 → Driver/HAL 配置</span></div>
+    <div class="hw"><span class="taghw">硬件层 · HW（橙）</span>
+      <span class="detail">WRAPE / Stream SEL / USB TOP 独立承担打包与出图</span></div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="col col-pc"><div class="coltitle">① PC · 触发</div>
+      <div class="node mod-pc" id="n0"><span class="modtag">SW·PC</span><div class="t">Windows 触发</div><div class="m">EP0 vendor / 免驱 UVC<br>枚举与 Probe/Commit</div></div></div>
+    <div class="hl" id="l0">→</div>
+    <div class="col col-app"><div class="coltitle">② SW · 固件应用</div>
+      <div class="node mod-app" id="n1"><span class="modtag">SW·应用</span><div class="t">业务配置 + Commit</div><div class="m">VDCMD/预置 → 相机启动<br>解析宽高帧率</div></div></div>
+    <div class="hl" id="l1">→</div>
+    <div class="col col-svc"><div class="coltitle">③ SW · UVC 服务</div>
+      <div class="node mod-svc" id="n2"><span class="modtag">SW·服务</span><div class="t">UVC Class / Probe</div><div class="m">描述符 · Probe/Commit<br>非 MJPEG 启动 S0 / MJPEG JPEG<br>TPD 启动 S1</div></div></div>
+    <div class="hl" id="l2">→</div>
+    <div class="col col-drv"><div class="coltitle">④ SW · 驱动</div>
+      <div class="node mod-drv" id="n3"><span class="modtag">SW·驱动</span><div class="t">Driver / HAL 配置</div><div class="m">USB 控制接口 INIT/START<br>Stream SEL / USB TOP 参数</div></div></div>
+    <div class="hl" id="l3">→</div>
+    <div class="col col-hw"><div class="coltitle">⑤ HW · 硬件出图</div>
+      <div class="node mod-hw" id="n4"><span class="modtag">HW·硬件</span><div class="t">WRAPE + USB 出图</div><div class="m">WRAPE0/1 加 UVC 头<br>Stream SEL 路由 → USB PHY</div></div></div>
+    <div class="hl" id="l4">→</div>
+    <div class="col col-pc"><div class="coltitle">⑥ PC · 采集</div>
+      <div class="node mod-pc" id="n5"><span class="modtag">SW·PC</span><div class="t">Windows 采集</div><div class="m">免驱 UVC 组帧<br>测温/预览</div></div></div>
+  </div>
+
+  <div class="capwrap"><span class="cap" id="cap">初始：上电完成，等待 Windows 触发或业务预配置</span></div>
+  <div class="controls">
+    <button class="btn-play" id="play">▶ 播放</button>
+    <button class="btn-step" id="prev">⟵ 上一步</button>
+    <button class="btn-step" id="next">下一步 ⟶</button>
+    <span class="stepno">步骤 <b id="step">0</b> / <b id="stepmax">6</b></span>
+    <span class="hint">自动播放中点击"▶"暂停；上一步/下一步手动单步</span>
+  </div>
+</section>
+
+<!-- ============ ② 数据流 ============ -->
+<section>
+  <h2><span class="chip-tag flow">② 图像数据流</span> DDR / DMA 硬件角色 · 分层流转</h2>
+  <div class="intro">数据流：<b>探测器</b> → IRSC/ISP 处理 → <b>DMA 写</b>入 <span class="ddr"><b>DDR 帧缓冲</b></span>(金) → <b>DMA 读</b>出 → <b>UVC WRAPE</b> 零拷贝打包 → USB / MIPI → 上位机。硬件(含 DDR/DMA)独立展示。</div>
+
+  <div class="layers">
+    <div class="hw"><span class="taghw">硬件层 · HW（橙 / 金）—— 数据流主体</span>
+      <span class="detail">IR探测器 → IRSC → ISP → DMA → DDR帧缓冲 → WRAPE → USB FIFO，全程硬件搬运</span></div>
+    <div class="sw"><span class="tagsw">软件层 · SW（粉）—— 两端 PC</span>
+      <span class="detail">上位机触发/采集；固件只配置参数与生命周期</span></div>
+  </div>
+
+  <div class="flowstage">
+    <div class="frow-label">采集 → DDR 存储（帧生成）</div>
+    <div class="frow">
+      <div class="fnode mod-hw" id="f0"><div class="ft">IR 探测器</div><div class="fm">原始红外帧</div></div>
+      <div class="farr" id="fl0">→</div>
+      <div class="fnode mod-hw" id="f1"><div class="ft">IRSC/ISP</div><div class="fm">校正 / 处理</div></div>
+      <div class="farr" id="fl1">→</div>
+      <div class="fnode mod-hw" id="f2"><div class="ft">DMA 写</div><div class="fm">写 DDR 帧缓冲</div></div>
+      <div class="farr" id="fl2">→</div>
+      <div class="fnode mod-ddr" id="f3"><div class="ft">DDR 帧缓冲</div><div class="fm">buf0/1/2 ping-pong</div></div>
+    </div>
+    <div class="fvj" id="fl3">▼ DDR → 出图路径</div>
+
+    <div class="frow-label">DDR → USB 输出（WRAPE 零拷贝）</div>
+    <div class="frow">
+      <div class="fnode mod-hw" id="f4"><div class="ft">DMA 读</div><div class="fm">从 DDR 读帧</div></div>
+      <div class="farr" id="fl4">→</div>
+      <div class="fnode mod-hw" id="f5"><div class="ft">UVC WRAPE<span class="tag">X2边界</span></div><div class="fm">零拷贝打包<br>USB_VD_ADDR→EP FIFO</div></div>
+      <div class="farr" id="fl5">→</div>
+      <div class="fnode mod-hw" id="f6"><div class="ft">USB EP FIFO</div><div class="fm">bulk/isoc 输出</div></div>
+      <div class="farr" id="fl6">→</div>
+      <div class="fnode mod-app" id="f7"><div class="ft">Windows 上位机</div><div class="fm">采集 NV12/YUY2/Y16</div></div>
+    </div>
+    <div class="fvj" id="fl7">▼ DDR → MIPI 并行分支</div>
+
+    <div class="frow">
+      <div class="fnode mod-hw" id="f8"><div class="ft">MIPI TX0</div><div class="fm">CSI 输出</div></div>
+      <div class="farr" id="fl8">→</div>
+      <div class="fnode mod-app" id="f9"><div class="ft">外部 MIPI 接收</div><div class="fm">1920x1442@30 等</div></div>
+    </div>
+  </div>
+
+  <div class="t37">
+    <div class="t37-title">⚠️ 边界：X2 提前封帧与 Identity Zoom 规避 —— 故障现象 / 根源 / 方案 / 证据边界</div>
+    <div class="t37-row prod"><span class="k">故障现象</span><span class="tag">ERR+EOF</span>
+      <span class="modes">X2 输出时，USB 抓包确认设备在 <b>655360B</b>（=640×512×2B，即 X1 帧字节数）处发送 <b>ERR+EOF</b> → Windows 提前结束该帧，只显示左上约 1/4 画面</span></div>
+    <div class="t37-row err"><span class="k">根源判断</span><span class="tag">提前封帧</span>
+      <span class="modes">X1→X2 切换时，WRAPE 在 <b>X1 字节边界</b>提前结束 X2 帧（RTL 无正式解释，工程观察）。655360B 对应 X1 的 16-bit 帧字节数，不是 X2 完整帧边界 —— 不称“半帧”</span></div>
+    <div class="t37-row hw"><span class="k">规避方案 · Identity Zoom</span><span class="tag">缩放步长=256</span>
+      <span class="modes">Video Zoom 始终激活、不因切换被复位。X1(640×512) → 2×放大到 1280×1024；X2(1280×1024) → 1:1 恒等直通（<b>缩放步长=256</b>）。即下游固定 1280×1024，USB 对外恒为 <b>1280×1024@30</b>，源流有效计数 <b>1310720</b> 稳定输出完整帧</span></div>
+    <div class="t37-row"><span class="k">证据边界</span><span class="tag">工程规避</span>
+      <span class="modes">该方案是<b>工程规避，非 WRAPE RTL 修复</b>；验证须同时看 stream 配置、有效计数、USB 抓包与 Windows 图像，仅“开流成功”不足以证明完整帧</span></div>
+  </div>
+
+  <div class="capwrap"><span class="cap" id="f-cap">初始：数据流未启动，等待出图使能</span></div>
+  <div class="controls">
+    <button class="btn-play flow" id="f-play">▶ 播放</button>
+    <button class="btn-step" id="f-prev">⟵ 上一步</button>
+    <button class="btn-step" id="f-next">下一步 ⟶</button>
+    <span class="stepno">步骤 <b id="f-step">0</b> / <b id="f-stepmax">10</b></span>
+    <span class="hint">绿色 = 数据已流过；DDR 金色、硬件橙独立成节点</span>
+  </div>
+</section>
+
+<script>
+"use strict";
+function id(s){ return document.getElementById(s); }
+
+/* ---------- global speed (auto-play only) ---------- */
+let SPEED = 0.25;
+function sleep(ms){ return new Promise(r => setTimeout(r, Math.round(ms / SPEED))); }
+const spdEl = id("spd"), spdVal = id("spdv");
+spdEl.addEventListener("input", () => { SPEED = spdEl.value / 100; spdVal.textContent = SPEED.toFixed(2) + "x"; });
+
+/* ---------- generic step player (Preview stdApply style) ---------- */
+function makePlayer(cfg){
+  const btn = id(cfg.btnId), prevBtn = id(cfg.prevId), nextBtn = id(cfg.nextId);
+  const stepEl = id(cfg.stepId), maxEl = id(cfg.maxId), capEl = id(cfg.capId);
+  maxEl.textContent = cfg.TOTAL;
+  let cur = -1, running = false;
+
+  function reset(){
+    cfg.nodes.forEach(n => n.classList.remove("active","done"));
+    cfg.links.forEach(l => l.classList.remove("done"));
+    cur = -1; stepEl.textContent = "0"; capEl.textContent = cfg.initCap;
+  }
+  function goto(i){
+    cur = i; stepEl.textContent = String(i + 1); capEl.textContent = cfg.steps[i].cap;
+    cfg.apply(cfg.nodes, cfg.links, i);
+  }
+  function stop(){ running = false; btn.textContent = "▶ 播放"; }
+  function next(){ if (running) stop(); if (cur < cfg.TOTAL - 1) goto(cur + 1); }
+  function prev(){
+    if (running) stop();
+    if (cur <= 0){ reset(); return; }
+    goto(cur - 1);
+  }
+  async function play(){
+    if (running){ stop(); return; }
+    running = true; btn.textContent = "■ 暂停"; reset();
+    for (let i = 0; i < cfg.TOTAL; i++){
+      if (!running) break;
+      goto(i); await sleep(cfg.steps[i].dur);
+    }
+    if (running){ capEl.textContent = cfg.doneCap; btn.textContent = "▶ 重播"; }
+    running = false;
+  }
+  btn.addEventListener("click", play);
+  prevBtn.addEventListener("click", prev);
+  nextBtn.addEventListener("click", next);
+  return { play, reset };
+}
+function stdApply(nodes, links, i){
+  nodes.forEach(n => n.classList.remove("active","done"));
+  links.forEach(l => l.classList.remove("done"));
+  for (let k = 0; k < i; k++){
+    nodes[k].classList.add("done");
+    if (k < links.length) links[k].classList.add("done");
+  }
+  nodes[i].classList.add("active");
+}
+
+/* ============ ① 控制链 ============ */
+const cNodes=[], cLinks=[];
+for (let i=0;i<6;i++) cNodes.push(id("n"+i));
+for (let i=0;i<5;i++) cLinks.push(id("l"+i));
+const cSteps=[
+ {cap:"① Windows 触发：EP0 vendor / 免驱 UVC 枚举，发起 Probe/Commit", dur:1800},
+ {cap:"② 固件应用：业务预配置(VDCMD) + 相机启动，解析宽高帧率", dur:1800},
+ {cap:"③ UVC 服务：Probe 协商格式，Commit 后按流类型分支(S0/S1/Jpeg)", dur:2000},
+ {cap:"④ Driver/HAL：USB 控制接口下发启停，配置 Stream SEL / USB TOP", dur:1800},
+ {cap:"⑤ 硬件：WRAPE 加 UVC 头，Stream SEL 路由涌入 USB PHY 出图", dur:2000},
+ {cap:"⑥ Windows 采集：免驱 UVC 组帧 N，测温/预览", dur:1800},
+];
+const P1 = makePlayer({ btnId:"play",prevId:"prev",nextId:"next",stepId:"step",maxId:"stepmax",capId:"cap",
+  TOTAL:6, nodes:cNodes, links:cLinks, steps:cSteps,
+  initCap:"初始：上电完成，等待 Windows 触发或业务预配置",
+  doneCap:"✓ 控制链闭环：PC 触发 → 应用 → 服务 → 驱动 → 硬件 → PC 采集",
+  apply: stdApply });
+
+/* ============ ② 数据流 ============ */
+const fNodes=[], fLinks=[];
+for (let i=0;i<10;i++) fNodes.push(id("f"+i));
+for (let i=0;i<9;i++) fLinks.push(id("fl"+i));
+function flowApply(nodes, links, i){
+  nodes.forEach(n => n.classList.remove("active","done"));
+  links.forEach(l => l.classList.remove("done"));
+  const doneTo=(k)=>{ for(let j=0;j<k;j++){ nodes[j].classList.add("done"); if(j<links.length)links[j].classList.add("done");} };
+  if (i <= 7){ doneTo(i); nodes[i].classList.add("active"); }
+  else if (i === 8){ doneTo(8); nodes[8].classList.add("active"); }
+  else { doneTo(8); links[8].classList.add("done"); nodes[8].classList.add("done"); nodes[9].classList.add("active"); }
+}
+const fSteps=[
+ {cap:"① IR 探测器输出原始红外帧", dur:1600},
+ {cap:"② IRSC/ISP 校正处理后生成视频帧", dur:1700},
+ {cap:"③ DMA 写：图像数据写入 DDR 帧缓冲", dur:1700},
+ {cap:"④ DDR 帧缓冲：buf0/1/2 乒乓缓存(金=DDR)", dur:1900},
+ {cap:"⑤ DMA 读：从 DDR 读帧送 UVC WRAPE", dur:1700},
+ {cap:"⑥ UVC WRAPE：零拷贝打包 UVC 帧(USB_VD_ADDR→EP FIFO)", dur:2000},
+ {cap:"⑦ USB EP FIFO：bulk/isoc 端点输出", dur:1700},
+ {cap:"⑧ Windows 上位机：组帧采集，测温/预览", dur:1800},
+ {cap:"⑨（分支）DDR → MIPI TX0 CSI 输出", dur:1700},
+ {cap:"⑩（分支）外部 MIPI 设备接收", dur:1500},
+];
+const P2 = makePlayer({ btnId:"f-play",prevId:"f-prev",nextId:"f-next",stepId:"f-step",maxId:"f-stepmax",capId:"f-cap",
+  TOTAL:10, nodes:fNodes, links:fLinks, steps:fSteps,
+  initCap:"初始：数据流未启动，等待出图使能",
+  doneCap:"✓ 数据流闭环：探测器 → DDR 帧缓冲 → WRAPE/USB/MIPI → 上位机",
+  apply: flowApply });
+
+/* auto-play both; manual button press cancels */
+let autoTimer = setTimeout(() => { P1.play(); P2.play(); }, 600);
+document.querySelectorAll("button").forEach(b => b.addEventListener("click", () => clearTimeout(autoTimer)));
+</script>
+</body>
+</html>
