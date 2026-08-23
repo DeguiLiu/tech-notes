@@ -196,10 +196,10 @@
 
     <div class="chip" id="cci-chip">
       <div class="name">CCI 从机（硬件 IP）</div>
-      <div class="addr" id="cci-chipmeta">0x78 · path A</div>
+      <div class="addr" id="cci-chipmeta">从机地址 · path A</div>
       <div class="bell" id="cci-bell"></div>
       <div class="cmdbuf" id="cci-cmdbuf">
-        <div class="lbl">CMD_BUF 信箱 (256B)</div>
+        <div class="lbl">CMD_BUF 信箱</div>
         <div class="slot in" id="cci-letter-in" style="opacity:0">信</div>
         <div class="slot out" id="cci-letter-out" style="opacity:0">回</div>
         <div class="bufinfo" id="cci-bufinfo"></div>
@@ -207,7 +207,7 @@
       <div class="statusbox" id="cci-status">
         <div class="lbl">CMD_STATUS</div>
         <div class="val" id="cci-status-val">busy</div>
-        <div class="code" id="cci-status-code">reg = 0x00</div>
+        <div class="code" id="cci-status-code">reg = busy</div>
       </div>
       <div class="hwip">硬件：寄存器成帧 / 中断 / 状态</div>
     </div>
@@ -231,8 +231,8 @@
     <h3>CCI 技术要点</h3>
     <ol>
       <li><b>硬件成帧</b>：I2C 从机是芯片内专用 IP，命令帧边界由 <code>CMD_BUF</code> 寄存器天然界定，无需软件扫描同步字。</li>
-      <li><b>信箱 + 响铃</b>：主机写入 <code>CMD_BUF</code>（256 B 寄存器信箱）后，硬件中断"响铃"唤醒 <code>vdcmd</code> 线程。</li>
-      <li><b>命令头</b>：<code>[cmd 0x14][sub 0x00][len 42]</code>，从机 7-bit 地址 <code>0x78</code>。</li>
+      <li><b>信箱 + 响铃</b>：主机写入 <code>CMD_BUF</code>（寄存器信箱）后，硬件中断"响铃"唤醒 <code>vdcmd</code> 线程。</li>
+      <li><b>命令头</b>：<code>[cmd][sub][len]</code> 三段结构，从机 7-bit 地址固定。</li>
       <li><b>结果回传</b>：固件把结果原地写回 <code>CMD_BUF</code>，再翻 <code>CMD_STATUS</code> 牌子（<code>busy → done(0)</code>）。</li>
       <li><b>主机等待</b>：I2C 从机不能主动发起传输，主机只能轮询 <code>CMD_STATUS</code> 再回读 —— 这是 I2C 协议的硬约束。</li>
     </ol>
@@ -248,7 +248,7 @@
     <div class="hw"><span class="taghw">硬件层 · UART 外设</span>
       <span class="detail">只收发原始字节流,不知道帧边界在哪 —— 成帧/拆帧全靠软件</span></div>
     <div class="sw"><span class="tagsw">软件层 · vdcmd + UCI 状态机</span>
-      <span class="detail">找"UCI"同步字 · 读长度校验 · 收 payload · 组回复帧(0xBEAA…EBAA)</span></div>
+      <span class="detail">找"UCI"同步字 · 读长度校验 · 收 payload · 组回复帧(帧头…帧尾)</span></div>
   </div>
 
   <div class="stage">
@@ -261,8 +261,8 @@
       <div class="byte b-len" id="uci-blen">len=42</div>
       <div class="byte b-pl" id="uci-bpl">payload</div>
       <div class="rfbox" id="uci-reply">
-        <span class="rf s-be">0xBEAA</span><span class="rf s-st">status</span>
-        <span class="rf s-dt">data</span><span class="rf s-cr">CRC</span><span class="rf s-en">EBAA</span>
+        <span class="rf s-be">帧头</span><span class="rf s-st">status</span>
+        <span class="rf s-dt">data</span><span class="rf s-cr">CRC</span><span class="rf s-en">帧尾</span>
       </div>
     </div>
     <div class="fmlayout">
@@ -299,8 +299,8 @@
       <li><b>软件成帧</b>：UART 是无边界字节流，帧边界全靠固件状态机扫描，硬件不做任何成帧。</li>
       <li><b>帧格式</b>：同步字 <code>"UCI"</code> + 2 字节小端长度 + <code>VdCMD</code> payload。</li>
       <li><b>三态状态机</b>：<code>FRAME_SYNC</code>（扫邮戳）→ <code>HEADER_CHECK</code>（读长度并校验）→ <code>PAYLOAD_RX</code>（按长度收满 payload）。</li>
-      <li><b>健壮性</b>：长度范围校验 <code>[12, 4120]</code>，分包累积，<code>10 s</code> 超时。</li>
-      <li><b>结果回传</b>：固件组回复帧 <code>0xBEAA | status | data | CRC | EBAA</code> 主动推回，主机 <code>select</code> 阻塞等待。</li>
+      <li><b>健壮性</b>：长度范围校验 <code>[min, max]</code>，分包累积，带超时。</li>
+      <li><b>结果回传</b>：固件组回复帧 <code>帧头 | status | data | CRC | 帧尾</code> 主动推回，主机 <code>select</code> 阻塞等待。</li>
     </ol>
   </div>
 </section>
@@ -311,7 +311,7 @@
     <table>
       <thead><tr><th>维度</th><th>CCI（I2C）</th><th>UCI（UART）</th></tr></thead>
       <tbody>
-        <tr><td>物理层</td><td>I2C 从机 IP（7-bit 0x78）</td><td>UART 串口</td></tr>
+        <tr><td>物理层</td><td>I2C 从机 IP（7-bit 固定地址）</td><td>UART 串口</td></tr>
         <tr><td>成帧责任</td><td>硬件寄存器天然成帧</td><td>软件状态机拆帧</td></tr>
         <tr><td>命令进入</td><td>写 CMD_BUF 信箱</td><td>发 UCI+len+payload 帧</td></tr>
         <tr><td>结果回传</td><td>原地写回 + 翻 CMD_STATUS</td><td>组回复帧主动推回</td></tr>
@@ -428,7 +428,7 @@ const cci = makePlayer({
   clear(E){
     ["cmd-byte","data-back","poll"].forEach(n=>{const e=document.getElementById("cci-"+n); e.classList.remove("fly-l2r","fly-r2l"); e.style.opacity=0;});
     E.letterIn.style.opacity=0; E.letterOut.style.opacity=0;
-    E.status.classList.remove("done"); E.statusVal.textContent="busy"; E.statusCode.textContent="reg = 0x00";
+    E.status.classList.remove("done"); E.statusVal.textContent="busy"; E.statusCode.textContent="reg = busy";
     E.bell.classList.remove("ring"); E.chip.classList.remove("glow");
     E.fw.classList.remove("pulse"); E.biz.classList.remove("busy-anim","green-glow");
     E.host.classList.remove("glow","green-glow");
@@ -438,7 +438,7 @@ const cci = makePlayer({
   apply(E,i){
     switch(i){
       case 0:{ E.host.classList.add("glow"); fly(E.cmd,"fly-l2r",1500); E.letterIn.style.opacity=1;
-               E.bufInfo.textContent="[cmd 0x14][sub 0x00][len 42]"; break; }
+               E.bufInfo.textContent="[cmd][sub][len]"; break; }
       case 1:{ E.bell.classList.add("ring"); E.chip.classList.add("glow"); E.cmd.style.opacity=0;
                E.host.classList.remove("glow"); break; }
       case 2:{ E.letterIn.style.opacity=0; E.chip.classList.remove("glow");
@@ -447,7 +447,7 @@ const cci = makePlayer({
       case 4:{ E.biz.classList.remove("busy-anim"); E.biz.classList.add("green-glow");
                E.letterOut.style.opacity=1; E.fwStat.textContent="数据返回"; E.fw.classList.remove("pulse"); break; }
       case 5:{ E.fwStat.textContent="结果写回 CMD_BUF"; break; }
-      case 6:{ E.status.classList.add("done"); E.statusVal.textContent="done"; E.statusCode.textContent="reg = 0x00 · ok";
+      case 6:{ E.status.classList.add("done"); E.statusVal.textContent="done"; E.statusCode.textContent="reg = ok";
                E.bufInfo.textContent="返回数据已写回"; break; }
       case 7:{ E.poll.style.opacity=1; E.poll.style.animation="pollLoop 0.7s ease-in-out 3"; E.pollTxt.style.opacity=1; break; }
       case 8:{ E.poll.style.opacity=0; E.pollTxt.style.opacity=0; E.letterOut.style.opacity=0; E.bufInfo.textContent="";
@@ -455,7 +455,7 @@ const cci = makePlayer({
     }
   },
   steps:[
-    {cap:"① 主机经 I2C 把 VdCMD 命令写入 CMD_BUF（从机 0x78，硬件成帧）", dur:1500},
+    {cap:"① 主机经 I2C 把 VdCMD 命令写入 CMD_BUF（固定从机地址，硬件成帧）", dur:1500},
     {cap:"② 硬件响铃触发 CCI 中断，唤醒 vdcmd 线程", dur:1200},
     {cap:"③ 固件取信：GET_MSG → 校验命令头 CRC → 三层查表", dur:1200},
     {cap:"④ 命中命令 → rte_write 信号送业务模块执行", dur:1200},
@@ -506,13 +506,13 @@ const uci = makePlayer({
     {cap:"① 发送帧头邮戳：U", dur:800},
     {cap:"② 发送帧头邮戳：C", dur:800},
     {cap:"③ 发送帧头邮戳：I（UCI 同步字完成）", dur:800},
-    {cap:"④ 发送 2 字节小端长度（如 0x002A=42，校验 [12,4120]）", dur:1000},
+    {cap:"④ 发送 2 字节小端长度字段（发送前先范围校验）", dur:1000},
     {cap:"⑤ 发送 VdCMD 命令正文 payload", dur:1200},
     {cap:"⑥ 状态机找邮戳：FRAME_SYNC（扫\"UCI\"）", dur:900},
     {cap:"⑦ 状态机读长度并校验：HEADER_CHECK", dur:900},
-    {cap:"⑧ 状态机按长度收满 payload：PAYLOAD_RX（分包累积，10s 超时）", dur:1200},
+    {cap:"⑧ 状态机按长度收满 payload：PAYLOAD_RX（分包累积，带超时）", dur:1200},
     {cap:"⑨ uci_hex → vdcmd_parse，校验命令头 CRC、查表执行", dur:1000},
-    {cap:"⑩ 固件组回复帧 0xBEAA|status|data|CRC|EBAA 推回，主机 select 等待", dur:1700},
+    {cap:"⑩ 固件组回复帧（帧头|status|data|CRC|帧尾）推回，主机 select 等待", dur:1700},
   ],
 });
 
