@@ -3,58 +3,318 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>视频处理芯片 UVC 业务与软硬件交互图</title>
+<title>UVC 视频设备的软硬件分层架构：命令、数据与事件如何穿越四层</title>
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--panel2:#1a2740;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--pc:#db2777;--app:#2563eb;--svc:#7c3aed;--drv:#0d9488;--hw:#ea580c;--cmd:#3b82f6;--data:#22c55e;--event:#eab308;--error:#ef4444}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif}.page{max-width:1560px;margin:auto;padding:22px}.hero{display:flex;justify-content:space-between;gap:24px;align-items:flex-start;padding:22px 24px;background:linear-gradient(135deg,#0b1220,#101a2e);color:var(--text);border:1px solid var(--line);border-radius:16px}.hero h1{margin:0 0 10px;font-size:clamp(25px,3vw,38px)}.hero p{margin:0;color:var(--muted);line-height:1.7;max-width:1000px}.tag{background:rgba(59,130,246,.14);border:1px solid rgba(96,165,250,.45);color:#bfdbfe;padding:9px 12px;border-radius:9px;white-space:nowrap}.legend,.toolbar{display:flex;gap:9px;flex-wrap:wrap;margin:14px 0}.legend span{display:flex;align-items:center;gap:6px;padding:7px 10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;font-size:13px}.dot{width:12px;height:12px;border-radius:3px}.host-c{background:var(--pc)}.app-c{background:var(--app)}.svc-c{background:var(--svc)}.drv-c{background:var(--drv)}.hw-c{background:var(--hw)}.cmd-c{background:var(--cmd)}.data-c{background:var(--data)}.event-c{background:var(--event)}.error-c{background:var(--error)}button{font:inherit}.btn{border:1px solid var(--line);background:var(--panel);color:var(--text);padding:9px 13px;border-radius:8px;cursor:pointer}.btn.active{background:#1d4ed8;color:#fff;border-color:#60a5fa}.btn:hover{border-color:#60a5fa}.board{background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden}.board-title{display:flex;justify-content:space-between;gap:20px;padding:17px 20px;border-bottom:1px solid var(--line)}.board-title h2{margin:0;font-size:21px}.board-title p{margin:5px 0 0;color:var(--muted)}.lanes{display:grid;grid-template-columns:repeat(4,minmax(230px,1fr));gap:12px;padding:16px;background:#0b1220;overflow-x:auto}.lane{min-width:230px;border:2px solid;border-radius:13px;padding:12px}.lane h3{margin:0 0 10px;font-size:15px;color:var(--text)}.lane.host{border-color:var(--pc);background:rgba(219,39,119,.08)}.lane.app{border-color:var(--svc);background:rgba(124,58,237,.08)}.lane.drv{border-color:var(--drv);background:rgba(13,148,136,.08)}.lane.hw{border-color:var(--hw);background:rgba(234,88,12,.08)}.module{position:relative;background:#0f172a;border:2px solid var(--line);border-radius:9px;padding:10px;margin:9px 0;min-height:74px;opacity:.5;text-align:center}.module .modtag{display:inline-block;font-size:9px;font-weight:700;padding:0 8px;border-radius:99px;color:#fff;margin-bottom:4px}.module strong{display:block;font-size:13px;margin-bottom:3px;font-family:Consolas,"SFMono-Regular",monospace}.module small{color:var(--muted);line-height:1.4;font-size:10px}.module.mod-pc{border-color:var(--pc)}.module.mod-pc .modtag{background:var(--pc)}.module.mod-app{border-color:var(--app)}.module.mod-app .modtag{background:var(--app)}.module.mod-svc{border-color:var(--svc)}.module.mod-svc .modtag{background:var(--svc)}.module.mod-drv{border-color:var(--drv)}.module.mod-drv .modtag{background:var(--drv)}.module.mod-hw{border-color:var(--hw)}.module.mod-hw .modtag{background:var(--hw)}.module.active{opacity:1;outline:3px solid var(--flow);box-shadow:0 0 16px rgba(255,255,255,.22)}.module.active::after{content:attr(data-order);position:absolute;right:7px;top:7px;width:23px;height:23px;border-radius:50%;display:grid;place-items:center;background:var(--flow);color:#fff;font-weight:800;font-size:12px}.module[data-kind=cmd]{--flow:var(--cmd)}.module[data-kind=data]{--flow:var(--data)}.module[data-kind=event]{--flow:var(--event)}.module[data-kind=error]{--flow:var(--error)}.route{padding:15px 20px;border-top:1px solid var(--line);font-weight:700;color:var(--flow)}.route.cmd{--flow:var(--cmd)}.route.data{--flow:var(--data)}.route.event{--flow:var(--event)}.route.error{--flow:var(--error)}.notes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:0 20px 16px}.note{border-top:4px solid;padding:11px;background:var(--panel2);border-radius:7px;font-size:13px;line-height:1.55}.note b{display:block;margin-bottom:4px}.note.host{border-color:var(--pc)}.note.app{border-color:var(--svc)}.note.drv{border-color:var(--drv)}.note.hw{border-color:var(--hw)}.evidence{margin:0 20px 18px;padding:12px 14px;background:#0f172a;border:1px solid var(--line);border-radius:8px}.evidence code{color:#93c5fd}.controls{display:flex;justify-content:center;gap:10px;padding:14px;border-top:1px solid var(--line)}.warning{margin-top:14px;padding:13px 15px;background:rgba(234,179,8,.08);border-left:4px solid var(--event);border-radius:8px;line-height:1.65;color:#fde68a}@media(max-width:1050px){.notes{grid-template-columns:1fr 1fr}.hero{flex-direction:column}.tag{white-space:normal}}@media(max-width:620px){.page{padding:10px}.notes{grid-template-columns:1fr}.lanes{grid-template-columns:repeat(4,230px)}}
-.speedbar{display:flex;align-items:center;gap:14px;padding:10px 16px;margin:14px 0 16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:13px;color:var(--muted);flex-wrap:wrap}
-.speedbar b{color:var(--text)}
-.speedbar input{width:240px;accent-color:#38bdf8;cursor:pointer}
-.spdv{font-weight:700;color:#93c5fd;min-width:52px;font-size:15px}
-.spdtip{color:var(--muted);font-size:12px}
+:root{
+  --bg:#f7f8fa; --panel:#ffffff; --panel2:#f1f5f9; --line:#e2e8f0;
+  --text:#1e293b; --muted:#64748b; --blue:#2563eb; --teal:#0d9488;
+  --green:#16a34a; --gold:#d97706; --orange:#ea580c; --purple:#7c3aed; --red:#dc2626;
+  --command:#2563eb; --data:#16a34a; --event:#d97706; --error:#dc2626;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;line-height:1.8;padding:0}
+.page{max-width:880px;margin:0 auto;padding:40px 24px 60px}
+header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:24px}
+h1{font-size:27px;line-height:1.35;margin-bottom:12px;color:#0f172a}
+.lead{color:var(--muted);font-size:15px;line-height:1.8}
+.lead b{color:var(--teal)}
+.learn{margin-top:14px;padding:14px 16px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;font-size:13.5px}
+.learn b{color:var(--gold);display:block;margin-bottom:6px}
+.learn ol{margin-left:20px;color:var(--text)}
+.learn li{margin-bottom:4px}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 28px}
+.toc a{color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:4px 12px;border-radius:99px;font-size:12px;background:var(--panel)}
+.toc a:hover{color:var(--teal);border-color:var(--teal)}
+section{margin-bottom:30px}
+h2{font-size:20px;margin-bottom:12px;color:var(--teal);display:flex;align-items:center;gap:10px}
+h2 .n{font-size:12px;background:linear-gradient(135deg,#0d9488,#2563eb);color:#fff;width:24px;height:24px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+p{color:var(--text);margin-bottom:10px;font-size:14.5px}
+p b{color:var(--gold)}
+p code,li code,td code{background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:5px;color:#0369a1;font-size:12.5px;font-family:Consolas,monospace}
+ul{color:var(--text);font-size:14px}
+.keybox{margin:12px 0;padding:12px 14px;background:#fffbeb;border-left:4px solid var(--gold);border-radius:8px;font-size:13.5px;color:#713f12}
+.keybox b{color:#b45309}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+th,td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+th{background:var(--panel2);color:var(--teal)}
+td b{color:var(--green)}
+pre{background:#0b1220;border-radius:8px;padding:12px 14px;overflow-x:auto;margin:12px 0;font-size:12.5px;line-height:1.6;color:#93c5fd;font-family:Consolas,monospace}
+/* 动画组件 */
+.demo{margin:18px 0 6px;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.demo h3{color:var(--teal);font-size:14px;margin-bottom:8px}
+.demo h3 small{color:var(--muted);font-weight:400;font-size:12px;margin-left:6px}
+.dwrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.dhead{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line)}
+.dhead b{font-size:13.5px}
+.dhead span{color:var(--muted);font-size:12px}
+.dcanvas{overflow-x:auto;padding:10px;background:#fbfcfe}
+svg{display:block;width:100%;min-width:900px;height:auto}
+.detail{padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:13px}
+.detail .lbl{color:var(--muted);font-size:11px;letter-spacing:.06em}
+.detail b{display:block;color:var(--text)}
+.detail .fact{display:inline-block;margin-top:4px;padding:1px 8px;border-radius:99px;background:#e8f5e9;color:#1b5e20;font-size:11px}
+.dnarr{padding:11px 14px;border-top:1px solid var(--line)}
+.dnarr h4{margin:0 0 4px;color:var(--teal);font-size:13.5px}
+.dnarr p{margin:0;color:var(--muted);font-size:13px}
+.dnote{margin-top:7px;padding:7px 10px;border-left:3px solid var(--gold);background:#fffbeb;color:#713f12;font-size:12.5px}
+.dcontrols{display:flex;align-items:center;gap:7px;padding:9px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
+.dcontrols button{padding:6px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);cursor:pointer;font-size:12.5px}
+.dcontrols button.play{width:36px;height:36px;border:0;border-radius:50%;background:var(--blue);color:#fff;font-size:15px;padding:0}
+.dcontrols .speed{display:flex;align-items:center;gap:7px;margin-left:auto;font-size:12px;color:var(--muted)}
+.dcontrols input{width:130px;accent-color:#38bdf8}
+.dcontrols .spdv{font-weight:700;color:var(--teal);min-width:42px}
+.dprogress{display:flex;gap:4px;margin-left:auto}
+.dprogress i{width:8px;height:8px;border-radius:50%;background:#cbd5e1}
+.dprogress i.on{background:var(--blue)}
+.summary{margin-top:34px;padding:16px 18px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--green);border-radius:12px}
+.summary b{color:var(--green);display:block;margin-bottom:6px;font-size:14px}
+.summary p{margin:0;color:var(--text);font-size:14px}
+@media(max-width:650px){.page{padding:22px 14px 40px}.detail{grid-template-columns:1fr}h1{font-size:23px}}
 </style>
 </head>
 <body>
-<main class="page">
-  <header class="hero"><div><h1>视频处理芯片 UVC 业务与软硬件交互图</h1><p>四条泳道回答三个问题：命令从哪进、像素流向哪、硬件状态如何返回。按当前业务路径逐步高亮。</p></div><div class="tag">当前源码实现</div></header>
-  <div class="speedbar">
-    <span><b>自动播放速度</b></span>
-    <input type="range" id="spd" min="5" max="100" value="100">
-    <span class="spdv" id="spdv">1.00x</span>
-    <span class="spdtip">仅影响"▶ 播放"自动循环;手动单步由你控制节奏</span>
+<div class="page">
+
+<header>
+  <h1>UVC 视频设备的软硬件分层架构：命令、数据与事件如何穿越四层</h1>
+  <p class="lead">一台 UVC 视频设备的一头是 Windows 主机，另一头是红外图像硬件。命令从控制端点进、像素从 USB 端点出、硬件状态经中断回流——它们如何在一台固件设备里<b>分四层穿越</b>？本文按 PC / 固件 / 驱动 / 硬件逐层拆解，每个章节配一个交互动画，讲清机制后直接演示。</p>
+  <div class="learn">
+    <b>你将掌握</b>
+    <ol>
+      <li>四层职责与命令 / 数据 / 事件三条通道的分工</li>
+      <li>Probe / Commit 与私有控制命令如何沿命令通道行走</li>
+      <li>像素从 ISP 一路到端点 FIFO 的数据面</li>
+      <li>中断与回调如何把硬件状态带回应用</li>
+      <li>实现边界：流类型分支与待办项如何影响行为</li>
+    </ol>
   </div>
-  <div class="legend"><span><i class="dot host-c"></i>PC/Windows</span><span><i class="dot app-c"></i>固件应用</span><span><i class="dot svc-c"></i>服务/模块</span><span><i class="dot drv-c"></i>Driver/HAL</span><span><i class="dot hw-c"></i>硬件 IP</span><span><i class="dot cmd-c"></i>命令</span><span><i class="dot data-c"></i>数据</span><span><i class="dot event-c"></i>事件</span><span><i class="dot error-c"></i>错误</span></div>
-  <div class="toolbar" id="toolbar"></div>
-  <section class="board">
-    <div class="board-title"><div><h2 id="sceneTitle"></h2><p id="sceneSummary"></p></div><b id="counter"></b></div>
-    <div class="lanes">
-      <section class="lane host"><h3>Windows / 外部系统</h3><div class="module mod-pc" id="win" data-kind="cmd"><span class="modtag">SW·PC</span><strong>Windows UVC 应用</strong><small>Media Foundation / usbvideo.sys</small></div><div class="module mod-pc" id="tool" data-kind="cmd"><span class="modtag">SW·PC</span><strong>厂商红外工具</strong><small>Vendor EP0 / VDCMD</small></div></section>
-      <section class="lane app"><h3>固件业务与组件</h3><div class="module mod-svc" id="classlist" data-kind="cmd"><span class="modtag">SW·服务</span><strong>USB Class List</strong><small>板级初始化</small></div><div class="module mod-app" id="vdcmd" data-kind="cmd"><span class="modtag">SW·应用</span><strong>VDCMD / 相机应用</strong><small>私有命令与预置模式</small></div><div class="module mod-svc" id="stream" data-kind="cmd"><span class="modtag">SW·服务</span><strong>Stream Manager / Node</strong><small>PIC / TEMP / VS 生命周期</small></div><div class="module mod-svc" id="outitf" data-kind="cmd"><span class="modtag">SW·服务</span><strong>输出接口</strong><small>SINGLE / COMPOSE / 物理 target</small></div><div class="module mod-svc" id="class" data-kind="cmd"><span class="modtag">SW·服务</span><strong>UVC Class</strong><small>类注册 / Probe / Commit / Vendor</small></div><div class="module mod-svc" id="task" data-kind="event"><span class="modtag">SW·服务</span><strong>UVC Service</strong><small>线程、事件、锁、输出接口 entry</small></div></section>
-      <section class="lane drv"><h3>Driver / HAL</h3><div class="module mod-drv" id="udc" data-kind="cmd"><span class="modtag">SW·驱动</span><strong>UDC / USB Device Core</strong><small>设备级注册与 function 创建</small></div><div class="module mod-drv" id="itfdrv" data-kind="cmd"><span class="modtag">SW·驱动</span><strong>USB TOP Driver/HAL</strong><small>时钟、SSEL、S0/S1、Start/StopFrame</small></div><div class="module mod-drv" id="wrapdrv" data-kind="cmd"><span class="modtag">SW·驱动</span><strong>WRAPE Driver/HAL</strong><small>UVC Header、Bulk、端点地址</small></div><div class="module mod-drv" id="isr" data-kind="event"><span class="modtag">SW·驱动</span><strong>UVC WRAPE ISR</strong><small>清标志、映射事件、接收回调</small></div></section>
-      <section class="lane hw"><h3>硬件 IP</h3><div class="module mod-hw" id="isp" data-kind="data"><span class="modtag">HW·硬件</span><strong>ISP / Video</strong><small>红外处理与像素流水线</small></div><div class="module mod-hw" id="sel" data-kind="data"><span class="modtag">HW·硬件</span><strong>Stream SEL / USB TOP</strong><small>源流路由与帧控</small></div><div class="module mod-hw" id="wrap" data-kind="data"><span class="modtag">HW·硬件</span><strong>UVC WRAPE0/1</strong><small>Header / PTS / SCR / EOF</small></div><div class="module mod-hw" id="fifo" data-kind="data"><span class="modtag">HW·硬件</span><strong>EP FIFO / USB / PHY</strong><small>Bulk IN 0x81 / 0x82</small></div></section>
+</header>
+
+<nav class="toc">
+  <a href="#s1">1. 四层职责</a>
+  <a href="#s2">2. 命令通道</a>
+  <a href="#s3">3. 数据通道</a>
+  <a href="#s4">4. 事件回流</a>
+  <a href="#s5">5. 边界与现状</a>
+</nav>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <h2><span class="n">1</span>四层职责：PC / 固件 / 驱动 / 硬件</h2>
+  <p>一台 UVC 视频设备按职责切成四层：<b>PC 侧</b>是枚举与采集的 UVC 主机；<b>固件业务层</b>由应用与服务组成，负责业务决策与生命周期；<b>驱动 / HAL 层</b>把语义配置翻译成寄存器操作并初筛中断；<b>硬件层</b>是像素流水线与 USB 物理接口。四层各做一件事，命令、数据、事件在它们之间按固定方向行走。</p>
+  <table>
+    <tr><th>层</th><th>代表</th><th>职责</th></tr>
+    <tr><td>PC / Windows</td><td>UVC 主机、厂商控制工具</td><td>枚举、协商、采集；控制入口与采集终端</td></tr>
+    <tr><td>固件应用与服务</td><td>相机应用、流管理、UVC Class、输出接口</td><td>业务决策、参数解析、生命周期管理</td></tr>
+    <tr><td>驱动 / HAL</td><td>USB Device Core、传输层、打包器驱动、ISR</td><td>寄存器翻译、端点配置、中断初筛</td></tr>
+    <tr><td>硬件 IP</td><td>ISP、源流路由、UVC 打包器、端点 FIFO / PHY</td><td>像素搬运、UVC 组帧、物理传输</td></tr>
+  </table>
+  <div class="keybox"><b>三种颜色的通道：</b>命令（蓝）从 PC 进控制面；数据（绿）由硬件单向流向 PC；事件（黄）从硬件经驱动回固件。全文动画用这三种颜色区分流动方向。</div>
+  <div class="demo" id="d1">
+    <h3>本节演示 <small>固件初始化 → 业务预配置</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s1t"></b><span id="s1m"></span></div>
+      <div class="dcanvas"><svg id="s1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s1a"></b><span class="fact" id="s1l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s1sw"></span></div>
+        <div><div class="lbl">硬件 / 结果</div><span id="s1hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s1d"></h4><p id="s1p"></p><div class="dnote" id="s1n"></div></div>
+      <div class="dcontrols">
+        <button id="s1prev">⟵</button><button class="play" id="s1play">▶</button><button id="s1next">⟶</button>
+        <span class="speed">速度<input type="range" id="s1spd" min="8" max="100" value="40"><span class="spdv" id="s1v">0.4x</span></span>
+        <div class="dprogress" id="s1pbar"></div>
+      </div>
     </div>
-    <div class="route" id="route"></div>
-    <div class="notes"><article class="note host"><b>Windows / 外部</b><span id="hostNote"></span></article><article class="note app"><b>固件组件</b><span id="appNote"></span></article><article class="note drv"><b>Driver / HAL</b><span id="drvNote"></span></article><article class="note hw"><b>硬件 IP</b><span id="hwNote"></span></article></div>
-    <div class="evidence"><b>证据路径：</b> <code id="evidence"></code><br><span id="boundary"></span></div>
-    <div class="controls"><button class="btn" id="prev">上一步</button><button class="btn active" id="play">播放</button><button class="btn" id="next">下一步</button></div>
-  </section>
-  <div class="warning">实现边界：Commit 不进 Stream Manager；非 MJPEG 直接启动 S0，MJPEG 走 JPEG 输出；GET/SET_INTERFACE 待实现；WRAPE 事件不自动恢复 FSM。</div>
-</main>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <h2><span class="n">2</span>命令通道：Probe / Commit 与私有控制</h2>
+  <p>命令面负责协商与控制，走 EP0 控制端点。标准 UVC 用 <b>Probe / Commit</b> 协商视频参数；厂商工具用 <b>Vendor 请求</b>控制红外业务。两条命令通道都不经过视频数据端点。</p>
+  <table>
+    <tr><th>通道</th><th>入口</th><th>载荷</th><th>结果</th></tr>
+    <tr><td>Probe / Commit</td><td>Windows UVC 栈 → EP0</td><td>格式、帧索引、帧率、payload</td><td>初始化打包器并按流类型启动</td></tr>
+    <tr><td>私有 Vendor 控制</td><td>厂商工具 → EP0</td><td>业务模式、测温、调色板、增益</td><td>进消息队列，共享解析器处理，结果原路返回</td></tr>
+  </table>
+  <div class="keybox"><b>注意：</b>Vendor EP0 不通过 0x81 / 0x82 视频端点；命令返回成功不等于视频帧完整——二者是独立的观察点。</div>
+  <div class="demo" id="d2">
+    <h3>本节演示 <small>Probe/Commit 协商 → Vendor 私有控制</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s2t"></b><span id="s2m"></span></div>
+      <div class="dcanvas"><svg id="s2g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s2a"></b><span class="fact" id="s2l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s2sw"></span></div>
+        <div><div class="lbl">硬件 / 结果</div><span id="s2hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s2d"></h4><p id="s2p"></p><div class="dnote" id="s2n"></div></div>
+      <div class="dcontrols">
+        <button id="s2prev">⟵</button><button class="play" id="s2play">▶</button><button id="s2next">⟶</button>
+        <span class="speed">速度<input type="range" id="s2spd" min="8" max="100" value="40"><span class="spdv" id="s2v">0.4x</span></span>
+        <div class="dprogress" id="s2pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <h2><span class="n">3</span>数据通道：像素 → 打包器 → 端点 FIFO → PC</h2>
+  <p>数据面是硬件单向流水线：<b>ISP / Video</b> 处理红外像素，<b>源流路由</b>选择源流，<b>UVC 打包器</b>（WRAPE）加上 UVC 头（Header / PTS / SCR / EOF）后直写<b>端点 FIFO</b>，USB 控制器再分包发送到 Windows。全程无 CPU 逐像素参与。</p>
+  <ul style="margin-left:20px">
+    <li>ISP / Video：红外校正与像素流水线</li>
+    <li>源流路由（Stream SEL / USB TOP）：源流选择与帧控</li>
+    <li>UVC 打包器（WRAPE）：Header / PTS / SCR / EOF</li>
+    <li>EP FIFO / PHY：Bulk IN 0x81 / 0x82</li>
+  </ul>
+  <div class="keybox"><b>直写边界：</b>打包器到端点 FIFO 是直写；Windows 内核与用户态之间仍可能有自己的缓冲。固件管理生命周期，不逐帧复制 payload。</div>
+  <div class="demo" id="d3">
+    <h3>本节演示 <small>ISP → 路由 → 打包器 → 端点 → PC</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s3t"></b><span id="s3m"></span></div>
+      <div class="dcanvas"><svg id="s3g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s3a"></b><span class="fact" id="s3l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s3sw"></span></div>
+        <div><div class="lbl">硬件 / 结果</div><span id="s3hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s3d"></h4><p id="s3p"></p><div class="dnote" id="s3n"></div></div>
+      <div class="dcontrols">
+        <button id="s3prev">⟵</button><button class="play" id="s3play">▶</button><button id="s3next">⟶</button>
+        <span class="speed">速度<input type="range" id="s3spd" min="8" max="100" value="40"><span class="spdv" id="s3v">0.4x</span></span>
+        <div class="dprogress" id="s3pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <h2><span class="n">4</span>事件回流：中断 / 回调</h2>
+  <p>硬件状态不会自己走进固件，而是经<b>中断 + 回调</b>回流。打包器产生中断标志，ISR 清标志、映射事件、触发接收回调；UVC 服务线程在事件上下文中统计溢出、执行静止图像回调或唤醒停流等待者。</p>
+  <ul style="margin-left:20px">
+    <li>中断用于状态反馈、统计、回调和停流同步</li>
+    <li>ISR 解析溢出 / 静止图像 / 帧空闲 / 帧起始 / 帧率变化等状态标志</li>
+    <li>事件只做通知，不自动恢复流状态机</li>
+  </ul>
+  <div class="keybox"><b>注意：</b>上位机不会直接收到芯片的中断；一切硬件状态都要经驱动转换成事件后，固件线程才可见。</div>
+  <div class="demo" id="d4">
+    <h3>本节演示 <small>中断标志 → ISR → 事件 → 服务线程</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s4t"></b><span id="s4m"></span></div>
+      <div class="dcanvas"><svg id="s4g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s4a"></b><span class="fact" id="s4l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s4sw"></span></div>
+        <div><div class="lbl">硬件 / 结果</div><span id="s4hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s4d"></h4><p id="s4p"></p><div class="dnote" id="s4n"></div></div>
+      <div class="dcontrols">
+        <button id="s4prev">⟵</button><button class="play" id="s4play">▶</button><button id="s4next">⟶</button>
+        <span class="speed">速度<input type="range" id="s4spd" min="8" max="100" value="40"><span class="spdv" id="s4v">0.4x</span></span>
+        <div class="dprogress" id="s4pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <h2><span class="n">5</span>边界与实现现状</h2>
+  <p>架构之外，实现现状决定行为边界。几条已知边界值得记住：</p>
+  <table>
+    <tr><th>边界</th><th>现状</th></tr>
+    <tr><td>Commit 与流管理</td><td>Probe/Commit 参数处理不调用流管理器，由相机启动流程按流类型分支</td></tr>
+    <tr><td>流类型分支</td><td>非 MJPEG 直接启动 S0；MJPEG 走 JPEG 输出链；TPD 走 S1</td></tr>
+    <tr><td>接口生命周期</td><td>GET / SET_INTERFACE 待实现</td></tr>
+    <tr><td>事件恢复</td><td>打包器事件不自动恢复流状态机</td></tr>
+  </table>
+  <div class="keybox"><b>三个独立观察点：</b>命令成功、流处于运行态、接收端看到完整帧——它们各不相同，验证时要分开观察。</div>
+  <div class="demo" id="d5">
+    <h3>本节演示 <small>按流类型分支：非 MJPEG / MJPEG</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s5t"></b><span id="s5m"></span></div>
+      <div class="dcanvas"><svg id="s5g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s5a"></b><span class="fact" id="s5l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s5sw"></span></div>
+        <div><div class="lbl">硬件 / 结果</div><span id="s5hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s5d"></h4><p id="s5p"></p><div class="dnote" id="s5n"></div></div>
+      <div class="dcontrols">
+        <button id="s5prev">⟵</button><button class="play" id="s5play">▶</button><button id="s5next">⟶</button>
+        <span class="speed">速度<input type="range" id="s5spd" min="8" max="100" value="40"><span class="spdv" id="s5v">0.4x</span></span>
+        <div class="dprogress" id="s5pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="summary"><b>一句话总结</b><p>UVC 设备按 PC / 固件 / 驱动 / 硬件四层分工，命令走 EP0 控制面、像素走硬件单向数据面、状态经中断回流——控制、数据、事件三条通道边界清晰，行为由流类型分支与待办边界共同决定。</p></div>
+
+</div>
+
 <script>
-const scenes=[
-{name:"固件初始化",title:"初始化等级决定 USB/UVC 启动顺序",summary:"固件按初始化等级推进：先建 Class 列表，再注册 UVC Class 与 USB Device 核心，最后启动 UVC 服务线程。",kind:"cmd",nodes:["classlist","class","udc","task"],route:"初始化等级推进：class list → UVC class → UDC/USB core → UVC service 线程",host:"Windows 尚未开始 Probe/Commit，设备端先建立枚举基础。",app:"建 class list、注册 UVC class；随后建服务线程/事件/锁，取 S0/S1 entry。",drv:"注册 UDC，用已注册的 class 构建 device/config/function。",hw:"UDC/USB core 就绪，EP0 才能承载枚举与控制传输。",evidence:"固件初始化序列：USB Device 核心 → 相机应用 → USB 驱动 → 视频组件 UVC 服务",boundary:"固件启动顺序，不是 Windows 运行时命令方向。"},
-{name:"业务预配置",title:"Stream INIT 配置节点与输出接口",summary:"先定输出内容与物理 target；INIT 配置节点，输出节点初始化驱动后再配 SEL/USB TOP。",kind:"cmd",nodes:["tool","vdcmd","stream","outitf","itfdrv","isp","sel"],route:"厂商工具 → VDCMD → Stream INIT → 节点驱动初始化 → 输出节点驱动初始化 → USB Driver/HAL → SEL/USB TOP",host:"发送预置业务模式和红外参数。",app:"建 PIC/TEMP/VS 静态资源；输出接口在 INIT 完成接口配置，START 只使能对应 ISP stream。",drv:"把输出接口 entry 转成 SSEL、尺寸、时钟与 USB TOP 配置。",hw:"源流与 USB S0/S1 就绪，但尚未开始发送。",evidence:"配置节点 → 输出接口初始化 → 相机应用 INIT 配置",boundary:"与 UVC Class Probe/Commit 是并列控制面，非调用链；READY 与收到完整帧是不同状态。"},
-{name:"Probe / Commit",title:"Commit 初始化 WRAPE 后按流类型与格式启动",summary:"Probe/Commit 只处理 UVC 参数；Commit 后进入相机启动流程，按流类型分支。",kind:"cmd",nodes:["win","class","wrapdrv","itfdrv","wrap","fifo"],route:"Windows → EP0 Probe/Commit → 相机应用启动 → WRAPE 初始化 → 按流类型启动：非 MJPEG 走 S0 接口 / MJPEG 走 JPEG 输出 / TPD 走 S1 接口",host:"选择格式、帧索引、帧率和 payload。",app:"UVC Class 解析参数，不调用 Stream Manager；压缩流按 formatIdx 二选一启动。",drv:"WRAPE 收 UVC 头与 Bulk 参数；随后向 USB Driver/HAL 下发 START。",hw:"非 MJPEG/TPD 启动对应 USB S0/S1；MJPEG 启动 JPEG 输出链。",evidence:"相机应用：Probe/Commit 参数处理与按流类型启动",boundary:"仅非 MJPEG 直接启动 S0；MJPEG 走 JPEG 输出链。GET/SET_INTERFACE 仍为待实现。"},
-{name:"Vendor EP0",title:"私有红外命令与视频像素完全分离",summary:"命令写入经 EP0 进入消息队列与共享解析器；状态与结果查询经控制端点返回。",kind:"cmd",nodes:["tool","class","vdcmd","stream"],route:"厂商工具 → EP0 控制传输 → Vendor 请求分发 → 命令消息队列 → 共享命令解析器；结果经控制端点返回",host:"控制测温/调色板/增益/业务模式，并轮询结果。",app:"命令在任务上下文解析和路由。",drv:"USB Device 层只承载 EP0 控制事务。",hw:"Vendor EP0 不通过 0x81/0x82 视频端点。",evidence:"UVC 协议头与 Vendor 请求处理流程",boundary:"命令返回成功不等于视频帧完整。"},
-{name:"视频数据",title:"红外像素由硬件持续流向 Windows",summary:"数据面从 ISP/Video 单向进 USB，控制面只提前配置。",kind:"data",nodes:["isp","sel","wrap","fifo","win"],route:"ISP / Video → Stream SEL → USB TOP → UVC WRAPE0/1 → EP FIFO 0x81/0x82 → USB Controller/PHY → Windows UVC",host:"usbvideo.sys 按 UVC Header 组帧并交给应用。",app:"固件管理生命周期，不逐帧复制 payload。",drv:"HAL 将源数据地址配置为端点 FIFO 地址。",hw:"WRAPE 加 Header 后直写端点 FIFO，USB 控制器分包发送。",evidence:"HAL 配置 WRAPE 直写端点地址；相机应用使能数据链",boundary:"直写范围是 WRAPE→EP FIFO；Windows 内核/用户态仍可能有缓冲。"},
-{name:"中断反馈",title:"硬件状态通过 ISR 和事件线程回流",summary:"中断用于状态反馈、统计、回调和停流同步，不自动恢复 Stream FSM。",kind:"event",nodes:["wrap","isr","task"],route:"USB_INT_FLAG → WRAPE 中断处理 → 接收回调 → 事件标志 → 相机应用线程 / 停止等待者",host:"上位机不会直接收到芯片 IRQ。",app:"服务线程统计 overflow、执行 still callback 或等待 idle。",drv:"ISR 解析溢出 / 静止图像 / 帧空闲 / 帧起始 / 帧率变化等状态标志。",hw:"产生并锁存中断标志。",evidence:"驱动层 WRAPE 中断处理；视频组件 UVC 服务",boundary:"现有代码未证明 overflow 事件会自动改变 Stream FSM。"}
+"use strict";
+const lanes={external:{title:'PC / Windows',sub:'枚举、协商、采集',x:20,w:285},app:{title:'固件业务',sub:'应用与服务、流管理、UVC Class',x:330,w:300},driver:{title:'驱动 / HAL',sub:'USB Core、传输层、打包器、ISR',x:655,w:300},hardware:{title:'硬件 IP',sub:'ISP、路由、打包器、端点 FIFO',x:980,w:320}};
+const nodes={
+pcwin:['Windows UVC 应用','枚举、Probe/Commit、采集','external'],
+tool:['厂商控制工具','Vendor EP0 / 红外命令','external'],
+classlist:['USB 类列表','板级初始化注册','app'],
+vdcmd:['相机应用','私有命令与预置模式','app'],
+stream:['流管理','PIC / TEMP / VS 生命周期','app'],
+outif:['输出接口','SINGLE / COMPOSE / 物理目标','app'],
+uvcclass:['UVC Class','Probe / Commit / Vendor','app'],
+uvcsvc:['UVC 服务','线程、事件、锁、回调','app'],
+udc:['USB Device Core','设备级注册与 function','driver'],
+usbtop:['USB 传输层','时钟、SSEL、S0/S1','driver'],
+wrapdrv:['打包器驱动','UVC 头、Bulk、端点地址','driver'],
+wrapisr:['打包器 ISR','清标志、映射事件','driver'],
+isp:['ISP / Video','红外处理与像素流水线','hardware'],
+sel:['源流路由 / USB TOP','源流选择与帧控','hardware'],
+wrap:['UVC 打包器','WRAPE：Header / PTS / EOF','hardware'],
+fifo:['EP FIFO / USB PHY','Bulk IN 0x81 / 0x82','hardware']};
+const laneOrder=['external','app','driver','hardware'];
+function layout(item){const group={external:[],app:[],driver:[],hardware:[]},out={};item.nodes.forEach(id=>group[nodes[id][2]].push(id));laneOrder.forEach(k=>{const lane=lanes[k],arr=group[k],gap=480/Math.max(arr.length,1);arr.forEach((id,i)=>out[id]={x:lane.x+lane.w/2,y:105+gap*(i+.5)});});return out}
+function geom(a,b,pos){const p=pos[a],q=pos[b],same=nodes[a][2]===nodes[b][2];if(same){const d=q.y>=p.y?1:-1;return{d:`M${p.x+90} ${p.y+25*d} C${p.x+145} ${p.y+55*d},${q.x+145} ${q.y-55*d},${q.x+90} ${q.y-25*d}`,x:p.x+142,y:(p.y+q.y)/2}}const d=q.x>p.x?1:-1;return{d:`M${p.x+90*d} ${p.y} C${p.x+155*d} ${p.y},${q.x-155*d} ${q.y},${q.x-90*d} ${q.y}`,x:(p.x+q.x)/2,y:(p.y+q.y)/2}}
+function draw(svgEl,item){const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="m${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';laneOrder.forEach(k=>{const l=lanes[k];s+=`<rect x="${l.x}" y="20" width="${l.w}" height="610" rx="13" style="stroke:#cbd5e1;stroke-dasharray:5 5;fill:#eef2f7"/><text x="${l.x+15}" y="46" style="fill:#334155;font-size:13px;font-weight:800">${l.title}</text><text x="${l.x+15}" y="63" style="fill:#64748b;font-size:9px">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path d="${g.d}" marker-end="url(#m${k})" style="fill:none;stroke-width:3;stroke:var(--${k})"/><rect x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10" style="fill:#fff;stroke:var(--${k})"/><text x="${g.x}" y="${g.y+1}" text-anchor="middle" style="fill:#334155;font-size:8.5px;font-weight:700">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],style=n[3]||n[2],role=n[3]==='memory'?'内存区':{external:'PC',app:'固件',driver:'驱动',hardware:'硬件'}[n[2]],tw=role.length*7+12;s+=`<g><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9" style="fill:#ffffff;stroke-width:2;stroke:${style==='memory'?'#d97706':'#94a3b8'}"/><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5" style="fill:${style==='memory'?'#d97706':'#64748b'}"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle" style="fill:#fff;font-size:8.5px;font-weight:700">${role}</text><text x="${p.x}" y="${p.y-5}" text-anchor="middle" style="fill:#0f172a;font-size:11px;font-weight:800">${n[0]}</text><text x="${p.x}" y="${p.y+13}" text-anchor="middle" style="fill:#475569;font-size:8.5px">${n[1]}</text></g>`});svgEl.innerHTML=s}
+function makePlayer(p,steps){
+  const $=id=>document.getElementById(p+id);
+  let idx=0,timer=null,SPEED=0.4;
+  const spdEl=$('spd'),spdVal=$('v');
+  spdEl.addEventListener('input',function(){SPEED=spdEl.value/100;spdVal.textContent=SPEED.toFixed(2)+'x';if(timer){stop();$('play').click();}});
+  function render(){const x=steps[idx];$('t').textContent=x.title;$('m').textContent=`步骤 ${idx+1} / ${steps.length}`;$('a').textContent=x.action;$('l').textContent=x.level;$('sw').textContent=x.software;$('hw').textContent=x.hardware;$('d').textContent=x.title;$('p').textContent=x.description;$('n').textContent=x.note;$('pbar').innerHTML=steps.map((_,i)=>`<i class="${i===idx?'on':''}"></i>`).join('');draw($('g'),x)}
+  function next(){idx=(idx+1)%steps.length;render()}
+  function prev(){idx=(idx-1+steps.length)%steps.length;render()}
+  function stop(){if(timer){clearInterval(timer);timer=null}$('play').textContent='▶'}
+  $('prev').onclick=function(){stop();prev()};$('next').onclick=function(){stop();next()};$('play').onclick=function(){if(timer){stop()}else{timer=setInterval(next,Math.round(3200/SPEED));$('play').textContent='Ⅱ'}};
+  render();
+}
+const S1=[
+ {title:'固件初始化',action:'按初始化等级注册与启动',level:'架构事实',software:'先建类列表，再注册 UVC Class 与 USB Device Core，最后启动 UVC 服务线程。',hardware:'USB Device Core 就绪后，EP0 才能承载枚举与控制传输。',description:'初始化顺序决定 USB 枚举能否被正确应答。',note:'这是启动顺序，不是运行时命令方向。',nodes:['classlist','uvcclass','udc','uvcsvc'],edges:[['classlist','uvcclass','command','注册类'],['uvcclass','udc','command','创建 function'],['uvcclass','uvcsvc','command','启动线程']]},
+ {title:'业务预配置',action:'先定输出内容，再初始化节点与物理目标',level:'架构事实',software:'业务配置先定输出接口与物理目标；INIT 配置节点，输出接口完成接口配置，START 只使能对应源流。',hardware:'源流与 USB 传输通道就绪，但尚未开始发送。',description:'预配置是控制面的一部分，与 Probe/Commit 并列。',note:'READY 与收到完整帧是两个不同状态。',nodes:['tool','vdcmd','stream','outif','usbtop','sel'],edges:[['tool','vdcmd','command','预置模式'],['vdcmd','stream','command','INIT 配置'],['stream','outif','command','接口配置'],['outif','usbtop','command','SSEL/时钟'],['usbtop','sel','command','帧控参数']]}
 ];
-let index=0,timer=null,SPEED=1;const $=id=>document.getElementById(id);
-const spdEl=$("spd"),spdVal=$("spdv");spdEl.addEventListener("input",()=>{SPEED=spdEl.value/100;spdVal.textContent=SPEED.toFixed(2)+"x"});
-function renderToolbar(){$("toolbar").innerHTML=scenes.map((s,i)=>`<button class="btn ${i===index?"active":""}" data-i="${i}">${s.name}</button>`).join("");document.querySelectorAll("#toolbar .btn").forEach(b=>b.onclick=()=>{stop();index=Number(b.dataset.i);render()})}
-function render(){const s=scenes[index];renderToolbar();document.querySelectorAll(".module").forEach(m=>{m.classList.remove("active");m.removeAttribute("data-order");m.dataset.kind=s.kind});s.nodes.forEach((id,i)=>{const m=$(id);m.classList.add("active");m.dataset.order=String(i+1);m.dataset.kind=s.kind});$("sceneTitle").textContent=s.title;$("sceneSummary").textContent=s.summary;$("counter").textContent=`${index+1} / ${scenes.length}`;$("route").className=`route ${s.kind}`;$("route").textContent=`当前方向：${s.route}`;$("hostNote").textContent=s.host;$("appNote").textContent=s.app;$("drvNote").textContent=s.drv;$("hwNote").textContent=s.hw;$("evidence").textContent=s.evidence;$("boundary").textContent=s.boundary}
-function move(delta){index=(index+delta+scenes.length)%scenes.length;render()}function stop(){if(timer){clearInterval(timer);timer=null}$("play").textContent="播放"}
-$("prev").onclick=()=>{stop();move(-1)};$("next").onclick=()=>{stop();move(1)};$("play").onclick=()=>{if(timer){stop()}else{$("play").textContent="暂停";timer=setInterval(()=>move(1),Math.round(4500/SPEED))}};document.addEventListener("keydown",e=>{if(e.key==="ArrowLeft")$("prev").click();if(e.key==="ArrowRight")$("next").click()});render();
+const S2=[
+ {title:'Probe / Commit',action:'协商参数后按流类型初始化',level:'架构事实',software:'UVC Class 只处理 UVC 参数；Commit 后进入相机启动流程，按流类型分支。',hardware:'打包器收 UVC 头与 Bulk 端点参数；随后向 USB 传输层下发 START。',description:'Windows 选择格式、帧索引、帧率与 payload 宽度。',note:'非 MJPEG 直接启动 S0；MJPEG 走 JPEG 输出链。',nodes:['pcwin','uvcclass','wrapdrv','usbtop','wrap','fifo'],edges:[['pcwin','uvcclass','command','EP0 Probe/Commit'],['uvcclass','wrapdrv','command','解析参数'],['wrapdrv','wrap','command','UVC 头/Bulk'],['wrapdrv','usbtop','command','下发 START'],['usbtop','fifo','command','使能 S0/S1']]},
+ {title:'私有控制命令',action:'EP0 进队列，结果原路返回',level:'架构事实',software:'命令写入经 EP0 进入消息队列与共享解析器，在任务上下文解析和路由。',hardware:'USB Device 层只承载 EP0 控制事务，不通过视频端点。',description:'厂商工具控制测温、调色板、增益与业务模式，并轮询结果。',note:'命令返回成功不等于视频帧完整。',nodes:['tool','uvcclass','vdcmd','stream'],edges:[['tool','uvcclass','command','Vendor 请求'],['uvcclass','vdcmd','command','消息队列'],['vdcmd','stream','command','共享解析'],['vdcmd','uvcclass','event','结果封装']]}
+];
+const S3=[
+ {title:'像素数据流',action:'ISP 单向流经打包器到 Windows',level:'架构事实',software:'固件管理生命周期，不逐帧复制 payload。',hardware:'打包器加 UVC 头后直写端点 FIFO，USB 控制器分包发送。',description:'数据面从 ISP / Video 单向进 USB，控制面只提前配置。',note:'直写范围是打包器到 EP FIFO；Windows 内核与用户态仍可能有缓冲。',nodes:['isp','sel','wrap','fifo','pcwin'],edges:[['isp','sel','data','像素流'],['sel','wrap','data','路由'],['wrap','fifo','data','UVC 帧直写'],['fifo','pcwin','data','USB 传输']]}
+];
+const S4=[
+ {title:'硬件状态回流',action:'ISR 映射事件，服务线程消费',level:'架构事实',software:'服务线程统计溢出、执行静止图像回调或等待空闲。',hardware:'硬件产生并锁存中断标志。',description:'中断标志 → 打包器中断处理 → 接收回调 → 事件标志 → 服务线程。',note:'上位机不会直接收到芯片中断。',nodes:['wrap','wrapisr','uvcsvc'],edges:[['wrap','wrapisr','event','中断标志'],['wrapisr','uvcsvc','event','回调/事件']]}
+];
+const S5=[
+ {title:'按流类型分支',action:'formatIdx 决定启动路径',level:'实现事实',software:'压缩流按 formatIdx 二选一启动：非 MJPEG/TPD 走对应 USB 通道，MJPEG 走 JPEG 输出链。',hardware:'不同分支使能不同硬件通路。',description:'Probe/Commit 只处理 UVC 参数；启动路径由流类型决定。',note:'GET / SET_INTERFACE 仍为待实现。',nodes:['uvcclass','wrapdrv','usbtop','wrap'],edges:[['uvcclass','wrapdrv','command','formatIdx'],['wrapdrv','usbtop','command','非 MJPEG → S0'],['wrapdrv','wrap','command','MJPEG → JPEG 链']]}
+];
+makePlayer('s1',S1);
+makePlayer('s2',S2);
+makePlayer('s3',S3);
+makePlayer('s4',S4);
+makePlayer('s5',S5);
 </script>
 </body>
 </html>

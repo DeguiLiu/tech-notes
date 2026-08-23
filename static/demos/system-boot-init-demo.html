@@ -3,43 +3,321 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>系统启动与初始化交互演示</title>
+<title>嵌入式系统启动链：从复位向量到第一帧</title>
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--panel2:#1a2740;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--external:#2563eb;--app:#7c3aed;--driver:#0d9488;--hardware:#ea580c;--command:#3b82f6;--data:#22c55e;--event:#eab308;--error:#ef4444;--shadow:0 18px 50px #0009}
-body.light{--bg:#eef3f8;--panel:#fff;--panel2:#f2f6fa;--line:#c4d2e0;--text:#18283b;--muted:#60758d;--shadow:0 15px 40px #405b781e}
-*{box-sizing:border-box}body{margin:0;color:var(--text);background:var(--bg);font:14px/1.6 Inter,"Microsoft YaHei",sans-serif}button,select{font:inherit;color:inherit}button{cursor:pointer}.top{position:sticky;top:0;z-index:10;display:flex;justify-content:space-between;align-items:center;padding:13px 22px;border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 94%,transparent);backdrop-filter:blur(12px)}h1{margin:0;font-size:18px}.top p{margin:1px 0 0;color:var(--muted);font-size:12px}.btn{padding:7px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)}.page{width:min(1500px,100%);margin:auto;padding:20px 22px 42px}.hero{display:grid;grid-template-columns:1fr auto;gap:18px;align-items:end;margin-bottom:14px}.hero h2{margin:0 0 6px;font-size:28px}.hero p{max-width:980px;margin:0;color:var(--muted)}.badge{padding:7px 11px;border:1px solid #9c6238;border-radius:999px;color:#ffc58f}.routes{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:12px}.route{padding:11px 13px;border:1px solid var(--line);border-left:4px solid var(--c);border-radius:9px;background:var(--panel)}.route b{display:block}.route span{color:var(--muted);font-size:12px}.legend{display:flex;flex-wrap:wrap;gap:8px 15px;margin-bottom:12px;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--muted);font-size:12px}.legend span{display:flex;align-items:center;gap:6px}.dot{width:11px;height:11px;border-radius:3px;background:var(--c)}.tabs{display:flex;gap:7px;overflow-x:auto;margin-bottom:12px}.tab{white-space:nowrap;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--muted)}.tab.on{background:#225b94;color:#fff;border-color:#6bb2fa}.grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:12px}.panel{border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:var(--shadow)}.head{display:flex;justify-content:space-between;padding:11px 14px;border-bottom:1px solid var(--line)}.head span{color:var(--muted);font-size:12px}.canvas{overflow-x:auto;padding:10px;background:color-mix(in srgb,var(--bg) 78%,#000 22%)}svg{display:block;width:100%;min-width:900px;height:auto}.detail{padding:14px}.detail h3{margin:0 0 8px}.item{padding:9px 0;border-top:1px solid var(--line)}.item:first-of-type{border:0}.label{color:var(--muted);font-size:10px;letter-spacing:.08em}.fact{display:inline-block;margin-top:5px;padding:2px 8px;border-radius:999px;background:#123d2c;color:#8ceebb;font-size:11px}.paths{display:grid;gap:5px;margin-top:5px}.paths code{padding:5px 7px;border:1px solid var(--line);border-radius:5px;background:#071321;color:#cde2f7;font:11px/1.5 Consolas,monospace;overflow-wrap:anywhere}body.light .paths code{background:#edf3f8;color:#28445f}.bottom{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:12px;margin-top:12px}.narr{padding:14px;min-height:160px}.narr h3{margin:0 0 5px}.narr p{margin:0;color:var(--muted)}.note{margin-top:10px;padding:8px 10px;border-left:3px solid var(--event);background:#2b2515;color:#f1d99d}.controls{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:12px}.play{width:40px;height:40px;border:0;border-radius:50%;background:var(--external);color:#fff}.progress{display:flex;gap:4px;margin-left:auto}.progress i{width:8px;height:8px;border-radius:50%;background:#38536f}.progress i.on{background:var(--external)}.lane{stroke-width:1.2;stroke-dasharray:5 5}.lane.external{fill:#12365e;stroke:var(--external)}.lane.app{fill:#30265e;stroke:var(--app)}.lane.driver{fill:#103d47;stroke:var(--driver)}.lane.hardware{fill:#63361f;stroke:var(--hardware)}.lane-title{fill:#fff;font-size:13px;font-weight:800}.lane-sub{fill:#bfd0e0;font-size:9px}.node rect{stroke-width:2}.node.external rect{fill:#174a7f;stroke:var(--external)}.node.app rect{fill:#44347f;stroke:var(--app)}.node.driver rect{fill:#145461;stroke:var(--driver)}.node.hardware rect{fill:#7a421f;stroke:var(--hardware)}.node-title{fill:#fff;font-size:11px;font-weight:800}.node-sub{fill:#d5e0eb;font-size:8.5px}.edge{fill:none;stroke-width:3}.edge.command{stroke:var(--command)}.edge.data{stroke:var(--data)}.edge.event{stroke:var(--event)}.edge.error{stroke:var(--error)}.edge-label{fill:#fff;font-size:8.5px;font-weight:700}.edge-bg{fill:#071321;stroke-width:1}.edge-bg.command{stroke:var(--command)}.edge-bg.data{stroke:var(--data)}.edge-bg.event{stroke:var(--event)}.edge-bg.error{stroke:var(--error)}.node .ntag text{font-size:8.5px;font-weight:700;fill:#fff}.node .ntag rect{stroke:none;stroke-dasharray:none}.node .ntag.external rect{fill:#2563eb}.node .ntag.app rect{fill:#7c3aed}.node .ntag.driver rect{fill:#0d9488}.node .ntag.hardware rect{fill:#ea580c}@media(max-width:1050px){.grid,.bottom{grid-template-columns:1fr}.routes{grid-template-columns:1fr}}@media(max-width:650px){.page{padding:14px 9px 30px}.top{padding:10px}.top p{display:none}.hero{grid-template-columns:1fr}.badge{justify-self:start}.hero h2{font-size:23px}}
+:root{
+  --bg:#f7f8fa; --panel:#ffffff; --panel2:#f1f5f9; --line:#e2e8f0;
+  --text:#1e293b; --muted:#64748b; --blue:#2563eb; --teal:#0d9488;
+  --green:#16a34a; --gold:#d97706; --orange:#ea580c; --purple:#7c3aed; --red:#dc2626;
+  --command:#2563eb; --data:#16a34a; --event:#d97706; --error:#dc2626;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;line-height:1.8;padding:0}
+.page{max-width:880px;margin:0 auto;padding:40px 24px 60px}
+header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:24px}
+h1{font-size:27px;line-height:1.35;margin-bottom:12px;color:#0f172a}
+.lead{color:var(--muted);font-size:15px;line-height:1.8}
+.lead b{color:var(--teal)}
+.learn{margin-top:14px;padding:14px 16px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;font-size:13.5px}
+.learn b{color:var(--gold);display:block;margin-bottom:6px}
+.learn ol{margin-left:20px;color:var(--text)}
+.learn li{margin-bottom:4px}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 28px}
+.toc a{color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:4px 12px;border-radius:99px;font-size:12px;background:var(--panel)}
+.toc a:hover{color:var(--teal);border-color:var(--teal)}
+section{margin-bottom:30px}
+h2{font-size:20px;margin-bottom:12px;color:var(--teal);display:flex;align-items:center;gap:10px}
+h2 .n{font-size:12px;background:linear-gradient(135deg,#0d9488,#2563eb);color:#fff;width:24px;height:24px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+p{color:var(--text);margin-bottom:10px;font-size:14.5px}
+p b{color:var(--gold)}
+p code,li code,td code{background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:5px;color:#0369a1;font-size:12.5px;font-family:Consolas,monospace}
+ul{color:var(--text);font-size:14px}
+.keybox{margin:12px 0;padding:12px 14px;background:#fffbeb;border-left:4px solid var(--gold);border-radius:8px;font-size:13.5px;color:#713f12}
+.keybox b{color:#b45309}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+th,td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+th{background:var(--panel2);color:var(--teal)}
+td b{color:var(--green)}
+pre{background:#0b1220;border-radius:8px;padding:12px 14px;overflow-x:auto;margin:12px 0;font-size:12.5px;line-height:1.6;color:#93c5fd;font-family:Consolas,monospace}
+/* 动画组件 */
+.demo{margin:18px 0 6px;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.demo h3{color:var(--teal);font-size:14px;margin-bottom:8px}
+.demo h3 small{color:var(--muted);font-weight:400;font-size:12px;margin-left:6px}
+.dwrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.dhead{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line)}
+.dhead b{font-size:13.5px}
+.dhead span{color:var(--muted);font-size:12px}
+.dcanvas{overflow-x:auto;padding:10px;background:#fbfcfe}
+svg{display:block;width:100%;min-width:900px;height:auto}
+.detail{padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:13px}
+.detail .lbl{color:var(--muted);font-size:11px;letter-spacing:.06em}
+.detail b{display:block;color:var(--text)}
+.detail .fact{display:inline-block;margin-top:4px;padding:1px 8px;border-radius:99px;background:#e8f5e9;color:#1b5e20;font-size:11px}
+.dnarr{padding:11px 14px;border-top:1px solid var(--line)}
+.dnarr h4{margin:0 0 4px;color:var(--teal);font-size:13.5px}
+.dnarr p{margin:0;color:var(--muted);font-size:13px}
+.dnote{margin-top:7px;padding:7px 10px;border-left:3px solid var(--gold);background:#fffbeb;color:#713f12;font-size:12.5px}
+.dcontrols{display:flex;align-items:center;gap:7px;padding:9px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
+.dcontrols button{padding:6px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);cursor:pointer;font-size:12.5px}
+.dcontrols button.play{width:36px;height:36px;border:0;border-radius:50%;background:var(--blue);color:#fff;font-size:15px;padding:0}
+.dcontrols .speed{display:flex;align-items:center;gap:7px;margin-left:auto;font-size:12px;color:var(--muted)}
+.dcontrols input{width:130px;accent-color:#38bdf8}
+.dcontrols .spdv{font-weight:700;color:var(--teal);min-width:42px}
+.dprogress{display:flex;gap:4px;margin-left:auto}
+.dprogress i{width:8px;height:8px;border-radius:50%;background:#cbd5e1}
+.dprogress i.on{background:var(--blue)}
+.summary{margin-top:34px;padding:16px 18px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--green);border-radius:12px}
+.summary b{color:var(--green);display:block;margin-bottom:6px;font-size:14px}
+.summary p{margin:0;color:var(--text);font-size:14px}
+@media(max-width:650px){.page{padding:22px 14px 40px}.detail{grid-template-columns:1fr}h1{font-size:23px}}
 </style>
 </head>
 <body>
-<header class="top"><div><h1>系统启动与初始化交互演示</h1><p>E906 复位、段初始化、实时操作系统、组件与自动预览投递边界</p></div><button class="btn" id="theme">切换主题</button></header>
-<main class="page">
-<section class="hero"><div><h2>启动不是一跳到 main，而是建立可运行系统的连续交付</h2><p>固定四层泳道展示调用方向：启动软件/应用为蓝紫色，BSP、driver/HAL 为青色，芯片硬件为橙色；蓝线是调用，绿线是段数据，黄线是调度/事件。</p></div><div class="badge">构建配置：主核 + HDR + DDR</div></section>
-<section class="routes"><article class="route" style="--c:var(--command)"><b>控制流</b><span>Reset_Handler → SystemInit → entry → 实时操作系统 → main</span></article><article class="route" style="--c:var(--data)"><b>数据流</b><span>LMA → SRAM/DDR VMA；BSS/UNINIT → zero</span></article><article class="route" style="--c:var(--event)"><b>调度流</b><span>main thread ready → scheduler start → components → app</span></article></section>
-<div class="legend"><span><i class="dot" style="--c:var(--external)"></i>启动软件/业务</span><span><i class="dot" style="--c:var(--app)"></i>实时操作系统/组件</span><span><i class="dot" style="--c:var(--driver)"></i>BSP/driver/HAL</span><span><i class="dot" style="--c:var(--hardware)"></i>硬件</span><span><i class="dot" style="--c:var(--command)"></i>调用</span><span><i class="dot" style="--c:var(--data)"></i>段数据</span><span><i class="dot" style="--c:var(--event)"></i>事件/调度</span></div>
-<nav class="tabs" id="tabs"></nav>
-<div class="grid"><section class="panel"><div class="head"><b id="sceneTitle"></b><span id="stepMeta"></span></div><div class="canvas"><svg id="diagram" viewBox="0 0 1320 650" aria-label="系统启动四层泳道图"></svg></div></section><aside class="panel detail"><h3>当前步骤证据</h3><div class="item"><div class="label">动作</div><b id="action"></b><div><span class="fact" id="level"></span></div></div><div class="item"><div class="label">软件责任</div><div id="software"></div></div><div class="item"><div class="label">硬件/内存结果</div><div id="hardware"></div></div><div class="item"><div class="label">代码路径</div><div class="paths" id="paths"></div></div></aside></div>
-<div class="bottom"><section class="panel narr"><h3 id="title"></h3><p id="description"></p><div class="note" id="note"></div></section><section class="panel controls"><button class="btn" id="prev">上一步</button><button class="play" id="play">▶</button><button class="btn" id="next">下一步</button><select class="btn" id="speed"><option value="4800">慢速</option><option value="3200" selected>标准</option><option value="1800">快速</option></select><div class="progress" id="progress"></div></section></div>
-</main>
+<div class="page">
+
+<header>
+  <h1>嵌入式系统启动链：从复位向量到第一帧</h1>
+  <p class="lead">启动不是一跳进 <b>main</b>，而是分六步建立可运行系统：<b>复位上下文 → 内存段复制与清零 → 硬件初始化 → 实时操作系统与调度 → 组件自动初始化 → 业务门控与预览投递</b>。每一步都有明确的软件责任与硬件 / 内存结果。</p>
+  <div class="learn">
+    <b>你将掌握</b>
+    <ol>
+      <li>复位向量如何建立最小运行上下文</li>
+      <li>LMA / VMA 段复制与 BSS 清零</li>
+      <li>时钟、内存、中断的初始化顺序</li>
+      <li>调度器启动与 main 线程的关系</li>
+      <li>组件自动初始化的分级</li>
+      <li>业务门控与预览投递的异步边界</li>
+    </ol>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#s1">1. 复位上下文</a>
+  <a href="#s2">2. 内存段复制与清零</a>
+  <a href="#s3">3. 硬件初始化</a>
+  <a href="#s4">4. 实时操作系统与调度</a>
+  <a href="#s5">5. 组件自动初始化</a>
+  <a href="#s6">6. 业务门控与预览投递</a>
+</nav>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <h2><span class="n">1</span>复位上下文：向量、栈与 CSR</h2>
+  <p>复位后寄存器不是 C 运行时状态。启动汇编先清通用寄存器，再建立 <b>gp、异常向量、中断向量表与中断栈</b>，之后才能安全执行段复制与 C 函数。</p>
+  <pre>
+复位入口职责
+  · 清通用寄存器 x1~x31
+  · 设 gp（全局指针）、异常入口
+  · 装载中断向量表与中断栈
+  · CPU 进入机器模式</pre>
+  <div class="keybox"><b>边界：</b>此时外部内存尚未由本固件初始化，任何跳转与数据访问的目的地址必须是复位后可访问的片上资源。</div>
+  <div class="demo" id="d1">
+    <h3>本节演示 <small>复位上下文建立</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s1t"></b><span id="s1m"></span></div>
+      <div class="dcanvas"><svg id="s1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s1a"></b><span class="fact" id="s1l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s1sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s1hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s1d"></h4><p id="s1p"></p><div class="dnote" id="s1n"></div></div>
+      <div class="dcontrols">
+        <button id="s1prev">⟵</button><button class="play" id="s1play">▶</button><button id="s1next">⟶</button>
+        <span class="speed">速度<input type="range" id="s1spd" min="8" max="100" value="40"><span class="spdv" id="s1v">0.4x</span></span>
+        <div class="dprogress" id="s1pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <h2><span class="n">2</span>内存段复制与清零：LMA 与 VMA</h2>
+  <p>链接脚本为每个段定义两个地址：<b>LMA</b>（镜像保存位置）与 <b>VMA</b>（运行访问位置）。有初值段（data 类）需要从 LMA 复制到 VMA；无初值段（bss 类）没有镜像初值，只需清零。</p>
+  <pre>
+段处理
+  · .data    LMA → VMA 复制（有镜像初值）
+  · .bss     清零（无镜像初值）
+  · 栈       由启动汇编装配
+  · 片上段   先于外部内存段处理</pre>
+  <div class="keybox"><b>关键区分：</b>LMA 是镜像位置，VMA 是运行位置；无初值段只需 VMA 并清零。是否存在片上段分支取决于构建宏。</div>
+  <div class="demo" id="d2">
+    <h3>本节演示 <small>段复制与清零</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s2t"></b><span id="s2m"></span></div>
+      <div class="dcanvas"><svg id="s2g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s2a"></b><span class="fact" id="s2l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s2sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s2hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s2d"></h4><p id="s2p"></p><div class="dnote" id="s2n"></div></div>
+      <div class="dcontrols">
+        <button id="s2prev">⟵</button><button class="play" id="s2play">▶</button><button id="s2next">⟶</button>
+        <span class="speed">速度<input type="range" id="s2spd" min="8" max="100" value="40"><span class="spdv" id="s2v">0.4x</span></span>
+        <div class="dprogress" id="s2pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <h2><span class="n">3</span>硬件初始化：时钟、内存与中断</h2>
+  <p>复位入口调 <b>SystemInit</b> 建立芯片基础设施：先配<b>时钟</b>与<b>地址属性</b>，再按构建变体初始化<b>外部内存</b>（DDR 或片内高速内存），最后使能<b>中断控制器与 Cache</b>。</p>
+  <p>外部内存就绪后，普通外存变体才会把<b>外部内存段与各业务模块段</b>从 LMA 复制 / 清零到位——顺序上必须先有内存，再写其 VMA。</p>
+  <div class="keybox"><b>坑：</b>"外部内存段在内存初始化前复制"是错误做法；"所有变体都执行同一组段复制"同样错误——DDR 与片内高速内存是构建变体，不应同时标为已执行。</div>
+  <div class="demo" id="d3">
+    <h3>本节演示 <small>SystemInit → 外部内存段就位</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s3t"></b><span id="s3m"></span></div>
+      <div class="dcanvas"><svg id="s3g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s3a"></b><span class="fact" id="s3l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s3sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s3hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s3d"></h4><p id="s3p"></p><div class="dnote" id="s3n"></div></div>
+      <div class="dcontrols">
+        <button id="s3prev">⟵</button><button class="play" id="s3play">▶</button><button id="s3next">⟶</button>
+        <span class="speed">速度<input type="range" id="s3spd" min="8" max="100" value="40"><span class="spdv" id="s3v">0.4x</span></span>
+        <div class="dprogress" id="s3pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <h2><span class="n">4</span>实时操作系统与调度</h2>
+  <p>复位入口跳入 <b>entry</b>，进入<b>实时操作系统</b>主启动：先做<b>板级初始化</b>（UART、console、SysTick、heap），再创建 timer、scheduler、main 与 idle 等内核对象，最后启动调度器。</p>
+  <pre>
+启动顺序
+  entry → 内核启动 → 板级初始化
+        → timer / scheduler / main / idle
+        → 调度器开始调度</pre>
+  <div class="keybox"><b>注意：</b>main 线程在调度器启动前只是 ready，不会提前执行；组件初始化必须等到调度开始之后。</div>
+  <div class="demo" id="d4">
+    <h3>本节演示 <small>entry → 板级初始化 → 调度器</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s4t"></b><span id="s4m"></span></div>
+      <div class="dcanvas"><svg id="s4g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s4a"></b><span class="fact" id="s4l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s4sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s4hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s4d"></h4><p id="s4p"></p><div class="dnote" id="s4n"></div></div>
+      <div class="dcontrols">
+        <button id="s4prev">⟵</button><button class="play" id="s4play">▶</button><button id="s4next">⟶</button>
+        <span class="speed">速度<input type="range" id="s4spd" min="8" max="100" value="40"><span class="spdv" id="s4v">0.4x</span></span>
+        <div class="dprogress" id="s4pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <h2><span class="n">5</span>组件自动初始化</h2>
+  <p>调度器启动后，<b>main 线程</b>执行组件自动初始化：按优先级（板级、设备、组件、环境、应用）遍历自动注册表，板级组件在调度前的板级阶段已执行，等级 2~6 在 main 线程入口执行，最后才调用应用 main。</p>
+  <div class="keybox"><b>顺序：</b>不能把所有自动注册都描述成在板级初始化中一次完成——设备 / 驱动注册完成后，组件才能安全使用对应硬件。</div>
+  <div class="demo" id="d5">
+    <h3>本节演示 <small>main 线程分级初始化</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s5t"></b><span id="s5m"></span></div>
+      <div class="dcanvas"><svg id="s5g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s5a"></b><span class="fact" id="s5l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s5sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s5hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s5d"></h4><p id="s5p"></p><div class="dnote" id="s5n"></div></div>
+      <div class="dcontrols">
+        <button id="s5prev">⟵</button><button class="play" id="s5play">▶</button><button id="s5next">⟶</button>
+        <span class="speed">速度<input type="range" id="s5spd" min="8" max="100" value="40"><span class="spdv" id="s5v">0.4x</span></span>
+        <div class="dprogress" id="s5pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 6 ============ -->
+<section id="s6">
+  <h2><span class="n">6</span>业务门控与预览投递</h2>
+  <p>main 是组件初始化后的业务入口，<b>不是第一帧入口</b>。自动预览启动先经过<b>门控</b>：检查升级 / 回滚状态、加载配置、读取参数；任一失败或未启用即结束。只有成功构造预览参数后，才经 <b>RTE 信号</b>把预览启动请求投递给后续业务上下文。</p>
+  <div class="keybox"><b>四个独立观察点：</b>"main 调用预览启动"、"预览请求已投递"、"视频链已启动"、"接收端看到第一帧"——它们依次发生，不能混为一谈。</div>
+  <div class="demo" id="d6">
+    <h3>本节演示 <small>门控检查 → 信号投递</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s6t"></b><span id="s6m"></span></div>
+      <div class="dcanvas"><svg id="s6g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s6a"></b><span class="fact" id="s6l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s6sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s6hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s6d"></h4><p id="s6p"></p><div class="dnote" id="s6n"></div></div>
+      <div class="dcontrols">
+        <button id="s6prev">⟵</button><button class="play" id="s6play">▶</button><button id="s6next">⟶</button>
+        <span class="speed">速度<input type="range" id="s6spd" min="8" max="100" value="40"><span class="spdv" id="s6v">0.4x</span></span>
+        <div class="dprogress" id="s6pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="summary"><b>一句话总结</b><p>启动链从复位向量建立最小上下文开始，依次完成段复制 / 清零、硬件初始化、实时操作系统调度、组件自动初始化，最后经业务门控把预览请求异步投递出去——每一步的软件责任与硬件结果都明确可验证。</p></div>
+
+</div>
+
 <script>
-const lanes={external:{title:'启动软件 / 业务',sub:'镜像入口、应用 main、第一帧边界',x:20,w:285},app:{title:'实时操作系统 / 组件',sub:'内核对象、自动注册、线程',x:330,w:300},driver:{title:'BSP / driver / HAL',sub:'SystemInit、board init、DDR/HPRAM',x:655,w:300},hardware:{title:'芯片硬件',sub:'E906、SRAM、DDR/HPRAM、CLIC、Cache',x:980,w:320}};
-const nodes={boot:['Boot入口','镜像头/复位向量','external'],reset:['Reset_Handler','启动汇编','external'],appmain:['应用入口','main → 自动预览启动','external'],gate:['自动预览门控','系统状态 + 配置','external'],first:['第一帧业务','Sensor/ISP/Video/输出接口','external'],entry:['entry','GNU入口','app'],startup:['内核启动','RTOS 主启动','app'],mainthread:['main线程','components → main','app'],exports:['自动注册','等级2~6','app'],rte:['RTE 信号','应用预览启动信号','app'],system:['SystemInit','时钟/内存/CLIC/Cache','driver'],board:['板级初始化','UART/BOARD/SysTick/Heap','driver'],ddr:['DDR / PSRAM 初始化','外部内存初始化','driver'],e906:['E906','机器模式/CSR','hardware'],sram:['片上SRAM','sram_text/data/bss/stack','hardware'],memory:['DDR / HPRAM','ddr段与模块段','hardware'],clic:['CLIC + Cache','向量/地址属性','hardware'],scheduler:['调度器','timer/idle/main ready','hardware']};
-const scenes=[
-{tab:'1. 复位上下文',title:'E906 复位到最小运行上下文',action:'建立 gp、mtvec、mtvt、sp 和 mscratch',level:'代码事实',software:'Reset_Handler 清 x1~x31，并建立 ABI、异常向量和中断栈。',hardware:'E906 进入机器模式；CLIC 向量表和中断栈地址被装载。',paths:['启动汇编','复位向量'],description:'复位后寄存器不是 C 运行时状态。启动汇编清通用寄存器，设 gp、异常入口、CLIC vector table 与中断栈，之后才能安全执行段复制与 C 函数。',note:'此时 DDR/HPRAM 尚未由本固件初始化，目的地址必须是复位后可访问的片上资源。',nodes:['boot','reset','e906'],edges:[['boot','reset','command','跳转入口'],['reset','e906','command','CSR/向量/栈']]},
-{tab:'2. SRAM段',title:'先建立 SRAM 中的 C 运行对象',action:'复制 .sram_text/.data，清零 .bss；Cache变体另复制 .sram_data',level:'代码事实',software:'Reset_Handler 按链接符号做 4 字节循环复制/清零；主核构建且启用外存 Cache 时，SystemInit 前另复制 .sram_data。',hardware:'SRAM 承载关键代码、有初值对象、无初值对象和栈。',paths:['启动汇编','链接脚本'],description:'LMA 初值复制到 SRAM VMA，.bss 清零。此阶段恢复 C 静态对象初始化承诺，并保证 Cache 变体在外存初始化前所需对象可访问。',note:'.data/.sram_data 有镜像初值，.bss 没有镜像初值；是否存在 .sram_data 分支取决于构建宏。',nodes:['reset','sram'],edges:[['reset','sram','data','LMA → VMA'],['reset','sram','event','BSS = 0']]},
-{tab:'3. SystemInit',title:'SystemInit 建立芯片基础设施',action:'配置时钟、SYSMAP、DDR/HPRAM、CLIC 与 Cache',level:'代码事实',software:'主核先配置时钟和地址属性，再按宏调用 DDR 初始化或 PSRAM 初始化。',hardware:'外部内存可访问；CLIC 属性、I/D Cache 和 IRQ vectors 生效。',paths:['系统启动','内存初始化'],description:'SystemInit 是启动软件与芯片硬件的主边界。当前 DDR 构建在这里完成 DDR controller/PHY 初始化；HPRAM 变体走另一分支。',note:'DDR 与 HPRAM 是构建变体，不应在同一当前流程中同时标为已执行。',nodes:['reset','system','ddr','memory','clic'],edges:[['reset','system','command','jal SystemInit'],['system','ddr','command','初始化'],['ddr','memory','event','可访问'],['system','clic','command','CLIC/Cache']]},
-{tab:'4. DDR与模块段',title:'普通外存变体在 SystemInit 后复制 DDR 与模块段',action:'非 Cache 变体复制 .ddr_text/.ddr_data/*_mem_init，清零 *_mem_uninit',level:'代码事实',software:'主核构建且未启用外存 Cache 时，SystemInit 返回后执行复制/清零；Cache 变体走不同段布局。',hardware:'普通 DDR/HPRAM VMA 获得正确初值，模块静态池获得零初值。',paths:['启动汇编','链接脚本'],description:'普通外存启动顺序要求外部内存先初始化，再写入其 VMA。各业务模块（命令、视频、ISP、相机、升级、诊断等）各有 init/uninit 对。',note:'“.ddr_data 段在内存初始化前复制”是错误做法；“所有变体都执行该段复制”同样错误。',nodes:['reset','system','memory'],edges:[['system','reset','event','返回'],['reset','memory','data','DDR/模块 INIT'],['reset','memory','event','UNINIT = 0']]},
-{tab:'5. 实时操作系统',title:'entry 进入实时操作系统主启动',action:'初始化板级设备、heap、timer、scheduler 与线程',level:'代码事实',software:'entry → 内核启动 → 板级初始化 → timer/scheduler/main/idle。',hardware:'UART、console、SysTick 和 DDR heap 可用。',paths:['组件初始化','通用驱动','板级配置'],description:'板级初始化执行 UART、console、板级导出、SysTick 与 heap；随后实时操作系统创建 timer、scheduler、main 和 idle 等内核对象。',note:'main 线程在 scheduler start 前只是 ready，不会提前执行。',nodes:['reset','entry','startup','board','scheduler'],edges:[['reset','entry','command','jal entry'],['entry','startup','command','调用'],['startup','board','command','板级初始化'],['startup','scheduler','event','创建并启动调度']]},
-{tab:'6. 初始化顺序',title:'调度后由 main 线程执行组件自动初始化',action:'BOARD 级先执行，等级2~6后执行',level:'代码事实',software:'板级组件初始化在板级阶段执行；组件自动初始化在 main 线程入口执行。',hardware:'device/driver 注册完成后，组件才能安全使用对应硬件。',paths:['组件初始化'],description:'板级自动注册属于调度器前的板级阶段。main 线程运行后，组件自动初始化按优先级（板级、设备、组件、环境、应用）遍历自动注册表，最后才调用应用 main。',note:'不能把所有自动注册都描述成在板级初始化中一次完成。',nodes:['startup','mainthread','exports','board'],edges:[['startup','board','command','BOARD level'],['startup','mainthread','event','scheduler dispatch'],['mainthread','exports','command','等级2~6']]},
-{tab:'7. 自动预览门控',title:'main 只进入门控并异步投递预览请求',action:'通过门控后投递应用预览启动信号，不在 main 中直接启动首帧',level:'代码事实 + 异步边界',software:'自动预览启动先查升级/回滚状态，再加载配置、读参数；任一失败或自动预览未启用即结束。仅成功构造预览参数后才经 RTE 投递信号。',hardware:'信号投递完成时 Sensor、ISP、Video 和输出接口仍可能尚未配置；后续订阅者处理请求后才逐层建立硬件链路。',paths:['应用入口','相机应用','组件初始化'],description:'main 是组件初始化后的业务入口，不是第一帧入口。自动预览启动在升级/回滚、配置加载失败、参数读取失败、自动预览关闭或参数构造失败时都不投递；通过门控后仅把应用预览启动信号交给后续业务上下文。',note:'“main 调用自动预览启动”“RTE 请求已投递”“视频链已启动”“接收端看到第一帧”是四个独立观察点。',nodes:['mainthread','exports','appmain','gate','rte','first'],edges:[['mainthread','exports','command','组件自动初始化'],['exports','appmain','command','main()'],['appmain','gate','command','检查状态/配置'],['gate','rte','event','信号投递'],['rte','first','command','后续业务处理'],['first','appmain','event','帧/状态反馈']]}
-];
-const byId=id=>document.getElementById(id),diagram=byId('diagram'),sceneTitle=byId('sceneTitle'),stepMeta=byId('stepMeta'),action=byId('action'),level=byId('level'),software=byId('software'),hardware=byId('hardware'),title=byId('title'),description=byId('description'),note=byId('note'),paths=byId('paths'),progress=byId('progress'),tabs=byId('tabs'),prev=byId('prev'),play=byId('play'),next=byId('next'),speed=byId('speed'),theme=byId('theme');
-const laneOrder=['external','app','driver','hardware'];let index=0,playing=false,timer=null;
+"use strict";
+const lanes={external:{title:'启动软件 / 业务',sub:'镜像入口、应用 main、第一帧边界',x:20,w:285},app:{title:'实时操作系统 / 组件',sub:'内核启动、自动注册、线程',x:330,w:300},driver:{title:'BSP / driver / HAL',sub:'SystemInit、板级初始化',x:655,w:300},hardware:{title:'芯片硬件',sub:'CPU、SRAM、DDR、中断控制器',x:980,w:320}};
+const nodes={boot:['Boot 入口','镜像头 / 复位向量','external'],reset:['复位入口','启动汇编','external'],appmain:['应用入口','main → 业务门控','external'],gate:['业务门控','状态 + 配置检查','external'],first:['第一帧业务','Sensor/ISP/Video','external'],entry:['entry','GNU 入口','app'],startup:['内核启动','实时操作系统主启动','app'],mainthread:['main 线程','组件初始化 → main','app'],exports:['自动注册','等级 2~6','app'],rte:['RTE 信号','预览启动信号','app'],system:['SystemInit','时钟 / 内存 / 中断','driver'],board:['板级初始化','UART / SysTick / Heap','driver'],ddr:['外部内存初始化','DDR / 片内高速内存','driver'],cpu:['CPU 核','机器模式 / CSR','hardware'],sram:['片上 SRAM','代码 / 数据 / 栈','hardware','memory'],memory:['外部内存','运行段与模块段','hardware','memory'],clic:['中断控制器 + Cache','向量 / 地址属性','hardware'],scheduler:['调度器','timer / main / idle','hardware']};
+const laneOrder=['external','app','driver','hardware'];
 function layout(item){const group={external:[],app:[],driver:[],hardware:[]},out={};item.nodes.forEach(id=>group[nodes[id][2]].push(id));laneOrder.forEach(k=>{const lane=lanes[k],arr=group[k],gap=480/Math.max(arr.length,1);arr.forEach((id,i)=>out[id]={x:lane.x+lane.w/2,y:105+gap*(i+.5)});});return out}
 function geom(a,b,pos){const p=pos[a],q=pos[b],same=nodes[a][2]===nodes[b][2];if(same){const d=q.y>=p.y?1:-1;return{d:`M${p.x+90} ${p.y+25*d} C${p.x+145} ${p.y+55*d},${q.x+145} ${q.y-55*d},${q.x+90} ${q.y-25*d}`,x:p.x+142,y:(p.y+q.y)/2}}const d=q.x>p.x?1:-1;return{d:`M${p.x+90*d} ${p.y} C${p.x+155*d} ${p.y},${q.x-155*d} ${q.y},${q.x-90*d} ${q.y}`,x:(p.x+q.x)/2,y:(p.y+q.y)/2}}
-function draw(item){const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="a${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';laneOrder.forEach(k=>{const l=lanes[k];s+=`<rect class="lane ${k}" x="${l.x}" y="20" width="${l.w}" height="610" rx="13"/><text class="lane-title" x="${l.x+15}" y="46">${l.title}</text><text class="lane-sub" x="${l.x+15}" y="63">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path class="edge ${k}" d="${g.d}" marker-end="url(#a${k})"/><rect class="edge-bg ${k}" x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10"/><text class="edge-label" x="${g.x}" y="${g.y+1}" text-anchor="middle">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],tagTxt={external:'SW·应用',app:'SW·模块',driver:'SW·驱动',hardware:'HW·硬件'}[n[2]],tw=tagTxt.length*7+12;s+=`<g class="node ${n[2]}"><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9"/><g class="ntag ${n[2]}"><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle">${tagTxt}</text></g><text class="node-title" x="${p.x}" y="${p.y-5}" text-anchor="middle">${n[0]}</text><text class="node-sub" x="${p.x}" y="${p.y+13}" text-anchor="middle">${n[1]}</text></g>`});diagram.innerHTML=s}
-function render(){const x=scenes[index];sceneTitle.textContent=x.title;stepMeta.textContent=`步骤 ${index+1} / ${scenes.length}`;action.textContent=x.action;level.textContent=x.level;software.textContent=x.software;hardware.textContent=x.hardware;title.textContent=x.title;description.textContent=x.description;note.textContent=x.note;paths.innerHTML=x.paths.map(p=>`<code>${p}</code>`).join('');progress.innerHTML=scenes.map((_,i)=>`<i class="${i===index?'on':''}"></i>`).join('');document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('on',i===index));draw(x)}
-function stop(){playing=false;clearInterval(timer);timer=null;play.textContent='▶'}function nextStep(){index=(index+1)%scenes.length;render()}function prevStep(){index=(index-1+scenes.length)%scenes.length;render()}function toggle(){if(playing){stop()}else{playing=true;play.textContent='Ⅱ';timer=setInterval(nextStep,Number(speed.value))}}
-tabs.innerHTML=scenes.map((x,i)=>`<button class="tab ${i===0?'on':''}" data-i="${i}">${x.tab}</button>`).join('');tabs.onclick=e=>{const b=e.target.closest('.tab');if(b){index=Number(b.dataset.i);stop();render()}};prev.onclick=prevStep;next.onclick=nextStep;play.onclick=toggle;speed.onchange=()=>{if(playing){stop();toggle()}};theme.onclick=()=>document.body.classList.toggle('light');document.addEventListener('keydown',e=>{if(e.key==='ArrowRight')nextStep();if(e.key==='ArrowLeft')prevStep();if(e.key===' '){e.preventDefault();toggle()}});render();
+function draw(svgEl,item){const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="m${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';laneOrder.forEach(k=>{const l=lanes[k];s+=`<rect x="${l.x}" y="20" width="${l.w}" height="610" rx="13" style="stroke:#cbd5e1;stroke-dasharray:5 5;fill:#eef2f7"/><text x="${l.x+15}" y="46" style="fill:#334155;font-size:13px;font-weight:800">${l.title}</text><text x="${l.x+15}" y="63" style="fill:#64748b;font-size:9px">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path d="${g.d}" marker-end="url(#m${k})" style="fill:none;stroke-width:3;stroke:var(--${k})"/><rect x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10" style="fill:#fff;stroke:var(--${k})"/><text x="${g.x}" y="${g.y+1}" text-anchor="middle" style="fill:#334155;font-size:8.5px;font-weight:700">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],style=n[3]||n[2],role=n[3]==='memory'?'内存区':{external:'SW·应用',app:'SW·模块',driver:'SW·驱动',hardware:'HW·硬件'}[n[2]],tw=role.length*7+12;s+=`<g><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9" style="fill:#ffffff;stroke-width:2;stroke:${style==='memory'?'#d97706':'#94a3b8'}"/><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5" style="fill:${style==='memory'?'#d97706':'#64748b'}"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle" style="fill:#fff;font-size:8.5px;font-weight:700">${role}</text><text x="${p.x}" y="${p.y-5}" text-anchor="middle" style="fill:#0f172a;font-size:11px;font-weight:800">${n[0]}</text><text x="${p.x}" y="${p.y+13}" text-anchor="middle" style="fill:#475569;font-size:8.5px">${n[1]}</text></g>`});svgEl.innerHTML=s}
+function makePlayer(p,steps){
+  const $=id=>document.getElementById(p+id);
+  let idx=0,timer=null,SPEED=0.4;
+  const spdEl=$('spd'),spdVal=$('v');
+  spdEl.addEventListener('input',function(){SPEED=spdEl.value/100;spdVal.textContent=SPEED.toFixed(2)+'x';if(timer){stop();$('play').click();}});
+  function render(){const x=steps[idx];$('t').textContent=x.title;$('m').textContent=`步骤 ${idx+1} / ${steps.length}`;$('a').textContent=x.action;$('l').textContent=x.level;$('sw').textContent=x.software;$('hw').textContent=x.hardware;$('d').textContent=x.title;$('p').textContent=x.description;$('n').textContent=x.note;$('pbar').innerHTML=steps.map((_,i)=>`<i class="${i===idx?'on':''}"></i>`).join('');draw($('g'),x)}
+  function next(){idx=(idx+1)%steps.length;render()}
+  function prev(){idx=(idx-1+steps.length)%steps.length;render()}
+  function stop(){if(timer){clearInterval(timer);timer=null}$('play').textContent='▶'}
+  $('prev').onclick=function(){stop();prev()};$('next').onclick=function(){stop();next()};$('play').onclick=function(){if(timer){stop()}else{timer=setInterval(next,Math.round(3200/SPEED));$('play').textContent='Ⅱ'}};
+  render();
+}
+const S1=[
+ {title:'建立最小上下文',action:'建立 gp、异常向量、中断向量表与栈',level:'代码事实',software:'复位入口清通用寄存器，设 gp、异常入口、中断向量表与中断栈。',hardware:'CPU 进入机器模式；向量表与栈地址被装载。',description:'复位后寄存器不是 C 运行时状态，需先装配 ABI。',note:'外部内存尚未初始化，目的地址必须是片上资源。',nodes:['boot','reset','cpu'],edges:[['boot','reset','command','跳转入口'],['reset','cpu','command','CSR/向量/栈']]}
+];
+const S2=[
+ {title:'段复制与清零',action:'有初值段复制 LMA→VMA，无初值段清零',level:'代码事实',software:'复位入口按链接符号做复制/清零，先片上段后外部内存段。',hardware:'SRAM 承载代码、有初值对象、无初值对象与栈。',description:'.data 有镜像初值需复制；.bss 无镜像初值只需清零。',note:'LMA 是镜像位置，VMA 是运行位置。',nodes:['reset','sram'],edges:[['reset','sram','data','LMA → VMA'],['reset','sram','event','BSS = 0']]}
+];
+const S3=[
+ {title:'SystemInit',action:'配置时钟、内存与中断控制器',level:'代码事实',software:'主核先配时钟与地址属性，再按宏调外部内存初始化。',hardware:'外部内存可访问；中断控制器与 Cache 生效。',description:'SystemInit 是启动软件与芯片硬件的主边界。',note:'DDR 与片内高速内存是构建变体，不同时执行。',nodes:['reset','system','ddr','memory','clic'],edges:[['reset','system','command','调用 SystemInit'],['system','ddr','command','初始化'],['ddr','memory','event','可访问'],['system','clic','command','中断/Cache']]},
+ {title:'外部内存段就位',action:'内存就绪后复制外部内存段与模块段',level:'代码事实',software:'SystemInit 返回后，复位入口执行外部内存段复制/清零。',hardware:'外部内存 VMA 获得正确初值，模块静态区清零。',description:'先有内存，再写其 VMA；顺序颠倒即错误。',note:'各业务模块各有 init/uninit 段对。',nodes:['system','reset','memory'],edges:[['system','reset','event','返回'],['reset','memory','data','段复制'],['reset','memory','event','清零']]}
+];
+const S4=[
+ {title:'进入实时操作系统',action:'entry 启动内核，板级初始化后调度器接管',level:'代码事实',software:'entry → 内核启动 → 板级初始化 → 创建内核对象。',hardware:'UART、console、SysTick 与 heap 可用。',description:'板级初始化完成设备与堆，随后创建调度器与线程。',note:'main 线程在调度器启动前只是 ready。',nodes:['reset','entry','startup','board','scheduler'],edges:[['reset','entry','command','跳转 entry'],['entry','startup','command','调用'],['startup','board','command','板级初始化'],['startup','scheduler','event','创建并启动调度']]}
+];
+const S5=[
+ {title:'分级自动初始化',action:'main 线程按等级遍历自动注册表',level:'代码事实',software:'板级组件在板级阶段执行；等级 2~6 在 main 线程入口执行。',hardware:'设备/驱动注册完成后，组件才能使用硬件。',description:'按板级、设备、组件、环境、应用优先级遍历。',note:'不能把所有自动注册都算在板级初始化中。',nodes:['startup','board','mainthread','exports'],edges:[['startup','board','command','板级等级'],['startup','mainthread','event','调度派发'],['mainthread','exports','command','等级 2~6']]}
+];
+const S6=[
+ {title:'门控检查',action:'main 检查升级状态、配置与参数',level:'代码事实',software:'自动预览启动先查升级/回滚，再加载配置、读参数。',hardware:'任一失败即结束，不投递。',description:'门控未通过或自动预览关闭，直接结束。',note:'main 是业务入口，不是第一帧入口。',nodes:['mainthread','exports','appmain','gate'],edges:[['mainthread','exports','command','组件自动初始化'],['exports','appmain','command','调用 main'],['appmain','gate','command','检查状态/配置']]},
+ {title:'预览投递',action:'通过门控后经 RTE 投递预览启动信号',level:'代码事实 + 异步边界',software:'仅成功构造预览参数后投递信号，不直接启动首帧。',hardware:'信号投递时硬件链路可能尚未建立。',description:'订阅者处理请求后才逐层建立硬件链路。',note:'请求已投递 ≠ 视频链已启动 ≠ 看到第一帧。',nodes:['gate','rte','first','appmain'],edges:[['gate','rte','event','信号投递'],['rte','first','command','后续业务处理'],['first','appmain','event','帧/状态反馈']]}
+];
+makePlayer('s1',S1);
+makePlayer('s2',S2);
+makePlayer('s3',S3);
+makePlayer('s4',S4);
+makePlayer('s5',S5);
+makePlayer('s6',S6);
 </script>
 </body>
 </html>

@@ -1,110 +1,324 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VDCMD 命令与视频业务交互演示</title>
-  <style>
-    :root{--bg:#0f172a;--panel:#1e293b;--panel2:#1a2740;--line:#334155;--text:#e2e8f0;--muted:#94a3b8;--pc:#db2777;--app:#2563eb;--svc:#7c3aed;--driver:#0d9488;--hardware:#ea580c;--ddr:#fbbf24;--command:#3b82f6;--data:#22c55e;--event:#eab308;--error:#ef4444}
-    *{box-sizing:border-box}body{margin:0;min-height:100vh;color:var(--text);background:var(--bg);font-family:"Microsoft YaHei","PingFang SC",Arial,sans-serif}button{font:inherit}.page{width:min(1620px,100%);margin:auto;padding:20px}
-    header{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;margin-bottom:16px}h1{margin:0 0 8px;font-size:clamp(22px,2.2vw,34px)}header p{margin:0;color:var(--muted);line-height:1.7}.fact{max-width:520px;padding:10px 13px;border:1px solid var(--line);border-radius:10px;background:var(--panel2);color:#cbd5e1;font-size:13px;line-height:1.55}
-    .legend{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px 14px;color:var(--muted);font-size:13px}.legend span{display:inline-flex;align-items:center;gap:6px}.swatch{width:13px;height:13px;border-radius:4px}.line{width:28px;border-top:3px solid}.dashed{border-top-style:dashed}
-    .main{display:grid;grid-template-columns:minmax(800px,1.7fr) minmax(370px,.8fr);gap:16px}.board,.detail,.timeline{border:1px solid var(--line);border-radius:14px;background:var(--panel)}.board{padding:14px;min-height:705px}.detail{padding:18px;min-height:705px}.board-head{display:flex;justify-content:space-between;margin-bottom:8px}.board-head span{color:var(--muted);font-size:13px}
-    svg{display:block;width:100%;height:650px}.layer{fill:rgba(17,34,56,.75);stroke-width:1.5;stroke-dasharray:7 5;rx:12}.layer-title{font-size:14px;font-weight:700}.node rect{rx:9;stroke-width:2}.node text{fill:#fff;text-anchor:middle;font-size:12.5px;font-weight:700}.node .sub{fill:#cbd5e1;font-size:10px;font-weight:400}.node.pc rect{fill:#4a0a24;stroke:#f472b6}.node.app rect{fill:#173f93;stroke:#60a5fa}.node.svc rect{fill:#2a1454;stroke:#a78bfa}.node.driver rect{fill:#064e5b;stroke:#2dd4bf}.node.hardware rect{fill:#7c2d12;stroke:#fb923c}.node.active rect:not(.mt){stroke-width:4;filter:drop-shadow(0 0 5px rgba(255,255,255,.4))}.node.dim{opacity:.25}.mt{fill:#0f172a}.node .mt{stroke:#fff;stroke-width:1}.mt-t{font-size:8px;font-weight:700;fill:#fff;text-anchor:middle;font-family:Consolas,"SFMono-Regular",monospace}.node.pc .mt{fill:#db2777}.node.app .mt{fill:#2563eb}.node.svc .mt{fill:#7c3aed}.node.driver .mt{fill:#0d9488}.node.hardware .mt{fill:#ea580c}
-    .edge{fill:none;stroke-width:3;opacity:.14}.edge.command{stroke:var(--command);marker-end:url(#cmdArrow)}.edge.result{stroke:var(--command);stroke-dasharray:8 5;marker-end:url(#cmdArrow)}.edge.data{stroke:var(--data);stroke-width:4;marker-end:url(#dataArrow)}.edge.event{stroke:var(--event);stroke-dasharray:8 5;marker-end:url(#eventArrow)}.edge.error{stroke:var(--error);stroke-dasharray:5 4;marker-end:url(#errorArrow)}.edge.active{opacity:1}.edge-label{font-size:10.5px;font-weight:700;opacity:.14}.edge-label.command,.edge-label.result{fill:#93c5fd}.edge-label.data{fill:#86efac}.edge-label.event{fill:#fde047}.edge-label.error{fill:#fca5a5}.edge-label.active{opacity:1}
-    .scene-no{color:#93c5fd;font-size:13px;font-weight:700}.detail h2{margin:7px 0 8px;font-size:23px}.summary{margin:0 0 14px;color:#cbd5e1;line-height:1.72}.badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}.badge{border:1px solid;border-radius:999px;padding:4px 9px;font-size:12px;font-weight:700;opacity:.3}.badge.active{opacity:1}.badge.command{color:#93c5fd;border-color:var(--command)}.badge.data{color:#86efac;border-color:var(--data)}.badge.event{color:#fde047;border-color:var(--event)}.badge.error{color:#fca5a5;border-color:var(--error)}
-    .notes{display:grid;gap:9px}.note{border-left:5px solid;border-radius:8px;background:var(--panel2);padding:10px 12px}.note strong{display:block;margin-bottom:4px;font-size:13px}.note p{margin:0;color:#d1ddec;font-size:13px;line-height:1.55}.note.pc{border-color:var(--pc)}.note.app{border-color:var(--app)}.note.driver{border-color:var(--driver)}.note.hardware{border-color:var(--hardware)}.evidence,.warning{margin-top:12px;padding:11px 12px;border-radius:8px;font-size:12px;line-height:1.55}.evidence{background:var(--panel2);border:1px solid var(--line);color:#c9d8e8}.warning{background:#2e2508;border:1px solid #a47c14;color:#fde68a}code{color:#bae6fd;overflow-wrap:anywhere}
-    .timeline{margin-top:16px;padding:14px}.steps{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}.step{min-height:64px;padding:8px;text-align:left;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:8px;cursor:pointer;line-height:1.35}.step.active{color:#fff;background:#152e4f;border-color:#60a5fa}.step b{display:block;margin-bottom:3px}.controls{display:flex;justify-content:center;align-items:center;gap:10px;margin-top:12px}.controls button{min-width:100px;padding:9px 14px;color:#fff;background:#334155;border:1px solid var(--line);border-radius:8px;cursor:pointer}.controls button:hover{background:#3f546e}.controls button:disabled{opacity:.4;cursor:not-allowed}.controls #playBtn{background:linear-gradient(90deg,#0891b2,#2563eb);border:none}.progress{min-width:90px;color:var(--muted);text-align:center;font-size:13px}
-    .speedbar{display:flex;align-items:center;gap:14px;padding:10px 16px;margin-bottom:16px;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:13px;color:var(--muted);flex-wrap:wrap}
-    .speedbar b{color:var(--text)}
-    .speedbar input{width:240px;accent-color:#38bdf8;cursor:pointer}
-    .spdv{font-weight:700;color:#93c5fd;min-width:52px;font-size:15px}
-    .spdtip{color:var(--muted);font-size:12px}
-    @media(max-width:1160px){header{display:block}.legend{justify-content:flex-start;margin-top:12px}.fact{margin-top:12px}.main{grid-template-columns:1fr}.board,.detail{min-height:auto}.steps{grid-template-columns:repeat(2,1fr)}}
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>命令协议如何驱动视频业务：路由、执行与三条回传</title>
+<style>
+:root{
+  --bg:#f7f8fa; --panel:#ffffff; --panel2:#f1f5f9; --line:#e2e8f0;
+  --text:#1e293b; --muted:#64748b; --blue:#2563eb; --teal:#0d9488;
+  --green:#16a34a; --gold:#d97706; --orange:#ea580c; --purple:#7c3aed; --red:#dc2626;
+  --command:#2563eb; --data:#16a34a; --event:#d97706; --error:#dc2626;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;line-height:1.8;padding:0}
+.page{max-width:880px;margin:0 auto;padding:40px 24px 60px}
+header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:24px}
+h1{font-size:27px;line-height:1.35;margin-bottom:12px;color:#0f172a}
+.lead{color:var(--muted);font-size:15px;line-height:1.8}
+.lead b{color:var(--teal)}
+.learn{margin-top:14px;padding:14px 16px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;font-size:13.5px}
+.learn b{color:var(--gold);display:block;margin-bottom:6px}
+.learn ol{margin-left:20px;color:var(--text)}
+.learn li{margin-bottom:4px}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 28px}
+.toc a{color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:4px 12px;border-radius:99px;font-size:12px;background:var(--panel)}
+.toc a:hover{color:var(--teal);border-color:var(--teal)}
+section{margin-bottom:30px}
+h2{font-size:20px;margin-bottom:12px;color:var(--teal);display:flex;align-items:center;gap:10px}
+h2 .n{font-size:12px;background:linear-gradient(135deg,#0d9488,#2563eb);color:#fff;width:24px;height:24px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+p{color:var(--text);margin-bottom:10px;font-size:14.5px}
+p b{color:var(--gold)}
+p code,li code,td code{background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:5px;color:#0369a1;font-size:12.5px;font-family:Consolas,monospace}
+ul{color:var(--text);font-size:14px}
+.keybox{margin:12px 0;padding:12px 14px;background:#fffbeb;border-left:4px solid var(--gold);border-radius:8px;font-size:13.5px;color:#713f12}
+.keybox b{color:#b45309}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+th,td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+th{background:var(--panel2);color:var(--teal)}
+td b{color:var(--green)}
+pre{background:#0b1220;border-radius:8px;padding:12px 14px;overflow-x:auto;margin:12px 0;font-size:12.5px;line-height:1.6;color:#93c5fd;font-family:Consolas,monospace}
+/* 动画组件 */
+.demo{margin:18px 0 6px;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.demo h3{color:var(--teal);font-size:14px;margin-bottom:8px}
+.demo h3 small{color:var(--muted);font-weight:400;font-size:12px;margin-left:6px}
+.dwrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.dhead{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line)}
+.dhead b{font-size:13.5px}
+.dhead span{color:var(--muted);font-size:12px}
+.dcanvas{overflow-x:auto;padding:10px;background:#fbfcfe}
+svg{display:block;width:100%;min-width:900px;height:auto}
+.detail{padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:13px}
+.detail .lbl{color:var(--muted);font-size:11px;letter-spacing:.06em}
+.detail b{display:block;color:var(--text)}
+.detail .fact{display:inline-block;margin-top:4px;padding:1px 8px;border-radius:99px;background:#e8f5e9;color:#1b5e20;font-size:11px}
+.dnarr{padding:11px 14px;border-top:1px solid var(--line)}
+.dnarr h4{margin:0 0 4px;color:var(--teal);font-size:13.5px}
+.dnarr p{margin:0;color:var(--muted);font-size:13px}
+.dnote{margin-top:7px;padding:7px 10px;border-left:3px solid var(--gold);background:#fffbeb;color:#713f12;font-size:12.5px}
+.dcontrols{display:flex;align-items:center;gap:7px;padding:9px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
+.dcontrols button{padding:6px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);cursor:pointer;font-size:12.5px}
+.dcontrols button.play{width:36px;height:36px;border:0;border-radius:50%;background:var(--blue);color:#fff;font-size:15px;padding:0}
+.dcontrols .speed{display:flex;align-items:center;gap:7px;margin-left:auto;font-size:12px;color:var(--muted)}
+.dcontrols input{width:130px;accent-color:#38bdf8}
+.dcontrols .spdv{font-weight:700;color:var(--teal);min-width:42px}
+.dprogress{display:flex;gap:4px;margin-left:auto}
+.dprogress i{width:8px;height:8px;border-radius:50%;background:#cbd5e1}
+.dprogress i.on{background:var(--blue)}
+.summary{margin-top:34px;padding:16px 18px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--green);border-radius:12px}
+.summary b{color:var(--green);display:block;margin-bottom:6px;font-size:14px}
+.summary p{margin:0;color:var(--text);font-size:14px}
+@media(max-width:650px){.page{padding:22px 14px 40px}.detail{grid-template-columns:1fr}h1{font-size:23px}}
+</style>
 </head>
 <body>
-  <main class="page">
-    <header>
-      <div><h1>VDCMD 命令与视频业务交互演示</h1><p>以「预览启动」命令为主线，看外部控制主机如何切换预览，以及命令结果、视频数据、硬件事件如何沿三条独立路径流动。</p></div>
-      <div><div class="legend" aria-label="角色和流向颜色图例"><span><i class="swatch" style="background:var(--pc)"></i>PC · 外部控制主机/系统</span><span><i class="swatch" style="background:var(--app)"></i>应用 · 固件业务/命令</span><span><i class="swatch" style="background:var(--svc)"></i>服务 · RTE/模块</span><span><i class="swatch" style="background:var(--driver)"></i>驱动 · driver/HAL</span><span><i class="swatch" style="background:var(--hardware)"></i>硬件 · 设备/IP</span><span><i class="line" style="border-color:var(--command)"></i>命令请求</span><span><i class="line dashed" style="border-color:var(--command)"></i>命令结果</span><span><i class="line" style="border-color:var(--data)"></i>视频数据</span><span><i class="line dashed" style="border-color:var(--event)"></i>硬件事件</span><span><i class="line dashed" style="border-color:var(--error)"></i>拒绝/错误</span></div><div class="fact">构建配置决定启用哪些控制接口；UVC、CCI、UART、SPI 均为可选命令入口。</div></div>
-    </header>
+<div class="page">
 
-    <div class="speedbar">
-      <span><b>自动播放速度</b></span>
-      <input type="range" id="spd" min="5" max="100" value="100">
-      <span class="spdv" id="spdv">1.00x</span>
-      <span class="spdtip">仅影响"▶ 播放"自动循环;手动单步由你控制节奏</span>
-    </div>
+<header>
+  <h1>命令协议如何驱动视频业务：路由、执行与三条回传</h1>
+  <p class="lead">外部控制主机发一条命令，视频业务就切换一次预览。这条命令如何被<b>定位、路由、执行</b>，执行后结果、数据、事件又如何分三路回传？本文以"预览启动"为主线，拆解命令协议与视频业务的交互，每节配一个交互动画。</p>
+  <div class="learn">
+    <b>你将掌握</b>
+    <ol>
+      <li>class / index / subcmd 三级命令结构</li>
+      <li>单命令状态机与双消息层的路由执行链</li>
+      <li>业务动作如何驱动视频输出</li>
+      <li>命令结果、视频数据、硬件事件三条独立回传</li>
+      <li>成功提交语义与同步时序边界</li>
+    </ol>
+  </div>
+</header>
 
-    <section class="main">
-      <div class="board">
-        <div class="board-head"><strong>「预览启动」命令完整业务链</strong><span>蓝色命令/结果，绿色视频，黄色硬件事件，红色拒绝</span></div>
-        <svg viewBox="0 0 1030 650" role="img" aria-label="VDCMD 预览命令四层交互图">
-          <defs><marker id="cmdArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9Z" fill="#3b82f6"/></marker><marker id="dataArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9Z" fill="#22c55e"/></marker><marker id="eventArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9Z" fill="#eab308"/></marker><marker id="errorArrow" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0 0L9 4.5L0 9Z" fill="#ef4444"/></marker></defs>
-          <rect class="layer" x="8" y="8" width="1014" height="100" stroke="#db2777"/><text class="layer-title" x="22" y="30" fill="#f9a8d4">PC · 外部控制主机 / 外部接收系统</text>
-          <rect class="layer" x="8" y="120" width="1014" height="160" stroke="#2563eb"/><text class="layer-title" x="22" y="143" fill="#93c5fd">应用/服务 · 固件（命令 / RTE / Service）</text>
-          <rect class="layer" x="8" y="292" width="1014" height="103" stroke="#0d9488"/><text class="layer-title" x="22" y="315" fill="#5eead4">驱动 · driver / HAL</text>
-          <rect class="layer" x="8" y="407" width="1014" height="232" stroke="#ea580c"/><text class="layer-title" x="22" y="430" fill="#fdba74">硬件 · IP / DMA / 物理接口</text>
+<nav class="toc">
+  <a href="#s1">1. 命令结构</a>
+  <a href="#s2">2. 路由与执行</a>
+  <a href="#s3">3. 业务动作 → 视频输出</a>
+  <a href="#s4">4. 三条独立回传</a>
+  <a href="#s5">5. 时序与边界</a>
+</nav>
 
-          <g id="host" class="node pc"><rect x="35" y="45" width="280" height="48"/><rect class="mt" x="159" y="39" width="32" height="14"/><text class="mt-t" x="175" y="49">PC</text><text x="175" y="65">外部 CCI / UART / SPI 控制主机<tspan class="sub" x="175" dy="16">命令帧：class/index/subcmd + mode</tspan></text></g>
-          <g id="receiver" class="node pc"><rect x="770" y="45" width="210" height="48"/><rect class="mt" x="859" y="39" width="32" height="14"/><text class="mt-t" x="875" y="49">PC</text><text x="875" y="65">视频接收端<tspan class="sub" x="875" dy="16">UVC 主机或 CSI-2 receiver</tspan></text></g>
-
-          <g id="router" class="node app"><rect x="35" y="165" width="150" height="55"/><rect class="mt" x="92" y="159" width="36" height="14"/><text class="mt-t" x="110" y="169">应用</text><text x="110" y="188">VDCMD Parser/Router<tspan class="sub" x="110" dy="17">同步 FSM + 三级查表</tspan></text></g>
-          <g id="ser" class="node svc"><rect x="205" y="165" width="130" height="55"/><rect class="mt" x="252" y="159" width="36" height="14"/><text class="mt-t" x="270" y="169">服务</text><text x="270" y="188">服务 RTE<tspan class="sub" x="270" dy="17">服务信号队列</tspan></text></g>
-          <g id="vapp" class="node app"><rect x="355" y="165" width="145" height="55"/><rect class="mt" x="409" y="159" width="36" height="14"/><text class="mt-t" x="427" y="169">应用</text><text x="427" y="188">命令应用<tspan class="sub" x="427" dy="17">解析 uint32 mode</tspan></text></g>
-          <g id="apprte" class="node svc"><rect x="520" y="165" width="130" height="55"/><rect class="mt" x="567" y="159" width="36" height="14"/><text class="mt-t" x="585" y="169">服务</text><text x="585" y="188">应用 RTE<tspan class="sub" x="585" dy="17">应用信号队列</tspan></text></g>
-          <g id="camera" class="node app"><rect x="670" y="165" width="145" height="55"/><rect class="mt" x="724" y="159" width="36" height="14"/><text class="mt-t" x="742" y="169">应用</text><text x="742" y="188">相机应用<tspan class="sub" x="742" dy="17">停旧流 / 构造新配置</tspan></text></g>
-          <g id="service" class="node svc"><rect x="835" y="155" width="160" height="75"/><rect class="mt" x="897" y="149" width="36" height="14"/><text class="mt-t" x="915" y="159">服务</text><text x="915" y="178">流配置服务<tspan class="sub" x="915" dy="17">初始化预览 · 同步业务服务</tspan></text></g>
-          <g id="eventIngress" class="node app"><rect x="35" y="235" width="160" height="35"/><rect class="mt" x="97" y="229" width="36" height="14"/><text class="mt-t" x="115" y="239">应用</text><text x="115" y="257">CCI/UART 厂商命令</text></g>
-          <g id="spiIngress" class="node app"><rect x="210" y="235" width="175" height="35"/><rect class="mt" x="279" y="229" width="36" height="14"/><text class="mt-t" x="297" y="239">应用</text><text x="297" y="257">独立 SPI 处理</text></g>
-          <g id="video" class="node svc"><rect x="420" y="235" width="300" height="35"/><rect class="mt" x="552" y="229" width="36" height="14"/><text class="mt-t" x="570" y="239">服务</text><text x="570" y="257">Stream Manager → Node → 输出接口</text></g>
-
-          <g id="eventTransport" class="node driver"><rect x="35" y="335" width="160" height="42"/><rect class="mt" x="97" y="329" width="36" height="14"/><text class="mt-t" x="115" y="339">驱动</text><text x="115" y="361">CCI/UART driver + HAL</text></g>
-          <g id="spiTransport" class="node driver"><rect x="210" y="335" width="175" height="42"/><rect class="mt" x="279" y="329" width="36" height="14"/><text class="mt-t" x="297" y="339">驱动</text><text x="297" y="361">SPI slave driver + HAL</text></g>
-          <g id="videodrv" class="node driver"><rect x="420" y="335" width="300" height="42"/><rect class="mt" x="552" y="329" width="36" height="14"/><text class="mt-t" x="570" y="339">驱动</text><text x="570" y="361">ISP / Video / USB / MIPI driver + HAL</text></g>
-          <g id="callback" class="node driver"><rect x="780" y="335" width="200" height="42"/><rect class="mt" x="862" y="329" width="36" height="14"/><text class="mt-t" x="880" y="339">驱动</text><text x="880" y="361">ISR / event / callback</text></g>
-
-          <g id="cciUart" class="node hardware"><rect x="35" y="455" width="160" height="58"/><rect class="mt" x="97" y="449" width="36" height="14"/><text class="mt-t" x="115" y="459">硬件</text><text x="115" y="478">CCI0+CCI1 / UART0<tspan class="sub" x="115" dy="17">厂商命令事件入口</tspan></text></g>
-          <g id="spi" class="node hardware"><rect x="210" y="455" width="175" height="58"/><rect class="mt" x="279" y="449" width="36" height="14"/><text class="mt-t" x="297" y="459">硬件</text><text x="297" y="478">SPI1 slave<tspan class="sub" x="297" dy="17">独立 IO/Proc 入口</tspan></text></g>
-          <g id="pipe" class="node hardware"><rect x="400" y="447" width="250" height="74"/><rect class="mt" x="507" y="441" width="36" height="14"/><text class="mt-t" x="525" y="451">硬件</text><text x="525" y="471">IRSC → ISP → Video P/T/VS<tspan class="sub" x="525" dy="17">DMA/Cut-Zoom/PSD/OSD/SOUT · 硬件持续处理像素</tspan></text></g>
-          <g id="usb" class="node hardware"><rect x="725" y="440" width="250" height="52"/><rect class="mt" x="832" y="434" width="36" height="14"/><text class="mt-t" x="850" y="444">硬件</text><text x="850" y="462">USB UVC<tspan class="sub" x="850" dy="16">可直接到 Windows 摄像头栈</tspan></text></g>
-          <g id="mipi" class="node hardware"><rect x="725" y="520" width="250" height="52"/><rect class="mt" x="832" y="514" width="36" height="14"/><text class="mt-t" x="850" y="524">硬件</text><text x="850" y="542">MIPI CSI-2 TX<tspan class="sub" x="850" dy="16">到 receiver / 桥片</tspan></text></g>
-          <g id="irq" class="node hardware"><rect x="400" y="560" width="250" height="45"/><rect class="mt" x="507" y="554" width="36" height="14"/><text class="mt-t" x="525" y="564">硬件</text><text x="525" y="578">DONE / ERR / FIFO / 接口状态<tspan class="sub" x="525" dy="15">硬件事件，不承载整帧</tspan></text></g>
-
-          <path id="e-host-ingress" class="edge command" d="M153 93C100 170 80 360 145 455"/><path id="e-ingress-transport" class="edge event" d="M155 455V377"/><path id="e-transport-eventingress" class="edge event" d="M115 335V270"/><path id="e-transport-router" class="edge command" d="M115 235L110 220"/>
-          <path id="e-host-spi" class="edge command" d="M205 93C255 190 285 360 297 455"/><path id="e-spi-spitransport" class="edge event" d="M297 455V377"/><path id="e-spitransport-spiingress" class="edge event" d="M297 335V270"/><path id="e-spiingress-router" class="edge command" d="M210 252L165 220"/>
-          <path id="e-router-ser" class="edge command" d="M185 192H205"/><path id="e-ser-vapp" class="edge command" d="M335 192H355"/><path id="e-vapp-apprte" class="edge command" d="M500 192H520"/><path id="e-apprte-camera" class="edge command" d="M650 192H670"/><path id="e-camera-service" class="edge command" d="M815 192H835"/>
-          <path id="e-service-video" class="edge command" d="M900 230L680 252"/><path id="e-video-videodrv" class="edge command" d="M570 270V335"/><path id="e-videodrv-pipe" class="edge command" d="M570 377L520 447"/>
-          <path id="e-pipe-usb" class="edge data" d="M650 470H725"/><path id="e-pipe-mipi" class="edge data" d="M650 500L725 546"/><path id="e-usb-receiver" class="edge data" d="M850 440C970 350 985 130 875 93"/><path id="e-mipi-receiver" class="edge data" d="M945 520C1010 360 1000 135 900 93"/>
-          <path id="e-irq-callback" class="edge event" d="M580 560L850 377"/><path id="e-callback-video" class="edge event" d="M820 335L690 270"/>
-          <path id="e-camera-result" class="edge result" d="M670 180C500 120 260 125 110 165"/><path id="e-result-transport" class="edge result" d="M110 220L140 335"/><path id="e-result-ingress" class="edge result" d="M160 377L155 455"/><path id="e-result-host" class="edge result" d="M145 455C80 360 100 170 153 93"/><path id="e-result-spiingress" class="edge result" d="M125 220L235 235"/><path id="e-result-spitransport" class="edge result" d="M297 270V335"/><path id="e-result-spi" class="edge result" d="M297 377V455"/><path id="e-spi-result-host" class="edge result" d="M297 455C285 330 255 180 205 93"/><path id="e-busy-host" class="edge error" d="M110 165C80 140 85 110 120 93"/>
-
-          <text id="l-id" class="edge-label command" x="75" y="275">命令帧</text><text id="l-rte" class="edge-label command" x="365" y="181">Router→服务→应用</text><text id="l-init" class="edge-label command" x="730" y="243">初始化预览</text><text id="l-video" class="edge-label data" x="655" y="458">视频帧</text><text id="l-event" class="edge-label event" x="695" y="485">硬件事件</text><text id="l-result" class="edge-label result" x="300" y="132">结果收尾 → 原控制入口</text><text id="l-busy" class="edge-label error" x="70" y="123">忙态拒绝</text>
-        </svg>
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <h2><span class="n">1</span>命令结构：class / index / subcmd</h2>
+  <p>命令协议用<b>三级字段</b>定位一条命令，参数是定长配置字。多物理入口（CCI / UART / SPI）共享同一格式与解析状态机。</p>
+  <table>
+    <tr><th>字段</th><th>作用</th></tr>
+    <tr><td>class</td><td>命令大类</td></tr>
+    <tr><td>index</td><td>大类内的子项索引</td></tr>
+    <tr><td>subcmd</td><td>具体子命令</td></tr>
+    <tr><td>mode</td><td>定长配置字（参数）</td></tr>
+  </table>
+  <div class="keybox"><b>设计要点：</b>多入口共享同一命令格式与解析状态机，避免每路各写一套协议。构建配置决定启用哪些控制接口。</div>
+  <div class="demo" id="d1">
+    <h3>本节演示 <small>多入口接收同一格式命令帧</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s1t"></b><span id="s1m"></span></div>
+      <div class="dcanvas"><svg id="s1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s1a"></b><span class="fact" id="s1l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s1sw"></span></div>
+        <div><div class="lbl">硬件 / 结果</div><span id="s1hw"></span></div>
       </div>
+      <div class="dnarr"><h4 id="s1d"></h4><p id="s1p"></p><div class="dnote" id="s1n"></div></div>
+      <div class="dcontrols">
+        <button id="s1prev">⟵</button><button class="play" id="s1play">▶</button><button id="s1next">⟶</button>
+        <span class="speed">速度<input type="range" id="s1spd" min="8" max="100" value="40"><span class="spdv" id="s1v">0.4x</span></span>
+        <div class="dprogress" id="s1pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
 
-      <aside class="detail"><div id="sceneNo" class="scene-no"></div><h2 id="sceneTitle"></h2><p id="sceneSummary" class="summary"></p><div class="badges"><span id="badge-command" class="badge command">命令请求</span><span id="badge-result" class="badge command">命令结果</span><span id="badge-data" class="badge data">视频数据</span><span id="badge-event" class="badge event">硬件事件</span><span id="badge-error" class="badge error">拒绝/错误</span></div><div class="notes"><div class="note pc"><strong>PC · 外部控制主机 / 系统</strong><p id="noteBusiness"></p></div><div class="note app"><strong>应用/服务 · 固件</strong><p id="noteFirmware"></p></div><div class="note driver"><strong>驱动 · driver / HAL</strong><p id="noteDriver"></p></div><div class="note hardware"><strong>硬件 · 设备 / IP</strong><p id="noteHardware"></p></div></div><div id="evidence" class="evidence"></div><div id="warning" class="warning"></div></aside>
-    </section>
-    <section class="timeline"><div id="steps" class="steps"></div><div class="controls"><button id="prevBtn" type="button">上一步</button><button id="playBtn" type="button">播放</button><button id="nextBtn" type="button">下一步</button><span id="progress" class="progress"></span></div></section>
-  </main>
-  <script>
-    "use strict";
-    const scenes=[
-      {short:"命令定义",title:"CCI、UART 或 SPI 发送完整预览启动命令",summary:"命令 ID 采用 class / index / subcmd 三级字段定位，参数为定长配置字 mode。",flows:["command","event"],nodes:["host","cciUart","eventTransport","eventIngress","spi","spiTransport","spiIngress","router"],edges:["e-host-ingress","e-ingress-transport","e-transport-eventingress","e-transport-router","e-host-spi","e-spi-spitransport","e-spitransport-spiingress","e-spiingress-router"],labels:["l-id"],business:"主机可从 CCI0/CCI1、UART0 或 SPI1 任选入口发送，命令从确定入口进入。",firmware:"各控制接口事件汇入统一命令解析线程，按固定格式解出路由与参数。",driver:"CCI/UART driver 产生事件；SPI slave driver 服务 SPI 事务。",hardware:"构建配置决定启用哪些控制接口；USB 命令通道仍为规划项。",evidence:"设计要点：多入口共享同一命令格式与解析状态机，避免每路各写一套协议。",warning:"不同保存基线不可混用，应按当前构建输入使用对应配置。"},
-      {short:"解析与忙态",title:"三种入口汇入同一个 VDCMD 单命令状态机",summary:"多入口都汇入同一单命令状态机：仅空闲态接受新命令，处理中与收尾阶段新命令被拒绝。",flows:["command","error"],nodes:["host","eventIngress","spiIngress","router"],edges:["e-transport-router","e-spiingress-router","e-busy-host"],labels:["l-busy"],business:"主机一次只等一个同步结果；忙时收错误后重试。",firmware:"状态机管理空闲/忙/收尾三态，按 class/index/subcmd 逐级路由；所有入口共享同一命令上下文。",driver:"入口 driver 只报告数据可用，不决定并发策略。",hardware:"三入口可同时到达，解析层串行执行一条命令。",evidence:"设计要点：单状态机串行化多入口并发，从源头避免竞态。",warning:"不能为每个控制入口各画一套可并行执行的命令状态机。"},
-      {short:"双 RTE",title:"Router 经服务 RTE 与应用 RTE 到达业务应用",summary:"调用链 Router→服务 RTE→命令应用→应用 RTE→业务应用；中间层复制参数并投递信号。",flows:["command"],nodes:["router","ser","vapp","apprte","camera"],edges:["e-router-ser","e-ser-vapp","e-vapp-apprte","e-apprte-camera"],labels:["l-rte"],business:"主机继续等待结果，不参与内部消息传递。",firmware:"路由层写服务信号，命令应用解析参数，业务应用订阅应用信号。",driver:"此段纯属固件应用消息链，无 driver/HAL 参与。",hardware:"无像素或硬件寄存器操作。",evidence:"设计要点：两级消息路由把协议解析与业务执行解耦，各自可独立演进。",warning:"流管理器、node、输出接口属服务层，不是驱动层。"},
-      {short:"切换预览",title:"运行中先停止旧预览，再启动新 mode",summary:"业务应用解析模式；若当前流处于运行态，先同步停止旧预览，停流失败即返回。",flows:["command","error"],nodes:["camera","service","video"],edges:["e-camera-service","e-service-video"],labels:["l-init"],business:"同一命令可从空闲启动，也可切换运行中的预览档。",firmware:"查询流状态判断是否需要重启；需要时先同步停止再同步启动。",driver:"停/启最终下发 stream 与硬件控制命令。",hardware:"旧数据通路先停并反初始化，避免新旧参数并存。",evidence:"设计要点：切换采用先停后启的同步序列，保证任一时刻只有一套配置生效。",warning:"停旧失败即返回，不是无缝双实例切换。"},
-      {short:"启动链路",title:"业务应用同步调用流配置服务初始化预览",summary:"同步调用流配置服务，配置流管理器/节点/输出接口，经驱动与 HAL 启动处理管线与输出接口。",flows:["command"],nodes:["camera","service","video","videodrv","pipe","usb","mipi"],edges:["e-camera-service","e-service-video","e-video-videodrv","e-videodrv-pipe"],labels:["l-init"],business:"主机仍只等该 VDCMD 的最终结果。",firmware:"流管理器管状态机；节点管裁剪/缩放/叠加等变换；输出接口管 USB/MIPI 绑定。",driver:"driver/HAL 把语义配置写入寄存器。",hardware:"IRSC→ISP→Video 形成实时像素通路；USB UVC 与 MIPI CSI-2 是两种物理输出。",evidence:"设计要点：配置以同步调用串行完成，命令结果只在整条链路就绪后返回。",warning:"初始化预览成功不等于接收端已显示第一帧。"},
-      {short:"成功提交",title:"只有新预览启动成功，才保存 mode 并完成 VDCMD",summary:"启动返回成功才提交新模式；随后进入结果收尾，按原入口封装返回。",flows:["result","error"],nodes:["camera","router","eventIngress","eventTransport","cciUart","spiIngress","spiTransport","spi","host"],edges:["e-camera-result","e-result-transport","e-result-ingress","e-result-host","e-result-spiingress","e-result-spitransport","e-result-spi","e-spi-result-host"],labels:["l-result"],business:"主机从原入口收成功/错误；失败不代表 mode 已保存。",firmware:"成功写入系统服务层模式并置激活标志；各入口自组返回封装。",driver:"CCI 写 CMD_STATUS/CMD_BUF，UART0 用 TX FIFO，SPI 用独立 response 事务。",hardware:"三类控制链只承载少量命令结果，不承载视频帧。",evidence:"设计要点：结果沿原入口回传，保证控制主机看到一致的请求-响应配对。",warning:"失败不提交新 mode；旧预览已停也不自动恢复。"},
-      {short:"三线分离",title:"命令控制、视频数据、硬件事件互不混用",summary:"蓝色实线命令、蓝色虚线结果按原入口返回；绿色视频由 DMA/物理接口持续发送；黄色事件经 ISR/callback 上报。",flows:["command","result","data","event"],nodes:["host","receiver","camera","router","eventIngress","eventTransport","cciUart","spiIngress","spiTransport","spi","video","videodrv","callback","pipe","usb","mipi","irq"],edges:["e-video-videodrv","e-videodrv-pipe","e-pipe-usb","e-pipe-mipi","e-usb-receiver","e-mipi-receiver","e-irq-callback","e-callback-video","e-camera-result","e-result-transport","e-result-ingress","e-result-host","e-result-spiingress","e-result-spitransport","e-result-spi","e-spi-result-host"],labels:["l-video","l-event","l-result"],business:"UVC 直达 Windows；MIPI CSI-2 到外部 receiver；结果回原 CCI/UART/SPI 主机。",firmware:"流管理器/节点/输出接口组织资源；解析层同步等结果；各控制入口调度不同。",driver:"ISR 清 flag 映射事件；输出 driver 处理 UVC/MIPI；控制 driver 承载结果。",hardware:"像素走 IRSC/ISP/Video/DMA；DONE/ERR/FIFO 走中断；命令结果走原控制入口。",evidence:"设计要点：命令、数据、事件三条路径逻辑与物理分离，互不阻塞。",warning:"“命令成功”“stream RUNNING”“接收端看到完整帧”是三个独立观察点。"}
-    ];
-    let current=0,timer=null,SPEED=1;const nodeIds=["host","receiver","router","ser","vapp","apprte","camera","service","eventIngress","spiIngress","video","eventTransport","spiTransport","videodrv","callback","cciUart","spi","pipe","usb","mipi","irq"];const edgeIds=["e-host-ingress","e-ingress-transport","e-transport-eventingress","e-transport-router","e-host-spi","e-spi-spitransport","e-spitransport-spiingress","e-spiingress-router","e-router-ser","e-ser-vapp","e-vapp-apprte","e-apprte-camera","e-camera-service","e-service-video","e-video-videodrv","e-videodrv-pipe","e-pipe-usb","e-pipe-mipi","e-usb-receiver","e-mipi-receiver","e-irq-callback","e-callback-video","e-camera-result","e-result-transport","e-result-ingress","e-result-host","e-result-spiingress","e-result-spitransport","e-result-spi","e-spi-result-host","e-busy-host"];const labelIds=["l-id","l-rte","l-init","l-video","l-event","l-result","l-busy"];
-    function put(id,value){document.getElementById(id).innerHTML=value}function render(){const s=scenes[current];put("sceneNo",`场景 ${current+1} / ${scenes.length}`);put("sceneTitle",s.title);put("sceneSummary",s.summary);put("noteBusiness",s.business);put("noteFirmware",s.firmware);put("noteDriver",s.driver);put("noteHardware",s.hardware);put("evidence",s.evidence);put("warning",s.warning);put("progress",`${current+1} / ${scenes.length}`);nodeIds.forEach(id=>{const n=document.getElementById(id);n.classList.toggle("active",s.nodes.includes(id));n.classList.toggle("dim",!s.nodes.includes(id))});edgeIds.forEach(id=>document.getElementById(id).classList.toggle("active",s.edges.includes(id)));labelIds.forEach(id=>document.getElementById(id).classList.toggle("active",s.labels.includes(id)));["command","result","data","event","error"].forEach(f=>document.getElementById(`badge-${f}`).classList.toggle("active",s.flows.includes(f)));document.querySelectorAll(".step").forEach((e,i)=>e.classList.toggle("active",i===current));document.getElementById("prevBtn").disabled=current===0;document.getElementById("nextBtn").disabled=current===scenes.length-1}
-    const spdEl=document.getElementById("spd"),spdVal=document.getElementById("spdv");
-    spdEl.addEventListener("input",()=>{SPEED=spdEl.value/100;spdVal.textContent=SPEED.toFixed(2)+"x"});
-    function stop(){if(timer!==null){clearInterval(timer);timer=null}document.getElementById("playBtn").textContent="播放"}function go(i){current=Math.max(0,Math.min(i,scenes.length-1));render()}function togglePlay(){if(timer!==null){stop();return}if(current===scenes.length-1)current=0;document.getElementById("playBtn").textContent="暂停";render();timer=setInterval(()=>{if(current===scenes.length-1)stop();else{current+=1;render()}},Math.round(5200/SPEED))}
-    const steps=document.getElementById("steps");scenes.forEach((s,i)=>{const b=document.createElement("button");b.type="button";b.className="step";b.innerHTML=`<b>${i+1}. ${s.short}</b>${s.title}`;b.addEventListener("click",()=>{stop();go(i)});steps.appendChild(b)});document.getElementById("prevBtn").addEventListener("click",()=>{stop();go(current-1)});document.getElementById("nextBtn").addEventListener("click",()=>{stop();go(current+1)});document.getElementById("playBtn").addEventListener("click",togglePlay);document.addEventListener("keydown",e=>{if(e.key==="ArrowLeft"){stop();go(current-1)}if(e.key==="ArrowRight"){stop();go(current+1)}if(e.key===" "){e.preventDefault();togglePlay()}});render();
-  </script>
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <h2><span class="n">2</span>路由与执行：单状态机 + 双消息层</h2>
+  <p>多入口汇入同一个<b>单命令状态机</b>：仅空闲态接受新命令，处理中与收尾阶段新命令被拒绝。调用链为 命令解析路由 → 服务消息层 → 命令应用 → 应用消息层 → 业务应用。</p>
+  <ul style="margin-left:20px">
+    <li>空闲态：接受新命令</li>
+    <li>忙态：拒绝，返回错误</li>
+    <li>收尾态：结果沿原入口返回，期间不接受新命令</li>
+  </ul>
+  <div class="keybox"><b>注意：</b>单状态机串行化多入口并发，从源头避免竞态；不能为每个控制入口各画一套可并行执行的命令状态机。</div>
+  <div class="demo" id="d2">
+    <h3>本节演示 <small>解析与忙态 → 双消息层</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s2t"></b><span id="s2m"></span></div>
+      <div class="dcanvas"><svg id="s2g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s2a"></b><span class="fact" id="s2l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s2sw"></span></div>
+        <div><div class="lbl">硬件 / 结果</div><span id="s2hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s2d"></h4><p id="s2p"></p><div class="dnote" id="s2n"></div></div>
+      <div class="dcontrols">
+        <button id="s2prev">⟵</button><button class="play" id="s2play">▶</button><button id="s2next">⟶</button>
+        <span class="speed">速度<input type="range" id="s2spd" min="8" max="100" value="40"><span class="spdv" id="s2v">0.4x</span></span>
+        <div class="dprogress" id="s2pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <h2><span class="n">3</span>业务动作：切换预览与启动链路</h2>
+  <p>命令的业务动作是<b>切换预览</b>：若当前流处于运行态，先同步停止旧预览，再启动新 mode。随后<b>同步调用</b>流配置服务，配置流管理器 / 节点 / 输出接口，经驱动与 HAL 启动像素处理链与输出接口。</p>
+  <ul style="margin-left:20px">
+    <li>先停后启的同步序列，保证任一时刻只有一套配置生效</li>
+    <li>停旧失败即返回，不是无缝双实例切换</li>
+    <li>流管理器管状态机；节点管裁剪/缩放/叠加；输出接口管 USB / MIPI 绑定</li>
+  </ul>
+  <div class="keybox"><b>关键：</b>初始化预览成功不等于接收端已显示第一帧——链路就绪与帧显示是两个时刻。</div>
+  <div class="demo" id="d3">
+    <h3>本节演示 <small>切换预览 → 启动链路</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s3t"></b><span id="s3m"></span></div>
+      <div class="dcanvas"><svg id="s3g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s3a"></b><span class="fact" id="s3l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s3sw"></span></div>
+        <div><div class="lbl">硬件 / 结果</div><span id="s3hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s3d"></h4><p id="s3p"></p><div class="dnote" id="s3n"></div></div>
+      <div class="dcontrols">
+        <button id="s3prev">⟵</button><button class="play" id="s3play">▶</button><button id="s3next">⟶</button>
+        <span class="speed">速度<input type="range" id="s3spd" min="8" max="100" value="40"><span class="spdv" id="s3v">0.4x</span></span>
+        <div class="dprogress" id="s3pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <h2><span class="n">4</span>三条独立回传：结果 / 数据 / 事件</h2>
+  <p>命令执行后有三条回传路径，逻辑与物理分离：<b>命令结果</b>沿原控制入口返回；<b>视频数据</b>由 DMA 与物理接口持续发送；<b>硬件事件</b>经 ISR / 回调上报。</p>
+  <table>
+    <tr><th>通道</th><th>方向</th><th>载体</th><th>特点</th></tr>
+    <tr><td>命令结果</td><td>固件 → 控制主机</td><td>CCI / UART / SPI</td><td>少量控制字，原入口返回</td></tr>
+    <tr><td>视频数据</td><td>硬件 → 接收端</td><td>USB / MIPI</td><td>持续大流量，不承载命令</td></tr>
+    <tr><td>硬件事件</td><td>硬件 → 驱动 → 应用</td><td>中断 / 回调</td><td>状态标志，不承载整帧</td></tr>
+  </table>
+  <div class="keybox"><b>三个观察点：</b>"命令成功""流运行""接收端看到完整帧"是三个独立观察点，不能混为一谈。</div>
+  <div class="demo" id="d4">
+    <h3>本节演示 <small>结果回原入口，数据持续发送，事件经回调</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s4t"></b><span id="s4m"></span></div>
+      <div class="dcanvas"><svg id="s4g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s4a"></b><span class="fact" id="s4l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s4sw"></span></div>
+        <div><div class="lbl">硬件 / 结果</div><span id="s4hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s4d"></h4><p id="s4p"></p><div class="dnote" id="s4n"></div></div>
+      <div class="dcontrols">
+        <button id="s4prev">⟵</button><button class="play" id="s4play">▶</button><button id="s4next">⟶</button>
+        <span class="speed">速度<input type="range" id="s4spd" min="8" max="100" value="40"><span class="spdv" id="s4v">0.4x</span></span>
+        <div class="dprogress" id="s4pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <h2><span class="n">5</span>时序与边界</h2>
+  <p>结果语义与时序边界决定系统行为：</p>
+  <ul style="margin-left:20px">
+    <li>只有启动成功才提交新 mode 并置激活标志</li>
+    <li>失败不提交新 mode；旧预览已停也不自动恢复</li>
+    <li>配置以同步调用串行完成，命令结果只在整条链路就绪后返回</li>
+  </ul>
+  <div class="keybox"><b>验证闭环：</b>验证一条命令时要分开确认命令结果、流状态与接收端帧，三者时间与含义各不相同。</div>
+  <div class="demo" id="d5">
+    <h3>本节演示 <small>成功才提交 → 同步时序</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s5t"></b><span id="s5m"></span></div>
+      <div class="dcanvas"><svg id="s5g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s5a"></b><span class="fact" id="s5l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s5sw"></span></div>
+        <div><div class="lbl">硬件 / 结果</div><span id="s5hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s5d"></h4><p id="s5p"></p><div class="dnote" id="s5n"></div></div>
+      <div class="dcontrols">
+        <button id="s5prev">⟵</button><button class="play" id="s5play">▶</button><button id="s5next">⟶</button>
+        <span class="speed">速度<input type="range" id="s5spd" min="8" max="100" value="40"><span class="spdv" id="s5v">0.4x</span></span>
+        <div class="dprogress" id="s5pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="summary"><b>一句话总结</b><p>命令协议用 class/index/subcmd 定位、单状态机串行路由、双消息层解耦执行，业务动作以先停后启切换预览；命令结果、视频数据、硬件事件三条回传独立分离，验证时须分开观察三个观察点。</p></div>
+
+</div>
+
+<script>
+"use strict";
+const lanes={external:{title:'PC / 外部',sub:'控制主机与视频接收端',x:20,w:285},app:{title:'固件应用 / 服务',sub:'解析路由、消息层、相机、流管理',x:330,w:300},driver:{title:'驱动 / HAL',sub:'控制驱动、视频驱动、ISR/回调',x:655,w:300},hardware:{title:'硬件 IP',sub:'控制物理口、像素链、USB/MIPI、状态',x:980,w:320}};
+const nodes={
+host:['控制主机','CCI / UART / SPI 命令','external'],
+receiver:['视频接收端','UVC 主机或 CSI-2 接收','external'],
+router:['命令解析 / 路由','同步状态机 + 三级查表','app'],
+ser:['服务消息层','服务信号队列','app'],
+vapp:['命令应用','解析定长 mode 字','app'],
+apprte:['应用消息层','应用信号队列','app'],
+camera:['相机应用','停旧流 / 构造新配置','app'],
+service:['流配置服务','初始化预览 · 同步业务服务','app'],
+video:['流管理 → 节点 → 输出接口','组织预览资源','app'],
+eventIngress:['CCI/UART 入口','厂商命令接收','app'],
+spiIngress:['SPI 入口','独立 IO 处理','app'],
+eventTransport:['CCI/UART 驱动','driver + HAL','driver'],
+spiTransport:['SPI 驱动','slave driver + HAL','driver'],
+videodrv:['视频驱动','ISP/Video/USB/MIPI driver + HAL','driver'],
+callback:['ISR / 事件 / 回调','中断处理','driver'],
+cciUart:['CCI / UART','厂商命令事件入口','hardware'],
+spi:['SPI slave','独立 IO 入口','hardware'],
+pipe:['像素处理链','IRSC → ISP → Video · DMA/缩放/OSD','hardware'],
+usb:['USB UVC','到 Windows 摄像头栈','hardware'],
+mipi:['MIPI CSI-2 TX','到外部接收端','hardware'],
+irq:['硬件状态','DONE / ERR / FIFO / 接口状态','hardware']};
+const laneOrder=['external','app','driver','hardware'];
+function layout(item){const group={external:[],app:[],driver:[],hardware:[]},out={};item.nodes.forEach(id=>group[nodes[id][2]].push(id));laneOrder.forEach(k=>{const lane=lanes[k],arr=group[k],gap=480/Math.max(arr.length,1);arr.forEach((id,i)=>out[id]={x:lane.x+lane.w/2,y:105+gap*(i+.5)});});return out}
+function geom(a,b,pos){const p=pos[a],q=pos[b],same=nodes[a][2]===nodes[b][2];if(same){const d=q.y>=p.y?1:-1;return{d:`M${p.x+90} ${p.y+25*d} C${p.x+145} ${p.y+55*d},${q.x+145} ${q.y-55*d},${q.x+90} ${q.y-25*d}`,x:p.x+142,y:(p.y+q.y)/2}}const d=q.x>p.x?1:-1;return{d:`M${p.x+90*d} ${p.y} C${p.x+155*d} ${p.y},${q.x-155*d} ${q.y},${q.x-90*d} ${q.y}`,x:(p.x+q.x)/2,y:(p.y+q.y)/2}}
+function draw(svgEl,item){const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="m${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';laneOrder.forEach(k=>{const l=lanes[k];s+=`<rect x="${l.x}" y="20" width="${l.w}" height="610" rx="13" style="stroke:#cbd5e1;stroke-dasharray:5 5;fill:#eef2f7"/><text x="${l.x+15}" y="46" style="fill:#334155;font-size:13px;font-weight:800">${l.title}</text><text x="${l.x+15}" y="63" style="fill:#64748b;font-size:9px">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path d="${g.d}" marker-end="url(#m${k})" style="fill:none;stroke-width:3;stroke:var(--${k})"/><rect x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10" style="fill:#fff;stroke:var(--${k})"/><text x="${g.x}" y="${g.y+1}" text-anchor="middle" style="fill:#334155;font-size:8.5px;font-weight:700">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],style=n[3]||n[2],role=n[3]==='memory'?'内存区':{external:'PC',app:'固件',driver:'驱动',hardware:'硬件'}[n[2]],tw=role.length*7+12;s+=`<g><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9" style="fill:#ffffff;stroke-width:2;stroke:${style==='memory'?'#d97706':'#94a3b8'}"/><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5" style="fill:${style==='memory'?'#d97706':'#64748b'}"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle" style="fill:#fff;font-size:8.5px;font-weight:700">${role}</text><text x="${p.x}" y="${p.y-5}" text-anchor="middle" style="fill:#0f172a;font-size:11px;font-weight:800">${n[0]}</text><text x="${p.x}" y="${p.y+13}" text-anchor="middle" style="fill:#475569;font-size:8.5px">${n[1]}</text></g>`});svgEl.innerHTML=s}
+function makePlayer(p,steps){
+  const $=id=>document.getElementById(p+id);
+  let idx=0,timer=null,SPEED=0.4;
+  const spdEl=$('spd'),spdVal=$('v');
+  spdEl.addEventListener('input',function(){SPEED=spdEl.value/100;spdVal.textContent=SPEED.toFixed(2)+'x';if(timer){stop();$('play').click();}});
+  function render(){const x=steps[idx];$('t').textContent=x.title;$('m').textContent=`步骤 ${idx+1} / ${steps.length}`;$('a').textContent=x.action;$('l').textContent=x.level;$('sw').textContent=x.software;$('hw').textContent=x.hardware;$('d').textContent=x.title;$('p').textContent=x.description;$('n').textContent=x.note;$('pbar').innerHTML=steps.map((_,i)=>`<i class="${i===idx?'on':''}"></i>`).join('');draw($('g'),x)}
+  function next(){idx=(idx+1)%steps.length;render()}
+  function prev(){idx=(idx-1+steps.length)%steps.length;render()}
+  function stop(){if(timer){clearInterval(timer);timer=null}$('play').textContent='▶'}
+  $('prev').onclick=function(){stop();prev()};$('next').onclick=function(){stop();next()};$('play').onclick=function(){if(timer){stop()}else{timer=setInterval(next,Math.round(3200/SPEED));$('play').textContent='Ⅱ'}};
+  render();
+}
+const S1=[
+ {title:'命令帧到达',action:'多入口接收同一格式命令帧',level:'架构事实',software:'各控制入口事件汇入统一命令解析，按固定格式解出路由与参数。',hardware:'CCI/UART、SPI 是物理命令入口，构建配置决定启用哪些。',description:'命令 ID 采用 class / index / subcmd 三级字段定位，参数为定长 mode 字。',note:'多入口共享同一命令格式与解析状态机，避免每路各写一套协议。',nodes:['host','cciUart','eventTransport','eventIngress','spi','spiTransport','spiIngress'],edges:[['host','cciUart','command','命令帧'],['cciUart','eventTransport','event','数据可用'],['eventTransport','eventIngress','event','入队'],['host','spi','command','命令帧'],['spi','spiTransport','event','数据可用'],['spiTransport','spiIngress','event','入队']]}
+];
+const S2=[
+ {title:'解析与忙态',action:'单命令状态机串行化多入口',level:'架构事实',software:'状态机管理空闲/忙/收尾三态，按 class/index/subcmd 逐级路由；仅空闲态接受新命令。',hardware:'三入口可同时到达，解析层串行执行一条命令。',description:'处理中与收尾阶段新命令被拒绝，返回错误。',note:'单状态机从源头避免竞态；不能为每个入口各画一套并行状态机。',nodes:['host','eventIngress','spiIngress','router'],edges:[['eventIngress','router','command','解析'],['spiIngress','router','command','解析'],['router','host','error','忙态拒绝']]},
+ {title:'双消息层',action:'路由经消息层到达业务应用',level:'架构事实',software:'调用链 命令解析 → 服务消息层 → 命令应用 → 应用消息层 → 相机应用；中间层复制参数并投递信号。',hardware:'此段纯属固件消息链，无驱动与硬件参与。',description:'路由层写服务信号，命令应用解析参数，业务应用订阅应用信号。',note:'两级消息路由把协议解析与业务执行解耦。',nodes:['router','ser','vapp','apprte','camera'],edges:[['router','ser','command','投递信号'],['ser','vapp','command','复制参数'],['vapp','apprte','command','投递信号'],['apprte','camera','command','订阅触发']]}
+];
+const S3=[
+ {title:'切换预览',action:'运行中先停旧流再启新 mode',level:'架构事实',software:'业务应用解析模式；若当前流处于运行态，先同步停止旧预览，停流失败即返回。',hardware:'旧数据通路先停并反初始化，避免新旧参数并存。',description:'同一命令可从空闲启动，也可切换运行中的预览档。',note:'先停后启的同步序列，保证任一时刻只有一套配置生效。',nodes:['camera','service','video'],edges:[['camera','service','command','同步调用'],['service','video','command','配置流管理/节点']]},
+ {title:'启动链路',action:'配置输出接口并启动硬件管线',level:'架构事实',software:'同步调用流配置服务，配置流管理器/节点/输出接口，经驱动与 HAL 启动管线。',hardware:'像素处理链形成实时通路，USB 与 MIPI 是两种物理输出。',description:'相机应用 → 流配置服务 → 流管理/节点 → 驱动/HAL → 硬件。',note:'初始化预览成功不等于接收端已显示第一帧。',nodes:['camera','service','video','videodrv','pipe','usb','mipi'],edges:[['camera','service','command','同步调用'],['service','video','command','配置'],['video','videodrv','command','下发配置'],['videodrv','pipe','command','启动管线'],['pipe','usb','data','视频帧'],['pipe','mipi','data','视频帧']]}
+];
+const S4=[
+ {title:'三线分离',action:'结果回原入口，数据持续发送，事件经回调',level:'架构事实',software:'命令结果沿原控制入口回传；流管理器组织资源；ISR 清标志映射事件。',hardware:'像素走像素链与 USB/MIPI；DONE/ERR/FIFO 走中断；命令结果走原控制入口。',description:'命令、数据、事件三条路径逻辑与物理分离，互不阻塞。',note:'"命令成功""流运行""接收端看到完整帧"是三个独立观察点。',nodes:['host','receiver','camera','router','video','callback','pipe','usb','mipi','irq'],edges:[['camera','router','result','结果封装'],['router','host','result','沿原入口返回'],['pipe','usb','data','视频帧'],['usb','receiver','data','UVC 传输'],['pipe','mipi','data','视频帧'],['mipi','receiver','data','CSI-2'],['irq','callback','event','状态标志'],['callback','video','event','回调上报']]}
+];
+const S5=[
+ {title:'成功才提交',action:'启动成功才保存 mode 并完成命令',level:'实现事实',software:'启动返回成功才提交新模式并置激活标志；随后进入结果收尾，按原入口封装返回。',hardware:'控制链只承载少量命令结果，不承载视频帧。',description:'失败不提交新 mode；旧预览已停也不自动恢复。',note:'命令结果沿原入口回传，保证请求-响应配对一致。',nodes:['camera','router','eventTransport','cciUart','host'],edges:[['camera','router','result','成功提交'],['router','eventTransport','result','结果封装'],['eventTransport','cciUart','result','写入状态'],['cciUart','host','result','原入口返回']]},
+ {title:'同步时序',action:'整条链路同步完成，结果只在就绪后返回',level:'架构事实',software:'配置以同步调用串行完成，命令结果只在整条链路就绪后返回；业务应用同步等待。',hardware:'接收端看到完整帧晚于命令成功。',description:'时序：请求 → 解析 → 业务执行 → 链路就绪 → 结果返回。',note:'"命令成功""流运行""完整帧"三个观察点时间不同。',nodes:['host','router','camera','service','video'],edges:[['host','router','command','命令请求'],['router','camera','command','同步调用'],['camera','service','command','同步调用'],['service','video','command','组织链路'],['camera','host','result','就绪后返回']]}
+];
+makePlayer('s1',S1);
+makePlayer('s2',S2);
+makePlayer('s3',S3);
+makePlayer('s4',S4);
+makePlayer('s5',S5);
+</script>
 </body>
 </html>

@@ -25,128 +25,148 @@
   .card h2{font-size:15.5px; margin-bottom:6px;}
   .card p{font-size:12.5px; color:var(--dim); line-height:1.65;}
   .card .url{font-size:10.5px; color:var(--cyan); margin-top:10px; word-break:break-all; font-family:Consolas,monospace;}
-  footer{color:var(--dim); font-size:12px; margin-top:30px; text-align:center;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <h1>嵌入式技术演示合集</h1>
-  <p class="tagline">交互式动画演示与技术文章：UVC/MIPI 视频输出、命令协议、系统启动、ISP 管线、内存架构等工程实践。</p>
+  <p class="tagline">技术文章与交互演示：视频输出链路、命令协议、系统启动、ISP 管线、内存与线程架构等工程实践。</p>
 
-  <div class="sec">动画演示</div>
+  <div class="sec">交互演示（动画 + 讲解）</div>
   <div class="grid">
     <a class="card" href="uvc-software-hardware-interaction.html">
-      <span class="tag tag-demo">动画演示</span>
-      <h2>UVC 业务与软硬件交互图</h2>
-      <p>四泳道（PC/固件/驱动/硬件）UVC 交互：命令从哪进、像素流向哪、硬件状态如何返回，六类场景逐步高亮。</p>
+      <span class="tag tag-demo">演示</span>
+      <h2>UVC 视频设备的软硬件分层架构</h2>
+      <p>命令、数据与事件如何穿越 PC / 固件 / 驱动 / 硬件四层；五组动画逐层演示。</p>
       <div class="url">uvc-software-hardware-interaction.html</div>
     </a>
 
     <a class="card" href="uvc-pipeline-demo.html">
-      <span class="tag tag-demo">动画演示</span>
-      <h2>UVC 业务链路</h2>
-      <p>控制链（PC→应用→UVC 服务→驱动→硬件）+ 数据流（像素经 WRAPE→EP FIFO→PC），含封帧、带宽与提前封帧规避。</p>
+      <span class="tag tag-demo">演示</span>
+      <h2>UVC 视频链路解剖：控制面与数据面</h2>
+      <p>Probe/Commit 控制流与像素数据流的分工，封帧、带宽账本与提前封帧规避。</p>
       <div class="url">uvc-pipeline-demo.html</div>
     </a>
 
     <a class="card" href="vdcmd-command-video-demo.html">
-      <span class="tag tag-demo">动画演示</span>
-      <h2>VDCMD 命令与视频交互</h2>
-      <p>命令协议路由 → 业务动作 → 视频输出的完整交互：命令结果、stream 状态、视频数据三条独立回传路径。</p>
+      <span class="tag tag-demo">演示</span>
+      <h2>命令协议如何驱动视频业务</h2>
+      <p>命令路由、执行与三条独立回传：命令结果、流状态、视频数据如何分离。</p>
       <div class="url">vdcmd-command-video-demo.html</div>
     </a>
 
     <a class="card" href="vdcmd-serial-cci-demo.html">
-      <span class="tag tag-demo">动画演示</span>
-      <h2>VDCMD 串口与 CCI</h2>
-      <p>命令双通道：串口(UCI) 与 I2C(CCI) 的收发、拆帧与回传对比，控制通道各自的时序与校验。</p>
+      <span class="tag tag-demo">演示</span>
+      <h2>命令传输的多物理通道</h2>
+      <p>UART 与 I2C 如何承载同一套命令：帧格式、时序、校验与选型对比。</p>
       <div class="url">vdcmd-serial-cci-demo.html</div>
     </a>
 
     <a class="card" href="vdcmd-cci-uci-demo.html">
-      <span class="tag tag-demo">动画演示</span>
+      <span class="tag tag-demo">演示</span>
       <h2>VDCMD 命令传输原理</h2>
-      <p>CCI（I2C 硬件信箱 · 主机轮询）vs UCI（UART 软件拆帧 · 固件回推）：pull 与 push 两种同步模型的本质差异。</p>
+      <p>CCI（I2C 硬件信箱·轮询）vs UCI（UART 软件拆帧·回推）：pull 与 push 的本质差异。</p>
       <div class="url">vdcmd-cci-uci-demo.html</div>
     </a>
 
     <a class="card" href="mipi-csi-tx-output.html">
-      <span class="tag tag-demo">动画演示</span>
+      <span class="tag tag-demo">演示</span>
       <h2>MIPI CSI TX 图像输出</h2>
-      <p>控制链（配置如何推到硬件）+ 数据链路（像素经 Stream SEL → CSI TX → D-PHY）双演示，含 VC 模式与 data type 映射。</p>
+      <p>控制链 + 数据链：像素经 Stream SEL → CSI TX → D-PHY，含 VC 模式与 data type 映射。</p>
       <div class="url">mipi-csi-tx-output.html</div>
     </a>
 
     <a class="card" href="system-panorama-pipeline-demo.html">
-      <span class="tag tag-demo">动画演示</span>
-      <h2>系统全景与图像链路</h2>
-      <p>系统模块全景与图像链路：从业务 stream 到 USB/MIPI 双输出的完整路径，硬件节点独立展示。</p>
+      <span class="tag tag-demo">演示</span>
+      <h2>视频处理系统全景</h2>
+      <p>从传感器到双输出的单条主链：系统模块全景、图像链路与 USB/MIPI 双输出。</p>
       <div class="url">system-panorama-pipeline-demo.html</div>
     </a>
 
     <a class="card" href="system-boot-init-demo.html">
-      <span class="tag tag-demo">动画演示</span>
-      <h2>系统启动与初始化</h2>
-      <p>复位→SRAM 段→SystemInit→实时操作系统→组件自动初始化→预览门控，七个场景的连续交付链。</p>
+      <span class="tag tag-demo">演示</span>
+      <h2>嵌入式系统启动链</h2>
+      <p>从复位向量到第一帧：段复制、硬件初始化、实时操作系统、组件与业务门控六环。</p>
       <div class="url">system-boot-init-demo.html</div>
     </a>
 
     <a class="card" href="infrared-isp-demo.html">
-      <span class="tag tag-demo">动画演示</span>
-      <h2>红外图像与 ISP 处理</h2>
-      <p>红外探测器 → ISP 管线（校正/增强/测温）→ 输出的处理架构，含 IRSC 时序与像素格式。</p>
+      <span class="tag tag-demo">演示</span>
+      <h2>红外图像处理管线</h2>
+      <p>从探测器到显示之间的 ISP：校正、增强、测温与像素流输出的处理链。</p>
       <div class="url">infrared-isp-demo.html</div>
     </a>
 
     <a class="card" href="video-stream-nodes-demo.html">
-      <span class="tag tag-demo">动画演示</span>
-      <h2>视频流与节点</h2>
-      <p>视频流节点分层架构：PIC/TEMP/VS 各流的生命周期、节点管理与输出接口的交互。</p>
+      <span class="tag tag-demo">演示</span>
+      <h2>视频流的分层节点架构</h2>
+      <p>stream / 节点 / 输出接口的职责划分与生命周期，SINGLE/COMPOSE 组合边界。</p>
       <div class="url">video-stream-nodes-demo.html</div>
     </a>
 
     <a class="card" href="memory-image-buffers-demo.html">
-      <span class="tag tag-demo">动画演示</span>
-      <h2>内存与图像缓冲</h2>
-      <p>构建变体→LMA/VMA→静态池/Heap→Cache 属性→DMA 连续布局→失效与闭环，内存管理八步主线。</p>
+      <span class="tag tag-demo">演示</span>
+      <h2>图像缓冲的内存管理</h2>
+      <p>LMA/VMA、静态池/堆、Cache 一致性、DMA 连续布局与失效闭环，每节配动画。</p>
       <div class="url">memory-image-buffers-demo.html</div>
     </a>
 
     <a class="card" href="stm32f407-sram-ccm-demo.html">
-      <span class="tag tag-demo">动画演示</span>
-      <h2>STM32F407 内存寻路演示</h2>
-      <p>一块数据该放 CCM 还是 SRAM：DMA 可见缓冲与 CPU 热数据的两条寻路动画，含总线拓扑、三问决策与踩坑清单。</p>
+      <span class="tag tag-demo">演示</span>
+      <h2>STM32F407 内存寻路</h2>
+      <p>SRAM/RAM1/CCM 拓扑：DMA 可见缓冲与 CPU 热数据的两条寻路，三问决策。</p>
       <div class="url">stm32f407-sram-ccm-demo.html</div>
     </a>
 
     <a class="card" href="pyside6-thread-model-video-pipeline.html">
-      <span class="tag tag-demo">动画演示</span>
+      <span class="tag tag-demo">演示</span>
       <h2>PySide6 线程模型与视频管线</h2>
-      <p>GIL 真/假多线程、控制面与数据面分离、零拷贝帧链、复合帧 frame_id 对齐，以及 1920×1440 @ 30fps 的原理。</p>
+      <p>GIL、控制/数据面分离、零拷贝帧链与复合帧对齐，1920×1440@30fps 的原理。</p>
       <div class="url">pyside6-thread-model-video-pipeline.html</div>
     </a>
   </div>
 
   <div class="sec">技术文章</div>
   <div class="grid">
+    <a class="card" href="06-zero-cost-abstract-machine-code.md">
+      <span class="tag tag-article">文章</span>
+      <h2>coact：事件驱动框架的 C++ 选型</h2>
+      <p>嵌入式事件驱动框架的 C++ 性能、体积与类型安全实测。coact 为作者开源项目。</p>
+      <div class="url">06-zero-cost-abstract-machine-code.md</div>
+    </a>
+
+    <a class="card" href="07-design-and-usage-of-coact.md">
+      <span class="tag tag-article">文章</span>
+      <h2>coact：设计思想与使用指南</h2>
+      <p>面向实时操作系统的 C++ 事件驱动框架——设计思想、分层与使用示例。</p>
+      <div class="url">07-design-and-usage-of-coact.md</div>
+    </a>
+
+    <a class="card" href="08-policy-engine-event-coalescing.md">
+      <span class="tag tag-article">文章</span>
+      <h2>coact 准入控制：过滤·限速·事件合并</h2>
+      <p>事件驱动框架的准入策略：过滤、限速与事件合并的工程实现。</p>
+      <div class="url">08-policy-engine-event-coalescing.md</div>
+    </a>
+
     <a class="card" href="stm32f407-sram-ccm-memory-architecture.md">
-      <span class="tag tag-article">技术文章</span>
+      <span class="tag tag-article">文章</span>
       <h2>STM32F407 内存架构</h2>
-      <p>SRAM1 / SRAM2 / RAM1 / CCM 的拓扑、层次与工程取舍：DMA 可见区与 CPU 独占零等待区的选型决策。</p>
+      <p>SRAM1 / SRAM2 / RAM1 / CCM 的拓扑、层次与工程取舍：DMA 可见区与 CPU 独占区。</p>
       <div class="url">stm32f407-sram-ccm-memory-architecture.md</div>
     </a>
 
     <a class="card" href="usb_flash_tool_blog.md">
-      <span class="tag tag-article">技术文章</span>
+      <span class="tag tag-article">文章</span>
       <h2>手写 USB MCU 固件烧写工具</h2>
-      <p>三层调用链、vendor 命令协议（26 字节命令头）、Flash 分区与擦写、numpy 全量校验。</p>
+      <p>三层调用链、vendor 命令协议（26 字节命令头）、Flash 分区与 numpy 全量校验。</p>
       <div class="url">usb_flash_tool_blog.md</div>
     </a>
 
     <a class="card" href="tech_blog_pyside6_lessons.md">
-      <span class="tag tag-article">技术文章</span>
+      <span class="tag tag-article">文章</span>
       <h2>PySide6 工业上位机实战经验</h2>
-      <p>线程与背压、零拷贝的真实定义、OpenGL 上传坑、NumPy LUT 归一化，以及跨语言硬约束 E1–E5。</p>
+      <p>线程与背压、零拷贝、OpenGL 上传坑、NumPy LUT 与跨语言硬约束 E1–E5。</p>
       <div class="url">tech_blog_pyside6_lessons.md</div>
     </a>
   </div>

@@ -3,105 +3,268 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>系统全景与图像链路 —— 单条主线</title>
+<title>视频处理系统全景：从传感器到双输出的单条主链</title>
 <style>
-:root{--bg:#0f172a;--panel:#1e293b;--panel2:#1a2740;--text:#e2e8f0;--muted:#94a3b8;--line:#334155;--host:#db2777;--app:#2563eb;--drv:#0d9488;--hw:#ea580c;--command:#3b82f6;--data:#22c55e;--event:#eab308;--error:#ef4444;--shadow:0 12px 34px rgba(0,0,0,.35)}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.55 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}.top{display:flex;justify-content:space-between;align-items:center;padding:18px 24px;background:#0f172a;color:#fff;border-bottom:1px solid var(--line)}.top h1{margin:0;font-size:22px}.top p{margin:3px 0 0;color:var(--muted)}.badge{border:1px solid #475569;border-radius:999px;padding:7px 12px;color:var(--text)}.wrap{max-width:1500px;margin:14px auto;padding:0 18px}.intro{display:grid;grid-template-columns:2fr 1fr;gap:14px}.card{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:16px;box-shadow:var(--shadow)}.card h2,.card h3{margin:0 0 8px}.card p{margin:0;color:var(--muted)}
-.legend{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.legend span{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:6px 10px}.sw{width:14px;height:14px;border-radius:4px}.sw.host{background:var(--host)}.sw.app{background:var(--app)}.sw.drv{background:var(--drv)}.sw.hw{background:var(--hw)}.flow{width:24px;height:0;border-top:3px solid}.flow.cmd{border-color:var(--command)}.flow.data{border-color:var(--data)}.flow.event{border-color:var(--event);border-top-style:dashed}.flow.error{border-color:var(--error)}
-.speedbar{display:flex;align-items:center;gap:14px;padding:10px 16px;margin:14px 0;background:var(--panel);border:1px solid var(--line);border-radius:10px;font-size:13px;color:var(--muted);flex-wrap:wrap}.speedbar b{color:var(--text)}.speedbar input{width:240px;accent-color:#38bdf8;cursor:pointer}.spdv{font-weight:700;color:#93c5fd;min-width:52px;font-size:15px}
-.layout{display:grid;grid-template-columns:minmax(0,2.4fr) minmax(320px,1fr);gap:14px}.diagram{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:12px;box-shadow:var(--shadow)}.diagram-head{display:flex;justify-content:space-between;padding:4px 6px 10px}.diagram-head b{font-size:16px}.diagram svg{width:100%;height:530px;background:#0f172a;border:1px solid var(--line);border-radius:10px;overflow:visible}.evidence{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:16px;box-shadow:var(--shadow)}.evidence h3{margin:0 0 12px}.ev{border-left:4px solid var(--line);background:var(--panel2);padding:10px 12px;margin:9px 0;border-radius:4px 9px 9px 4px}.ev.host{border-color:var(--host)}.ev.app{border-color:var(--app)}.ev.drv{border-color:var(--drv)}.ev.hw{border-color:var(--hw)}.ev label{display:block;font-weight:700;margin-bottom:3px}.ev div{color:var(--muted)}.source{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}
-.narration{border:1px solid var(--line);border-radius:14px;background:var(--panel);padding:16px;margin-top:14px;box-shadow:var(--shadow)}.narration h3{margin:0 0 6px}.narration p{margin:0;color:var(--muted)}.callout{margin-top:10px;padding:9px 11px;background:#3c2f0b;border-left:4px solid #f59e0b;border-radius:4px;color:#fde68a}.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}.btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:9px;padding:9px 13px;cursor:pointer}.btn.primary{background:#2563eb;border-color:#2563eb;color:#fff}.progress{flex:1;height:7px;background:#334155;border-radius:99px;overflow:hidden}.progress i{display:block;height:100%;background:#2563eb;transition:width .3s}
-svg text{font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif}.node rect{stroke-width:2}.node.host rect{fill:#3a0d24;stroke:var(--host)}.node.app rect{fill:#1a2d57;stroke:var(--app);stroke-dasharray:7 4}.node.drv rect{fill:#134e4a;stroke:var(--drv);stroke-dasharray:7 4}.node.hw rect{fill:#7c2d12;stroke:var(--hw)}.node .title{font-size:15px;font-weight:700;fill:var(--text)}.node .sub{font-size:11px;fill:var(--muted)}.node .ntag rect{stroke:none;stroke-dasharray:none}.node .ntag text{font-size:8.5px;font-weight:700;fill:#fff}.node .ntag.host rect{fill:#db2777}.node .ntag.app rect{fill:#2563eb}.node .ntag.drv rect{fill:#0d9488}.node .ntag.hw rect{fill:#ea580c}.edge{fill:none;stroke-width:3}.edge.command{stroke:var(--command)}.edge.data{stroke:var(--data);stroke-width:4}.edge.event{stroke:var(--event);stroke-dasharray:8 6}.edge.error{stroke:var(--error)}.edge.dim{opacity:.16}.node-pale{opacity:.55}.node.active-stroke rect{stroke-width:3.5;stroke:#fff;filter:drop-shadow(0 0 4px rgba(255,255,255,.45))}
-.outcmpgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}.cmpbox{border:1px solid var(--line);border-radius:14px;background:var(--panel);overflow:hidden}.cmpbox h3{margin:0;padding:11px 14px;font-size:15px;border-bottom:1px solid var(--line)}.cmpbox.usb h3{background:rgba(59,130,246,.12);color:#93c5fd}.cmpbox.mipi h3{background:rgba(234,88,12,.14);color:#fb923c}.cmprow{display:flex;gap:10px;padding:8px 14px;border-bottom:1px solid var(--line);font-size:13px}.cmprow:last-child{border-bottom:0}.cmprow .k{min-width:90px;color:var(--muted);font-weight:700}.cmprow .v{color:var(--text);line-height:1.6}.cmprow .v code{color:#93c5fd}
-@media(max-width:980px){.intro,.layout,.outcmpgrid{grid-template-columns:1fr}.diagram svg{height:480px}}
+:root{
+  --bg:#f7f8fa; --panel:#ffffff; --panel2:#f1f5f9; --line:#e2e8f0;
+  --text:#1e293b; --muted:#64748b; --blue:#2563eb; --teal:#0d9488;
+  --green:#16a34a; --gold:#d97706; --orange:#ea580c; --purple:#7c3aed; --red:#dc2626;
+  --command:#2563eb; --data:#16a34a; --event:#d97706; --error:#dc2626;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;line-height:1.8;padding:0}
+.page{max-width:880px;margin:0 auto;padding:40px 24px 60px}
+header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:24px}
+h1{font-size:27px;line-height:1.35;margin-bottom:12px;color:#0f172a}
+.lead{color:var(--muted);font-size:15px;line-height:1.8}
+.lead b{color:var(--teal)}
+.learn{margin-top:14px;padding:14px 16px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;font-size:13.5px}
+.learn b{color:var(--gold);display:block;margin-bottom:6px}
+.learn ol{margin-left:20px;color:var(--text)}
+.learn li{margin-bottom:4px}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 28px}
+.toc a{color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:4px 12px;border-radius:99px;font-size:12px;background:var(--panel)}
+.toc a:hover{color:var(--teal);border-color:var(--teal)}
+section{margin-bottom:30px}
+h2{font-size:20px;margin-bottom:12px;color:var(--teal);display:flex;align-items:center;gap:10px}
+h2 .n{font-size:12px;background:linear-gradient(135deg,#0d9488,#2563eb);color:#fff;width:24px;height:24px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+p{color:var(--text);margin-bottom:10px;font-size:14.5px}
+p b{color:var(--gold)}
+p code,li code,td code{background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:5px;color:#0369a1;font-size:12.5px;font-family:Consolas,monospace}
+ul{color:var(--text);font-size:14px}
+.keybox{margin:12px 0;padding:12px 14px;background:#fffbeb;border-left:4px solid var(--gold);border-radius:8px;font-size:13.5px;color:#713f12}
+.keybox b{color:#b45309}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+th,td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+th{background:var(--panel2);color:var(--teal)}
+td b{color:var(--green)}
+pre{background:#0b1220;border-radius:8px;padding:12px 14px;overflow-x:auto;margin:12px 0;font-size:12.5px;line-height:1.6;color:#93c5fd;font-family:Consolas,monospace}
+/* 动画组件 */
+.demo{margin:18px 0 6px;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.demo h3{color:var(--teal);font-size:14px;margin-bottom:8px}
+.demo h3 small{color:var(--muted);font-weight:400;font-size:12px;margin-left:6px}
+.dwrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.dhead{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line)}
+.dhead b{font-size:13.5px}
+.dhead span{color:var(--muted);font-size:12px}
+.dcanvas{overflow-x:auto;padding:10px;background:#fbfcfe}
+svg{display:block;width:100%;min-width:900px;height:auto}
+.detail{padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:13px}
+.detail .lbl{color:var(--muted);font-size:11px;letter-spacing:.06em}
+.detail b{display:block;color:var(--text)}
+.detail .fact{display:inline-block;margin-top:4px;padding:1px 8px;border-radius:99px;background:#e8f5e9;color:#1b5e20;font-size:11px}
+.dnarr{padding:11px 14px;border-top:1px solid var(--line)}
+.dnarr h4{margin:0 0 4px;color:var(--teal);font-size:13.5px}
+.dnarr p{margin:0;color:var(--muted);font-size:13px}
+.dnote{margin-top:7px;padding:7px 10px;border-left:3px solid var(--gold);background:#fffbeb;color:#713f12;font-size:12.5px}
+.dcontrols{display:flex;align-items:center;gap:7px;padding:9px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
+.dcontrols button{padding:6px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);cursor:pointer;font-size:12.5px}
+.dcontrols button.play{width:36px;height:36px;border:0;border-radius:50%;background:var(--blue);color:#fff;font-size:15px;padding:0}
+.dcontrols .speed{display:flex;align-items:center;gap:7px;margin-left:auto;font-size:12px;color:var(--muted)}
+.dcontrols input{width:130px;accent-color:#38bdf8}
+.dcontrols .spdv{font-weight:700;color:var(--teal);min-width:42px}
+.dprogress{display:flex;gap:4px;margin-left:auto}
+.dprogress i{width:8px;height:8px;border-radius:50%;background:#cbd5e1}
+.dprogress i.on{background:var(--blue)}
+.summary{margin-top:34px;padding:16px 18px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--green);border-radius:12px}
+.summary b{color:var(--green);display:block;margin-bottom:6px;font-size:14px}
+.summary p{margin:0;color:var(--text);font-size:14px}
+@media(max-width:650px){.page{padding:22px 14px 40px}.detail{grid-template-columns:1fr}h1{font-size:23px}}
 </style>
 </head>
 <body>
-<header class="top"><div><h1>系统全景与图像链路</h1><p>一条主线：上电 → 内存 → 红外 ISP → Video 线路 → 输出接口 → USB/MIPI 输出 → 事件回流 → 端到端闭环</p></div><span class="badge">面向刚接手系统的工程师</span></header>
+<div class="page">
 
-<div class="wrap">
-<section class="intro">
-  <article class="card"><h2>单条主线，逐步推进</h2><p>不再分页标签。用上一步/下一步沿整条系统主线往下走：先建立系统（上电/内存），再跑图像（IRSC→ISP→Video），最后经两条输出通道（USB / MIPI）到上位机，并回流事件完成闭环。</p></article>
-  <article class="card"><h3>配置边界</h3><p>控制入口为 UVC EP0、CCI、UART、SPI；实际启用哪些由本次构建决定。</p></article>
+<header>
+  <h1>视频处理系统全景：从传感器到双输出的单条主链</h1>
+  <p class="lead">一条从<b>红外传感器</b>出发的主链：像素经 <b>IRSC</b> 采集、<b>ISP</b> 校正、<b>Video</b> 处理与路由，最终分两路输出——一路走 <b>USB</b> 到 Windows，一路走 <b>MIPI CSI-2</b> 到外部接收端。控制、数据、事件三面共用同一套软硬件，但流向彼此独立。</p>
+  <div class="learn">
+    <b>你将掌握</b>
+    <ol>
+      <li>各模块在"业务 / 固件 / 驱动 / 硬件"四层中的位置</li>
+      <li>传感器 → ISP → Video 的图像链路</li>
+      <li>USB 与 MIPI 双输出的通道差异</li>
+      <li>控制面、数据面与事件面如何分离</li>
+    </ol>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#s1">1. 系统模块全景</a>
+  <a href="#s2">2. 图像链路</a>
+  <a href="#s3">3. 双输出：USB 与 MIPI</a>
+  <a href="#s4">4. 控制与数据分离</a>
+</nav>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <h2><span class="n">1</span>系统模块全景</h2>
+  <p>整条主链可以按<b>四层泳道</b>组织：外部系统（Windows、CSI-2 接收端、控制主机）、固件软件（服务、stream、输出节点）、Driver/HAL（设备控制、ISR、DMA）、芯片硬件（IRSC、ISP、Video、USB、MIPI）。像素与命令都从这四层中穿过。</p>
+  <table>
+    <tr><th>层</th><th>主要模块</th><th>职责</th></tr>
+    <tr><td>外部系统 / 业务</td><td>Windows、CSI-2 接收端、控制主机</td><td>消费帧、下发命令</td></tr>
+    <tr><td>固件软件</td><td>服务、软件 stream、输出接口节点</td><td>业务编排、缓冲所有权、接口绑定</td></tr>
+    <tr><td>Driver / HAL</td><td>设备驱动、中断、DMA</td><td>配寄存器、搬运数据、上送事件</td></tr>
+    <tr><td>芯片硬件</td><td>IRSC、ISP、Video、USB、MIPI</td><td>采集、校正、处理、路由、输出</td></tr>
+  </table>
+  <div class="keybox"><b>主线：</b>无论从哪一层看，像素都沿"传感器 → ISP → Video → USB/MIPI"单条主链前进；控制命令从主机进来，事件从硬件出去。</div>
+  <div class="demo" id="d1">
+    <h3>本节演示 <small>主链概览 → 四层落点</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s1t"></b><span id="s1m"></span></div>
+      <div class="dcanvas"><svg id="s1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s1a"></b><span class="fact" id="s1l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s1sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s1hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s1d"></h4><p id="s1p"></p><div class="dnote" id="s1n"></div></div>
+      <div class="dcontrols">
+        <button id="s1prev">⟵</button><button class="play" id="s1play">▶</button><button id="s1next">⟶</button>
+        <span class="speed">速度<input type="range" id="s1spd" min="8" max="100" value="40"><span class="spdv" id="s1v">0.4x</span></span>
+        <div class="dprogress" id="s1pbar"></div>
+      </div>
+    </div>
+  </div>
 </section>
 
-<div class="legend"><span><i class="sw host"></i>外部系统/业务</span><span><i class="sw app"></i>固件软件</span><span><i class="sw drv"></i>Driver/HAL</span><span><i class="sw hw"></i>芯片硬件</span><span><i class="flow cmd"></i>命令</span><span><i class="flow data"></i>图像数据</span><span><i class="flow event"></i>事件</span><span><i class="flow error"></i>异常</span></div>
-
-<div class="speedbar"><span><b>自动播放速度</b></span><input type="range" id="spd" min="8" max="100" value="40"><span class="spdv" id="spdv">0.4x</span><span style="font-size:12px;color:var(--muted)">仅影响"▶ 播放"自动循环</span></div>
-
-<div class="layout">
-  <section class="diagram">
-    <div class="diagram-head"><b id="stepTitle">&nbsp;</b><span id="stepMeta"></span></div>
-    <svg id="svg" viewBox="0 0 1160 520" role="img" aria-label="系统主线"></svg>
-    <div class="narration"><h3 id="narrTitle">主线步骤</h3><p id="desc"></p><div class="callout" id="callout"></div></div>
-  </section>
-  <aside class="evidence">
-    <h3>本步四层落点</h3>
-    <div class="ev host"><label>业务与外部系统</label><div id="hostText"></div></div>
-    <div class="ev app"><label>固件软件</label><div id="appText"></div></div>
-    <div class="ev drv"><label>Driver / HAL</label><div id="drvText"></div></div>
-    <div class="ev hw"><label>芯片硬件</label><div id="hwText"></div></div>
-    <div class="source"><b>事实依据</b><div id="sourceText"></div></div>
-  </aside>
-</div>
-
-<div class="controls">
-  <button class="btn" id="prev">上一步</button>
-  <button class="btn primary" id="play">播放</button>
-  <button class="btn" id="next">下一步</button>
-  <button class="btn" id="reset">重置</button>
-  <div class="progress"><i id="bar"></i></div>
-</div>
-
-<div class="outcmpgrid" style="margin-top:14px">
-  <div class="cmpbox usb"><h3>USB 输出通道 —— 到 Windows（不经 MIPI）</h3>
-    <div class="cmprow"><span class="k">硬件路径</span><span class="v">Video SOUT → USB TOP → <b>UVC WRAPE</b>（Header/PTS/EOF）→ EP FIFO → <b>USB PHY</b></span></div>
-    <div class="cmprow"><span class="k">驱动/HAL</span><span class="v"><code>UVC WRAPE HAL</code> 配 WRAPE；<code>UVC WRAPE 驱动</code> 处理中断；端点地址直指 FIFO</span></div>
-    <div class="cmprow"><span class="k">通道标识</span><span class="v">endpoint <code>0x81/0x82</code>（Bulk IN），无虚拟通道 VC</span></div>
-    <div class="cmprow"><span class="k">图像格式</span><span class="v">UVC：NV12 / YUY2 / Y16 / MJPEG</span></div>
-    <div class="cmprow"><span class="k">去向</span><span class="v">Windows usbvideo.sys 组帧</span></div>
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <h2><span class="n">2</span>图像链路：传感器 → ISP → Video</h2>
+  <p>红外传感器输出 DN 像素流给 <b>IRSC</b>；IRSC 是红外 DN 输入口，ISP Pipeline 完成<b>校正、降噪与测温</b>；随后 Video 模块负责<b>处理与路由</b>——P/T/VS 流、SOUT 输出、MUX/SEL 选择。</p>
+  <p>缓冲所有权在软件侧：业务提供地址与尺寸，驱动写物理地址、长度与 stride 并维护 Cache，硬件 DMA 持续搬运帧。</p>
+  <div class="keybox"><b>注意：</b>软件 stream 与硬件 stream 编号不是同一概念；用普通地址不自动等于 DMA 安全，仍需对齐、长度与一致性的显式维护。</div>
+  <div class="demo" id="d2">
+    <h3>本节演示 <small>IRSC → ISP → Video 图像链</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s2t"></b><span id="s2m"></span></div>
+      <div class="dcanvas"><svg id="s2g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s2a"></b><span class="fact" id="s2l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s2sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s2hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s2d"></h4><p id="s2p"></p><div class="dnote" id="s2n"></div></div>
+      <div class="dcontrols">
+        <button id="s2prev">⟵</button><button class="play" id="s2play">▶</button><button id="s2next">⟶</button>
+        <span class="speed">速度<input type="range" id="s2spd" min="8" max="100" value="40"><span class="spdv" id="s2v">0.4x</span></span>
+        <div class="dprogress" id="s2pbar"></div>
+      </div>
+    </div>
   </div>
-  <div class="cmpbox mipi"><h3>MIPI 输出通道 —— 到外部 CSI-2 接收端（不经 USB）</h3>
-    <div class="cmprow"><span class="k">硬件路径</span><span class="v">Video SOUT → <b>Stream SEL</b> → <b>CSI TX Core/Wrapper</b>（VC+DT+WC）→ <b>D-PHY</b>（clock+data lane）</span></div>
-    <div class="cmprow"><span class="k">驱动/HAL</span><span class="v"><code>MIPI CSI TX 驱动</code> 校验 lane/VC/DT；<code>MIPI CSI TX HAL</code> 写 Controller/D-PHY</span></div>
-    <div class="cmprow"><span class="k">通道标识</span><span class="v"><b>VC 虚拟通道</b>，由 <code>mipi_vc_mode</code> 设置（NORMAL / SINGLE_VC_PIC / DUAL）</span></div>
-    <div class="cmprow"><span class="k">图像格式</span><span class="v">CSI-2 data type 随 <code>out_fmt</code>：YUV422 / RGB888-YUV444 / Y16 / Y14 / Y10 / Y8</span></div>
-    <div class="cmprow"><span class="k">去向</span><span class="v">外部主控 / FPGA / 桥片</span></div>
+</section>
+
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <h2><span class="n">3</span>双输出：USB 与 MIPI</h2>
+  <p>Video 的 SOUT 输出被两条通道消费，互不经过对方：</p>
+  <ul style="margin-left:20px">
+    <li><b>USB 通道：</b>Video SOUT → USB 控制器 → UVC 封帧（Header / PTS / EOF）→ 端点 FIFO → USB PHY；以 endpoint 0x81 / 0x82 Bulk IN 标识，无虚拟通道 VC。</li>
+    <li><b>MIPI 通道：</b>Video SOUT → Stream SEL → CSI TX（VC + DT + WC）→ D-PHY；以 VC 虚拟通道标识，data type 随输出格式变化。</li>
+  </ul>
+  <table>
+    <tr><th>维度</th><th>USB 通道</th><th>MIPI 通道</th></tr>
+    <tr><td>终点</td><td>Windows usbvideo.sys</td><td>外部主控 / FPGA / 桥片</td></tr>
+    <tr><td>通道标识</td><td>endpoint 0x81 / 0x82（Bulk IN）</td><td>VC 虚拟通道</td></tr>
+    <tr><td>组帧</td><td>UVC Header / PTS / EOF</td><td>CSI-2 VC + DT + WC</td></tr>
+    <tr><td>像素格式</td><td>NV12 / YUY2 / Y16 / MJPEG</td><td>YUV422 / RGB888-YUV444 / Y16 / Y14 / Y10 / Y8</td></tr>
+    <tr><td>物理输出</td><td>USB PHY</td><td>D-PHY（clock + data lane）</td></tr>
+  </table>
+  <div class="keybox"><b>边界：</b>USB 通道不经过 MIPI、MIPI 通道不经过 USB；VC 需按模式设置（如 NORMAL / SINGLE_VC_PIC / DUAL），endpoint 与 VC 是两类不同的通道标识。</div>
+  <div class="demo" id="d3">
+    <h3>本节演示 <small>USB 与 MIPI 双输出</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s3t"></b><span id="s3m"></span></div>
+      <div class="dcanvas"><svg id="s3g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s3a"></b><span class="fact" id="s3l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s3sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s3hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s3d"></h4><p id="s3p"></p><div class="dnote" id="s3n"></div></div>
+      <div class="dcontrols">
+        <button id="s3prev">⟵</button><button class="play" id="s3play">▶</button><button id="s3next">⟶</button>
+        <span class="speed">速度<input type="range" id="s3spd" min="8" max="100" value="40"><span class="spdv" id="s3v">0.4x</span></span>
+        <div class="dprogress" id="s3pbar"></div>
+      </div>
+    </div>
   </div>
-</div>
+</section>
+
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <h2><span class="n">4</span>控制与数据分离</h2>
+  <p>同一个系统里流动着三类信息：<b>控制面</b>（主机 → 服务 → 驱动 → 硬件）、<b>数据面</b>（IRSC / ISP / Video 的像素 → USB / MIPI 输出）、<b>事件面</b>（硬件中断 → 驱动 → 服务）。它们方向不同、语义不同，不能混为一谈。</p>
+  <ul style="margin-left:20px">
+    <li>控制面承载命令请求与完成确认，不承载像素。</li>
+    <li>数据面承载像素流，不经软件逐像素复制。</li>
+    <li>事件面上送帧完成 / 溢出 / 错误，由明确等待或统计消费。</li>
+  </ul>
+  <div class="keybox"><b>验证：</b>命令成功、stream 状态与接收端拿到完整帧是三个独立观察点；端到端交付须分别覆盖配置、硬件状态与最终帧结果。</div>
+  <div class="demo" id="d4">
+    <h3>本节演示 <small>控制面 / 数据面 / 事件面</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s4t"></b><span id="s4m"></span></div>
+      <div class="dcanvas"><svg id="s4g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s4a"></b><span class="fact" id="s4l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s4sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s4hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s4d"></h4><p id="s4p"></p><div class="dnote" id="s4n"></div></div>
+      <div class="dcontrols">
+        <button id="s4prev">⟵</button><button class="play" id="s4play">▶</button><button id="s4next">⟶</button>
+        <span class="speed">速度<input type="range" id="s4spd" min="8" max="100" value="40"><span class="spdv" id="s4v">0.4x</span></span>
+        <div class="dprogress" id="s4pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="summary"><b>一句话总结</b><p>视频系统沿"传感器 → ISP → Video → USB / MIPI"单条主链工作，像素走硬件数据面、命令走控制面、状态走事件面——三面分离又闭环，构成一条确定、可验证的视频主链。</p></div>
+
 </div>
 
 <script>
-const N={
- power:['上电 / 复位','系统起点','hw',20,35],cpu:['E906 CPU','机器模式 · CLIC','hw',190,35],startup:['Reset_Handler','启动软件','app',360,35],sysinit:['SystemInit / BSP HAL','system map · DDR','drv',530,35],mem:['SRAM / DDR','运行段与缓冲','hw',700,35],rtos:['实时操作系统','board · heap · scheduler','app',870,35],components:['组件初始化表','main thread · 等级2~6','app',870,145],host:['外部控制主机','UVC EP0 / CCI / UART / SPI','host',20,190],service:['Camera / UVC 服务','业务与控制编排','app',190,190],driver:['Driver / HAL','设备控制 · ISR','drv',530,190],stream:['PIC / TEMP / VS','软件 stream / node','app',360,290],outitf:['输出接口 Entry','SINGLE / COMPOSE','app',530,290],usbs:['USB TOP S0/S1','硬件 stream','hw',700,255],vc:['MIPI VC0~3','CSI-2 虚拟通道','hw',700,410],irsc:['IRSC','红外 DN 输入','hw',20,400],isp:['ISP Pipeline','KBC · 降噪 · TPD','hw',190,400],video:['Video 处理与路由','P/T/VS · SOUT · MUX/SEL','hw',360,400],usb:['USB UVC','WRAPE · Device · PHY','hw',870,255],mipi:['MIPI CSI TX','Controller · D-PHY','hw',870,410],win:['Windows UVC','usbvideo.sys / 应用','host',1000,255],rx:['CSI-2 接收端','主控 / FPGA / 桥片','host',1000,410]};
-/* 单条主线：14 步，每步 [标题,desc,host,app,drv,hw,source,active[],edges[],callout] */
-const STEPS=[
-['① 上电复位','上电复位，E906 进入机器模式，CLIC 就绪',  '尚无业务；外部主机等待设备就绪','Reset_Handler 即将接管','BSP 尚未初始化','E906 CPU 上电，CLIC 中断控制器可用','启动汇编建立最小运行环境；系统启动配置 CLIC 与内存',['power','cpu'],[['power','cpu','command']],'系统起点：上电后 CPU 与中断控制器最先可用。'],
-['② Reset_Handler 建立最小环境','Reset_Handler 建立 ABI 与 SRAM 运行段，再调 SystemInit',  '仍无 Camera/视频业务','Reset_Handler 设 gp/sp/向量并 copy/zero 基础段','SystemInit 配 system map、DDR/HPRAM','E906、SRAM 进入可用','启动汇编：复位入口先建立 ABI 与运行段',['cpu','startup','sysinit'],[['cpu','startup','command'],['startup','sysinit','command']],'DDR 须在外部内存可访问后准备。'],
-['③ 外部内存与运行段就绪','运行段按链接脚本落地 SRAM/DDR，数据/bss/stack 就位',  '系统目标是让服务可调度','模块 init/uninit、heap、stack 分属不同 section','BSP 配 Cache/Uncache 属性','SRAM/DDR 保存代码数据与缓冲','链接脚本与板级配置决定运行段布局',['sysinit','mem'],[['sysinit','mem','command']],'最终地址以当前链接脚本与最新 map/ELF 为准。'],
-['④ 实时操作系统调度器启动','进入实时操作系统，板级初始化完成 UART/SysTick/heap',  '进入可调度状态','entry→内核启动→main 线程入口','板级初始化完成 UART、SysTick、heap','CPU 执行线程调度','组件自动初始化与通用驱动',['mem','rtos'],[['mem','rtos','command']],'调度器启动后组件才能初始化。'],
-['⑤ 组件初始化 + 服务建立','main 线程初始化等级2~6组件，Camera/UVC 服务线程建立',  '系统目标是让业务服务可调度','main 线程执行组件自动初始化后进入业务 main；建立 UVC 服务','board exports 已就绪','已初始化设备接受后续配置','组件自动初始化在 main 线程执行',['rtos','components','service'],[['rtos','components','command'],['components','service','command']],'服务就绪不表示视频已启动。'],
-['⑥ 图像 DMA 缓冲准备','业务提供地址/尺寸，driver 配 DMA，硬件搬运帧',  '业务看到图像结果，不逐像素复制','ISP pipeline 与 stream 管理缓冲所有权','driver 写物理地址、长度、stride 并处理 Cache','ISP/Video DMA 读写 ISP_DDR','流类型定义与 ISP 流驱动约定缓冲所有权',['service','stream','driver','mem'],[['service','stream','command'],['stream','driver','command'],['driver','mem','command']],'用 DDR 地址不自动等于 DMA 安全。'],
-['⑦ 配置并启动红外 Pipeline','主机选预览/测温档，IRSC/ISP 配置完成',  '控制主机经启用的入口下发档位','Camera 与 pipeline manager 配 Sensor 与 ISP','IRSC/ISP driver-HAL 写时序、表、DMA、中断寄存器','IRSC 采 DN，ISP 完成校正/降噪/TPD','红外输入与 ISP 驱动的时序/表/寄存器配置',['host','service','driver','irsc','isp'],[['host','service','command'],['service','driver','command'],['driver','irsc','command'],['driver','isp','command'],['irsc','isp','data']],'软件 node 是配置对象；入口由构建选择。'],
-['⑧ ISP → Video 输出候选数据','硬件流水线持续向后级输出图像和测温数据',  '上层分别消费显示图与温度面阵','各源流接管生命周期，Video 路由像素','Video 驱动配 Zoom/PSD/OSD/SOUT/MUX-SEL','Video 硬件处理来自 ISP 的数据','视频流基础实现与 Video 驱动配置',['stream','driver','isp','video'],[['stream','driver','command'],['driver','video','command'],['isp','video','data']],'软件 stream 与硬件 stream 编号不是同一概念。'],
-['⑨ 输出接口绑定物理接口','输出接口用 SINGLE/COMPOSE 把源流绑到 USB S0/S1 或 MIPI VC',  'Windows 收 USB 帧；CSI-2 按 VC/DT 识别','输出节点→输出接口入口用 SINGLE/COMPOSE 绑定','接口 driver 将每条源流配到 USB TOP 或 MIPI VC','USB S0/S1 与 MIPI VC 无固定源流对应','输出接口节点按 SINGLE/COMPOSE 绑定源流',['stream','outitf','driver','usbs','vc'],[['stream','outitf','command'],['outitf','driver','command'],['driver','usbs','command'],['driver','vc','command']],'READY、RUNNING、接口 Ready 与接收完整帧是不同观察点。'],
-['⑩ USB 输出到 Windows','USB 通道：WRAPE 加 UVC 头，经端点输出到 Windows',  'Windows 经 EP0 Probe/Commit 协商，数据端点收帧','UVC class 与输出接口 UVC 是两条独立控制面','USB/WRAPE driver 配 TOP、FIFO、封帧与中断','USB Device、WRAPE、CTRL、PHY 发送 payload','UVC 相机业务与 WRAPE HAL 的封帧/端点配置',['usbs','usb','win'],[['usbs','usb','data'],['usb','win','data']],'此通道不经过 MIPI；endpoint 而无 VC。'],
-['⑪ MIPI 输出到外部 Receiver','MIPI 通道：Stream SEL 选源，CSI TX 组包，D-PHY 输出',  '外部主控/FPGA/桥片是直接接收者','输出接口 MIPI 组织源流与 VC，服务层计算 wordCount','Driver 校验 lane/VC/DT、透传 wordCount，HAL 配 D-PHY','CSI TX 经 D-PHY 发 packet','MIPI CSI TX 驱动的 lane/VC/DT 校验与 D-PHY 配置',['vc','mipi','rx'],[['vc','mipi','data'],['mipi','rx','data']],'此通道不经过 USB；需设置 VC（mipi_vc_mode）。'],
-['⑫ 硬件事件回线程','帧完成/空闲/溢出/错误经中断回软件',  '业务需要状态，事件本身不是图像/命令结果','设备 event 由明确等待/统计消费','各 ISR 读标志经通知回调或系统事件上送','ISP、Video、USB、MIPI 硬件产生中断','视频通用流与 UVC 驱动的 ISR/事件上送',['service','stream','driver','isp','video','usb','mipi'],[['isp','driver','event'],['video','driver','event'],['usb','driver','event'],['mipi','driver','event'],['driver','service','event']],'命令成功、stream 状态与接收完整帧须分别验证。'],
-['⑬ 端到端闭环','控制、数据、事件三面同时一致；接收端拿到完整帧',  'Windows 或 CSI-2 接收端获得格式正确、尺寸完整的帧','业务状态与 stream/FSM 状态一致','无未处理溢出，ISR 与统计符合预期','像素计数、DMA 长度、USB payload 或 CSI-2 packet 一致','业务日志；USB 抓包或 CSI-2 接收统计',['host','service','stream','outitf','driver','irsc','isp','video','usb','mipi','win','rx'],[['host','service','command'],['service','stream','command'],['stream','outitf','command'],['outitf','driver','command'],['irsc','isp','data'],['isp','video','data'],['video','usb','data'],['video','mipi','data'],['usb','win','data'],['mipi','rx','data'],['usb','driver','event'],['mipi','driver','event']],'端到端交付须覆盖配置、硬件状态与最终帧结果。']
+"use strict";
+const lanes={external:{title:'外部系统 / 业务',sub:'Windows、CSI-2 接收端、控制主机',x:20,w:285},app:{title:'固件软件',sub:'服务、stream、输出节点',x:330,w:300},driver:{title:'Driver / HAL',sub:'设备控制、ISR、DMA',x:655,w:300},hardware:{title:'芯片硬件',sub:'IRSC、ISP、Video、USB、MIPI',x:980,w:320}};
+const nodes={sensor:['红外传感器','DN 原始像素流','external'],win:['Windows UVC','usbvideo.sys','external'],rx:['CSI-2 接收端','主控 / FPGA / 桥片','external'],host:['控制主机','UVC EP0 / I2C / UART','external'],service:['相机 / UVC 服务','业务与控制编排','app'],stream:['软件 stream','缓冲所有权','app'],oi:['输出接口节点','SINGLE / COMPOSE','app'],driver:['Driver / HAL','设备控制 / ISR','driver'],irsc:['IRSC','红外 DN 输入','hardware'],isp:['ISP Pipeline','校正 / 降噪 / 测温','hardware'],video:['Video 处理与路由','SOUT / MUX / SEL','hardware'],usb:['USB 输出','封帧 / Device / PHY','hardware'],mipi:['MIPI CSI TX','Controller / D-PHY','hardware']};
+const laneOrder=['external','app','driver','hardware'];
+function layout(item){const group={external:[],app:[],driver:[],hardware:[]},out={};item.nodes.forEach(id=>group[nodes[id][2]].push(id));laneOrder.forEach(k=>{const lane=lanes[k],arr=group[k],gap=480/Math.max(arr.length,1);arr.forEach((id,i)=>out[id]={x:lane.x+lane.w/2,y:105+gap*(i+.5)});});return out}
+function geom(a,b,pos){const p=pos[a],q=pos[b],same=nodes[a][2]===nodes[b][2];if(same){const d=q.y>=p.y?1:-1;return{d:`M${p.x+90} ${p.y+25*d} C${p.x+145} ${p.y+55*d},${q.x+145} ${q.y-55*d},${q.x+90} ${q.y-25*d}`,x:p.x+142,y:(p.y+q.y)/2}}const d=q.x>p.x?1:-1;return{d:`M${p.x+90*d} ${p.y} C${p.x+155*d} ${p.y},${q.x-155*d} ${q.y},${q.x-90*d} ${q.y}`,x:(p.x+q.x)/2,y:(p.y+q.y)/2}}
+function draw(svgEl,item){const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="m${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';laneOrder.forEach(k=>{const l=lanes[k];s+=`<rect x="${l.x}" y="20" width="${l.w}" height="610" rx="13" style="stroke:#cbd5e1;stroke-dasharray:5 5;fill:#eef2f7"/><text x="${l.x+15}" y="46" style="fill:#334155;font-size:13px;font-weight:800">${l.title}</text><text x="${l.x+15}" y="63" style="fill:#64748b;font-size:9px">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path d="${g.d}" marker-end="url(#m${k})" style="fill:none;stroke-width:3;stroke:var(--${k})"/><rect x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10" style="fill:#fff;stroke:var(--${k})"/><text x="${g.x}" y="${g.y+1}" text-anchor="middle" style="fill:#334155;font-size:8.5px;font-weight:700">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],style=n[3]||n[2],role=n[3]==='memory'?'内存区':{external:'SW·应用',app:'SW·模块',driver:'SW·驱动',hardware:'HW·硬件'}[n[2]],tw=role.length*7+12;s+=`<g><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9" style="fill:#ffffff;stroke-width:2;stroke:${style==='memory'?'#d97706':'#94a3b8'}"/><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5" style="fill:${style==='memory'?'#d97706':'#64748b'}"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle" style="fill:#fff;font-size:8.5px;font-weight:700">${role}</text><text x="${p.x}" y="${p.y-5}" text-anchor="middle" style="fill:#0f172a;font-size:11px;font-weight:800">${n[0]}</text><text x="${p.x}" y="${p.y+13}" text-anchor="middle" style="fill:#475569;font-size:8.5px">${n[1]}</text></g>`});svgEl.innerHTML=s}
+function makePlayer(p,steps){
+  const $=id=>document.getElementById(p+id);
+  let idx=0,timer=null,SPEED=0.4;
+  const spdEl=$('spd'),spdVal=$('v');
+  spdEl.addEventListener('input',function(){SPEED=spdEl.value/100;spdVal.textContent=SPEED.toFixed(2)+'x';if(timer){stop();$('play').click();}});
+  function render(){const x=steps[idx];$('t').textContent=x.title;$('m').textContent=`步骤 ${idx+1} / ${steps.length}`;$('a').textContent=x.action;$('l').textContent=x.level;$('sw').textContent=x.software;$('hw').textContent=x.hardware;$('d').textContent=x.title;$('p').textContent=x.description;$('n').textContent=x.note;$('pbar').innerHTML=steps.map((_,i)=>`<i class="${i===idx?'on':''}"></i>`).join('');draw($('g'),x)}
+  function next(){idx=(idx+1)%steps.length;render()}
+  function prev(){idx=(idx-1+steps.length)%steps.length;render()}
+  function stop(){if(timer){clearInterval(timer);timer=null}$('play').textContent='▶'}
+  $('prev').onclick=function(){stop();prev()};$('next').onclick=function(){stop();next()};$('play').onclick=function(){if(timer){stop()}else{timer=setInterval(next,Math.round(3200/SPEED));$('play').textContent='Ⅱ'}};
+  render();
+}
+const S1=[
+ {title:'主链概览',action:'传感器 → ISP → Video → USB/MIPI 双输出',level:'架构事实',software:'软件 stream 持有缓冲所有权，节点编排输出。',hardware:'IRSC/ISP/Video 硬件流水线持续输出。',description:'像素沿单条主链流转，输出接口分双路。',note:'USB 与 MIPI 是两条独立输出通道。',nodes:['sensor','irsc','isp','video','usb','mipi','win','rx'],edges:[['sensor','irsc','data','DN'],['irsc','isp','data','像素'],['isp','video','data','像素'],['video','usb','data','输出'],['video','mipi','data','输出'],['usb','win','data','UVC 帧'],['mipi','rx','data','CSI-2']]},
+ {title:'四层落点',action:'外部系统、固件、驱动、硬件各司其职',level:'架构事实',software:'服务与 stream 编排，输出节点绑定物理接口。',hardware:'各硬件 IP 承载像素与状态。',description:'命令由主机下到服务，再经驱动配硬件。',note:'同一个模块通常跨四层各有落点。',nodes:['host','service','stream','oi','driver','irsc','isp','video','usb','mipi'],edges:[['host','service','command','命令'],['service','stream','command','编排'],['stream','oi','command','绑定'],['oi','driver','command','配置'],['driver','irsc','command','寄存器'],['driver','video','command','寄存器']]}
 ];
-let idx=0,timer=null,SPEED=0.4;
-const svg=document.getElementById('svg'),spdEl=document.getElementById('spd'),spdVal=document.getElementById('spdv');
-spdEl.addEventListener('input',function(){SPEED=spdEl.value/100;spdVal.textContent=SPEED.toFixed(2)+'x';if(timer){stop();document.getElementById('play').click();}});
-function center(node){return [node[3]+75,node[4]+34]}
-const ALL_EDGES=[...new Set(STEPS.flatMap(s=>s[8]).map(e=>e.join('|')))].map(k=>k.split('|'));
-function edgePath(a,b){const A=center(N[a]),B=center(N[b]),mx=(A[0]+B[0])/2;return `M${A[0]},${A[1]} C${mx},${A[1]} ${mx},${B[1]} ${B[0]},${B[1]}`}
-function render(){const s=STEPS[idx],active=new Set(s[7]),edges=s[8];document.getElementById('stepTitle').textContent=s[0];document.getElementById('stepMeta').textContent=(idx+1)+' / '+STEPS.length;document.getElementById('narrTitle').textContent=s[0];document.getElementById('desc').textContent=s[1];document.getElementById('hostText').textContent=s[2];document.getElementById('appText').textContent=s[3];document.getElementById('drvText').textContent=s[4];document.getElementById('hwText').textContent=s[5];document.getElementById('sourceText').textContent=s[6];document.getElementById('callout').textContent=s[9];document.getElementById('bar').style.width=((idx+1)/STEPS.length*100)+'%';svg.innerHTML=`<defs><marker id="a-command" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="${getComputedStyle(document.documentElement).getPropertyValue('--command')}"/></marker><marker id="a-data" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="${getComputedStyle(document.documentElement).getPropertyValue('--data')}"/></marker><marker id="a-event" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="${getComputedStyle(document.documentElement).getPropertyValue('--event')}"/></marker></defs>`;const curEdges=new Set(edges.map(e=>e.join('|')));
-ALL_EDGES.forEach(e=>{const on=curEdges.has(e.join('|'));svg.insertAdjacentHTML('beforeend',`<path class="edge ${e[2]}${on?'':' edge-dim'}" d="${edgePath(e[0],e[1])}" marker-end="url(#a-${e[2]})" opacity="${on?'1':'0.28'}"/>`)});Object.entries(N).forEach(([id,n])=>{const dim=active.has(id)?' active-stroke':' node-pale',tagTxt={host:'SW·PC',app:'SW·应用',drv:'SW·驱动',hw:'HW·硬件'}[n[2]],tw=tagTxt.length*7+12,tag=`<g class="ntag ${n[2]}"><rect x="8" y="8" width="${tw}" height="15" rx="7.5"/><text x="${8+tw/2}" y="19" text-anchor="middle">${tagTxt}</text></g>`;svg.insertAdjacentHTML('beforeend',`<g class="node ${n[2]}${dim}" transform="translate(${n[3]},${n[4]})"><rect width="150" height="68" rx="10"/>${tag}<text class="title" x="75" y="28" text-anchor="middle">${n[0]}</text><text class="sub" x="75" y="49" text-anchor="middle">${n[1]}</text></g>`)});}
-function next(){if(idx<STEPS.length-1)idx++;else idx=0;render()}
-function prev(){if(idx>0)idx--;else idx=STEPS.length-1;render()}
-function stop(){if(timer){clearInterval(timer);timer=null}document.getElementById('play').textContent='播放'}
-document.getElementById('prev').onclick=function(){stop();prev()};document.getElementById('next').onclick=function(){stop();next()};document.getElementById('reset').onclick=function(){stop();idx=0;render()};document.getElementById('play').onclick=function(){if(timer){stop()}else{timer=setInterval(next,Math.round(2800/SPEED));document.getElementById('play').textContent='暂停'}};render();
+const S2=[
+ {title:'传感器输入',action:'红外传感器输出 DN 像素流给 IRSC',level:'代码事实',software:'stream 按流类型定义缓冲所有权。',hardware:'IRSC 采集 DN，ISP 完成校正/降噪/测温。',description:'软件 node 是配置对象，驱动配时序与表。',note:'入口与传感器配置由本次构建决定。',nodes:['sensor','irsc','isp','driver'],edges:[['sensor','irsc','data','DN'],['irsc','isp','data','像素'],['driver','irsc','command','配置'],['driver','isp','command','配置']]},
+ {title:'ISP 到 Video',action:'ISP 校正后，Video 处理并路由输出',level:'代码事实',software:'stream 接管生命周期，Video 路由像素。',hardware:'Video 硬件处理来自 ISP 的数据。',description:'Video 完成 SOUT 输出与 MUX/SEL 选择。',note:'软件 stream 与硬件 stream 编号不是同一概念。',nodes:['isp','video','stream','driver'],edges:[['isp','video','data','像素'],['stream','driver','command','地址/尺寸'],['driver','video','command','DMA 配置'],['video','driver','event','帧完成']]}
+];
+const S3=[
+ {title:'USB 通道',action:'Video 输出经封帧、端点 FIFO 到 USB PHY',level:'架构事实',software:'UVC 封装 Header/PTS/EOF；驱动配端点。',hardware:'endpoint 0x81/0x82 Bulk IN，无虚拟通道 VC。',description:'Windows usbvideo.sys 组帧；格式 NV12/YUY2/Y16/MJPEG。',note:'此通道不经过 MIPI。',nodes:['video','usb','win'],edges:[['video','usb','data','SOUT'],['usb','win','data','UVC payload']]},
+ {title:'MIPI 通道',action:'Video 输出经 Stream SEL、CSI TX 到 D-PHY',level:'架构事实',software:'输出接口组织源流与 VC，服务计算字计数。',hardware:'CSI TX 组 VC+DT+WC，D-PHY 时钟/数据 lane。',description:'VC 虚拟通道；data type 随输出格式：YUV422/Y16/Y14 等。',note:'此通道不经过 USB；需设置 VC 模式。',nodes:['video','mipi','rx'],edges:[['video','mipi','data','源流'],['mipi','rx','data','CSI-2 packet']]}
+];
+const S4=[
+ {title:'控制面',action:'主机下发命令，服务编排、驱动配寄存器',level:'架构事实',software:'服务把控制需求转为流与输出配置。',hardware:'硬件寄存器接受配置。',description:'控制面承载命令请求与完成确认。',note:'控制面不承载像素。',nodes:['host','service','stream','oi','driver','irsc','isp','video','usb','mipi'],edges:[['host','service','command','命令'],['service','stream','command','编排'],['stream','oi','command','绑定'],['oi','driver','command','配置'],['driver','irsc','command','寄存器'],['driver','isp','command','寄存器'],['driver','video','command','寄存器'],['driver','usb','command','寄存器'],['driver','mipi','command','寄存器']]},
+ {title:'数据面与事件',action:'像素沿硬件链流转，事件回线程',level:'架构事实',software:'ISR 读标志经通知回调或事件上送。',hardware:'ISP/Video/USB/MIPI 产生中断。',description:'数据面承载像素，事件面承载状态反馈。',note:'命令结果、stream 状态与完整帧须分别验证。',nodes:['irsc','isp','video','usb','mipi','driver','service','win','rx'],edges:[['irsc','isp','data','像素'],['isp','video','data','像素'],['video','usb','data','输出'],['video','mipi','data','输出'],['usb','win','data','帧'],['mipi','rx','data','帧'],['usb','driver','event','中断'],['mipi','driver','event','中断'],['driver','service','event','上送']]}
+];
+makePlayer('s1',S1);
+makePlayer('s2',S2);
+makePlayer('s3',S3);
+makePlayer('s4',S4);
 </script>
 </body>
 </html>

@@ -1,538 +1,340 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>红外图像输入与 ISP 处理交互演示</title>
-  <style>
-    :root {
-      --bg: #0f172a;
-      --panel: #1e293b;
-      --panel-2: #1a2740;
-      --text: #e2e8f0;
-      --muted: #94a3b8;
-      --business: #2563eb;
-      --firmware: #7c3aed;
-      --driver: #0d9488;
-      --hardware: #ea580c;
-      --command: #3b82f6;
-      --data: #22c55e;
-      --event: #eab308;
-      --error: #ef4444;
-      --border: #334155;
-    }
-
-    * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      min-height: 100vh;
-      background: var(--bg);
-      color: var(--text);
-      font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
-    }
-
-    button { font: inherit; }
-
-    .page {
-      width: min(1600px, 100%);
-      margin: 0 auto;
-      padding: 20px;
-    }
-
-    header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      gap: 24px;
-      margin-bottom: 16px;
-    }
-
-    h1 { margin: 0 0 8px; font-size: clamp(22px, 2.2vw, 34px); }
-    header p { margin: 0; color: var(--muted); line-height: 1.7; }
-
-    .legend {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: flex-end;
-      gap: 8px 14px;
-      max-width: 660px;
-      font-size: 13px;
-      color: var(--muted);
-    }
-
-    .legend-item { display: inline-flex; align-items: center; gap: 6px; }
-    .swatch { width: 13px; height: 13px; border-radius: 4px; }
-    .line { width: 28px; height: 0; border-top: 3px solid; }
-    .line.event { border-top-style: dashed; }
-
-    .shell {
-      display: grid;
-      grid-template-columns: minmax(760px, 1.7fr) minmax(360px, 0.8fr);
-      gap: 16px;
-    }
-
-    .diagram, .narration, .timeline {
-      border: 1px solid var(--border);
-      border-radius: 14px;
-      background: var(--panel);
-      box-shadow: 0 12px 32px rgba(0, 0, 0, .22);
-    }
-
-    .diagram { padding: 14px; min-height: 690px; }
-    .narration { padding: 18px; min-height: 690px; }
-
-    .stage-title {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 10px;
-    }
-
-    .stage-title strong { font-size: 16px; }
-    .stage-title span { color: var(--muted); font-size: 13px; }
-
-    svg { width: 100%; height: 630px; display: block; }
-    .layer-box { fill: rgba(26, 39, 64, .55); stroke-width: 1.5; stroke-dasharray: 7 5; rx: 12; }
-    .layer-label { font-size: 14px; font-weight: 700; }
-    .node rect { fill: #0f172a; stroke-width: 2; rx: 9; }
-    .node text { fill: #e2e8f0; text-anchor: middle; font-size: 13px; font-weight: 700; pointer-events: none; }
-    .node .sub { fill: #94a3b8; font-size: 10px; font-weight: 400; }
-    .node.business rect { stroke: var(--business); }
-    .node.firmware rect { stroke: var(--firmware); }
-    .node.driver rect { stroke: var(--driver); }
-    .node.hardware rect { stroke: var(--hardware); }
-    .node.dma rect { stroke: #fbbf24; }
-    .node.active rect { stroke-width: 4; }
-    .node.dim { opacity: .28; }
-    .node .modtag rect { stroke: none; stroke-dasharray: none; }
-    .node .modtag text { font-size: 8px; font-weight: 700; fill: #fff; text-anchor: middle; }
-    .node .modtag.app rect { fill: #2563eb; }
-    .node .modtag.svc rect { fill: #7c3aed; }
-    .node .modtag.drv rect { fill: #0d9488; }
-    .node .modtag.hw rect { fill: #ea580c; }
-    .node .modtag.dma rect { fill: #a16207; }
-    .node .modtag.dma text { fill: #fbbf24; }
-
-    .edge { fill: none; stroke-width: 3; opacity: .18; }
-    .edge.command { stroke: var(--command); marker-end: url(#arrowCommand); }
-    .edge.data { stroke: var(--data); marker-end: url(#arrowData); stroke-width: 4; }
-    .edge.event { stroke: var(--event); marker-end: url(#arrowEvent); stroke-dasharray: 8 5; }
-    .edge.error { stroke: var(--error); marker-end: url(#arrowError); stroke-dasharray: 5 4; }
-    .edge.active { opacity: 1; }
-    .edge-label { font-size: 11px; font-weight: 700; opacity: .18; }
-    .edge-label.command { fill: #93c5fd; }
-    .edge-label.data { fill: #86efac; }
-    .edge-label.event { fill: #fde047; }
-    .edge-label.error { fill: #fca5a5; }
-    .edge-label.active { opacity: 1; }
-
-    .scene-index { color: #93c5fd; font-size: 13px; font-weight: 700; }
-    .narration h2 { margin: 7px 0 8px; font-size: 23px; }
-    .summary { margin: 0 0 16px; color: #cbd5e1; line-height: 1.75; }
-
-    .flow-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
-    .flow-badge { border: 1px solid; border-radius: 999px; padding: 4px 9px; font-size: 12px; font-weight: 700; opacity: .35; }
-    .flow-badge.active { opacity: 1; }
-    .flow-badge.command { color: #93c5fd; border-color: var(--command); }
-    .flow-badge.data { color: #86efac; border-color: var(--data); }
-    .flow-badge.event { color: #fde047; border-color: var(--event); }
-    .flow-badge.error { color: #fca5a5; border-color: var(--error); }
-
-    .layer-notes { display: grid; gap: 9px; }
-    .note { border-left: 5px solid; border-radius: 8px; background: var(--panel-2); padding: 10px 12px; }
-    .note strong { display: block; margin-bottom: 4px; font-size: 13px; }
-    .note p { margin: 0; color: #cbd5e1; font-size: 13px; line-height: 1.55; }
-    .note.business { border-color: var(--business); }
-    .note.firmware { border-color: var(--firmware); }
-    .note.driver { border-color: var(--driver); }
-    .note.hardware { border-color: var(--hardware); }
-
-    .evidence, .warning {
-      margin-top: 12px;
-      padding: 11px 12px;
-      border-radius: 8px;
-      font-size: 12px;
-      line-height: 1.55;
-    }
-    .evidence { background: #1a2740; border: 1px solid #334155; color: #cbd5e1; }
-    .warning { background: #3c2f0b; border: 1px solid #a47c14; color: #fde68a; }
-    code { color: #bae6fd; overflow-wrap: anywhere; }
-
-    .timeline { margin-top: 16px; padding: 14px; }
-    .steps { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; }
-    .step {
-      min-height: 64px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: #0f172a;
-      color: var(--muted);
-      padding: 8px;
-      cursor: pointer;
-      text-align: left;
-      line-height: 1.35;
-    }
-    .step.active { border-color: #60a5fa; background: #1a2740; color: #fff; }
-    .step b { display: block; margin-bottom: 3px; color: inherit; }
-
-    .controls { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
-    .controls button {
-      min-width: 100px;
-      border: 1px solid #334155;
-      border-radius: 8px;
-      background: #1e293b;
-      color: #fff;
-      padding: 9px 14px;
-      cursor: pointer;
-    }
-    .controls button:hover { background: #2b3f5e; }
-    .controls button:disabled { cursor: not-allowed; opacity: .4; }
-    .progress { min-width: 90px; text-align: center; color: var(--muted); font-size: 13px; }
-    .speedbar {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 10px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--panel);
-      color: var(--muted);
-      font-size: 13px;
-    }
-    .speedbar input[type="range"] {
-      width: 130px;
-      accent-color: var(--business);
-      cursor: pointer;
-    }
-    .speedbar #spdv {
-      min-width: 50px;
-      color: var(--text);
-      font-weight: 700;
-    }
-
-    @media (max-width: 1120px) {
-      header { display: block; }
-      .legend { justify-content: flex-start; margin-top: 12px; }
-      .shell { grid-template-columns: 1fr; }
-      .diagram, .narration { min-height: auto; }
-      .steps { grid-template-columns: repeat(2, 1fr); }
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>红外图像处理管线：从探测器到显示之间的 ISP</title>
+<style>
+:root{
+  --bg:#f7f8fa; --panel:#ffffff; --panel2:#f1f5f9; --line:#e2e8f0;
+  --text:#1e293b; --muted:#64748b; --blue:#2563eb; --teal:#0d9488;
+  --green:#16a34a; --gold:#d97706; --orange:#ea580c; --purple:#7c3aed; --red:#dc2626;
+  --command:#2563eb; --data:#16a34a; --event:#d97706; --error:#dc2626;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif;line-height:1.8;padding:0}
+.page{max-width:880px;margin:0 auto;padding:40px 24px 60px}
+header{border-bottom:1px solid var(--line);padding-bottom:22px;margin-bottom:24px}
+h1{font-size:27px;line-height:1.35;margin-bottom:12px;color:#0f172a}
+.lead{color:var(--muted);font-size:15px;line-height:1.8}
+.lead b{color:var(--teal)}
+.learn{margin-top:14px;padding:14px 16px;background:var(--panel2);border:1px solid var(--line);border-radius:12px;font-size:13.5px}
+.learn b{color:var(--gold);display:block;margin-bottom:6px}
+.learn ol{margin-left:20px;color:var(--text)}
+.learn li{margin-bottom:4px}
+.toc{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 28px}
+.toc a{color:var(--muted);text-decoration:none;border:1px solid var(--line);padding:4px 12px;border-radius:99px;font-size:12px;background:var(--panel)}
+.toc a:hover{color:var(--teal);border-color:var(--teal)}
+section{margin-bottom:30px}
+h2{font-size:20px;margin-bottom:12px;color:var(--teal);display:flex;align-items:center;gap:10px}
+h2 .n{font-size:12px;background:linear-gradient(135deg,#0d9488,#2563eb);color:#fff;width:24px;height:24px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;flex:none}
+p{color:var(--text);margin-bottom:10px;font-size:14.5px}
+p b{color:var(--gold)}
+p code,li code,td code{background:var(--panel2);border:1px solid var(--line);padding:1px 6px;border-radius:5px;color:#0369a1;font-size:12.5px;font-family:Consolas,monospace}
+ul{color:var(--text);font-size:14px}
+.keybox{margin:12px 0;padding:12px 14px;background:#fffbeb;border-left:4px solid var(--gold);border-radius:8px;font-size:13.5px;color:#713f12}
+.keybox b{color:#b45309}
+table{width:100%;border-collapse:collapse;margin:12px 0;font-size:13.5px}
+th,td{border:1px solid var(--line);padding:8px 12px;text-align:left}
+th{background:var(--panel2);color:var(--teal)}
+td b{color:var(--green)}
+pre{background:#0b1220;border-radius:8px;padding:12px 14px;overflow-x:auto;margin:12px 0;font-size:12.5px;line-height:1.6;color:#93c5fd;font-family:Consolas,monospace}
+/* 动画组件 */
+.demo{margin:18px 0 6px;padding:16px;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.demo h3{color:var(--teal);font-size:14px;margin-bottom:8px}
+.demo h3 small{color:var(--muted);font-weight:400;font-size:12px;margin-left:6px}
+.dwrap{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.dhead{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line)}
+.dhead b{font-size:13.5px}
+.dhead span{color:var(--muted);font-size:12px}
+.dcanvas{overflow-x:auto;padding:10px;background:#fbfcfe}
+svg{display:block;width:100%;min-width:900px;height:auto}
+.detail{padding:10px 14px;display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:13px}
+.detail .lbl{color:var(--muted);font-size:11px;letter-spacing:.06em}
+.detail b{display:block;color:var(--text)}
+.detail .fact{display:inline-block;margin-top:4px;padding:1px 8px;border-radius:99px;background:#e8f5e9;color:#1b5e20;font-size:11px}
+.dnarr{padding:11px 14px;border-top:1px solid var(--line)}
+.dnarr h4{margin:0 0 4px;color:var(--teal);font-size:13.5px}
+.dnarr p{margin:0;color:var(--muted);font-size:13px}
+.dnote{margin-top:7px;padding:7px 10px;border-left:3px solid var(--gold);background:#fffbeb;color:#713f12;font-size:12.5px}
+.dcontrols{display:flex;align-items:center;gap:7px;padding:9px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
+.dcontrols button{padding:6px 13px;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--text);cursor:pointer;font-size:12.5px}
+.dcontrols button.play{width:36px;height:36px;border:0;border-radius:50%;background:var(--blue);color:#fff;font-size:15px;padding:0}
+.dcontrols .speed{display:flex;align-items:center;gap:7px;margin-left:auto;font-size:12px;color:var(--muted)}
+.dcontrols input{width:130px;accent-color:#38bdf8}
+.dcontrols .spdv{font-weight:700;color:var(--teal);min-width:42px}
+.dprogress{display:flex;gap:4px;margin-left:auto}
+.dprogress i{width:8px;height:8px;border-radius:50%;background:#cbd5e1}
+.dprogress i.on{background:var(--blue)}
+.summary{margin-top:34px;padding:16px 18px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--green);border-radius:12px}
+.summary b{color:var(--green);display:block;margin-bottom:6px;font-size:14px}
+.summary p{margin:0;color:var(--text);font-size:14px}
+@media(max-width:650px){.page{padding:22px 14px 40px}.detail{grid-template-columns:1fr}h1{font-size:23px}}
+</style>
 </head>
 <body>
-  <main class="page">
-    <header>
-      <div>
-        <h1>红外图像输入与 ISP 处理交互演示</h1>
-        <p>从业务启动到 IRSC、ISP、PIC/TEMP DMA；蓝线是命令，绿线是像素，黄线是完成事件，红线是错误。</p>
+<div class="page">
+
+<header>
+  <h1>红外图像处理管线：从探测器到显示之间的 ISP</h1>
+  <p class="lead">红外热像把探测器的响应值一路加工成可观察、可测温的结果。这条管线从原始 DN 开始，经<b>传感器同步、ISP 校正与增强、像素流 DMA、时序反馈与格式封装</b>，每一段都有明确的配置、计算与搬运边界。每一节配一个四层泳道交互动画。</p>
+  <div class="learn">
+    <b>你将掌握</b>
+    <ol>
+      <li>IRSC 同步如何把探测器原始 DN 变成有节拍的像素流</li>
+      <li>双增益校正、HL 融合与增强 / 测温分支</li>
+      <li>一级 DMA 三帧缓冲与流消费</li>
+      <li>采集时序、丢帧与完成 / 错误事件</li>
+      <li>像素格式 data type 与三个尺寸边界</li>
+    </ol>
+  </div>
+</header>
+
+<nav class="toc">
+  <a href="#s1">1. 红外输入</a>
+  <a href="#s2">2. ISP 处理</a>
+  <a href="#s3">3. 像素流输出</a>
+  <a href="#s4">4. 时序与同步</a>
+  <a href="#s5">5. 格式与配置</a>
+</nav>
+
+<!-- ============ 1 ============ -->
+<section id="s1">
+  <h2><span class="n">1</span>红外输入：探测器与 IRSC 同步</h2>
+  <p>红外链路的第一步是把探测器的响应值变成有节拍的像素流。探测器输出的原始 DN 是<b>响应值</b>，不是图像；IRSC（红外读出与序列控制）负责把 DN 转成符合后续 ISP 要求的像素节拍。</p>
+  <table>
+    <tr><th>环节</th><th>职责</th><th>产物</th></tr>
+    <tr><td>业务编排</td><td>选模式 / 分辨率 / 帧率 / 增益，下发启动预览</td><td>配置就绪标志</td></tr>
+    <tr><td>传感器输入</td><td>选 IRSC source / profile，换算时序、裁剪与门控</td><td>同步参数</td></tr>
+    <tr><td>IRSC IP</td><td>采集时序、有效区、裁剪、丢帧与输出门控</td><td>像素流</td></tr>
+  </table>
+  <div class="keybox"><b>关键区分：</b>启动预览是分阶段编排：参数加载 → 管线 / 流对象就绪 → 才使能输出。命令返回成功只说明配置路径执行完成，不等于已经产生第一帧。</div>
+  <pre>
+启动预览
+  → 参数加载
+  → IRSC source / profile 换算
+  → 驱动写寄存器
+  → 使能输出 → DN 入流</pre>
+  <div class="demo" id="d1">
+    <h3>本节演示 <small>业务启动 → IRSC 同步配置 → DN 入流</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s1t"></b><span id="s1m"></span></div>
+      <div class="dcanvas"><svg id="s1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s1a"></b><span class="fact" id="s1l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s1sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s1hw"></span></div>
       </div>
-      <div class="legend" aria-label="颜色图例">
-        <span class="legend-item"><i class="swatch" style="background:var(--business)"></i>业务/外部</span>
-        <span class="legend-item"><i class="swatch" style="background:var(--firmware)"></i>Service/Component</span>
-        <span class="legend-item"><i class="swatch" style="background:var(--driver)"></i>driver/HAL</span>
-        <span class="legend-item"><i class="swatch" style="background:var(--hardware)"></i>硬件设备/IP</span>
-        <span class="legend-item"><i class="line" style="border-color:var(--command)"></i>命令</span>
-        <span class="legend-item"><i class="line" style="border-color:var(--data)"></i>图像数据</span>
-        <span class="legend-item"><i class="line event" style="border-color:var(--event)"></i>中断事件</span>
-        <span class="legend-item"><i class="line event" style="border-color:var(--error)"></i>错误</span>
+      <div class="dnarr"><h4 id="s1d"></h4><p id="s1p"></p><div class="dnote" id="s1n"></div></div>
+      <div class="dcontrols">
+        <button id="s1prev">⟵</button><button class="play" id="s1play">▶</button><button id="s1next">⟶</button>
+        <span class="speed">速度<input type="range" id="s1spd" min="8" max="100" value="40"><span class="spdv" id="s1v">0.4x</span></span>
+        <div class="dprogress" id="s1pbar"></div>
       </div>
-    </header>
+    </div>
+  </div>
+</section>
 
-    <section class="shell">
-      <div class="diagram">
-        <div class="stage-title"><strong>四层链路</strong><span>只高亮当前步骤的有效交互</span></div>
-        <svg viewBox="0 0 980 630" role="img" aria-label="红外图像输入与 ISP 四层交互图">
-          <defs>
-            <marker id="arrowCommand" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#3b82f6"/></marker>
-            <marker id="arrowData" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#22c55e"/></marker>
-            <marker id="arrowEvent" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#eab308"/></marker>
-            <marker id="arrowError" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 Z" fill="#ef4444"/></marker>
-          </defs>
-
-          <rect class="layer-box" x="8" y="8" width="964" height="105" stroke="#2563eb"/>
-          <text class="layer-label" x="22" y="31" fill="#93c5fd">业务应用 / 外部设备</text>
-          <rect class="layer-box" x="8" y="125" width="964" height="130" stroke="#7c3aed"/>
-          <text class="layer-label" x="22" y="148" fill="#c4b5fd">固件 Service / Component</text>
-          <rect class="layer-box" x="8" y="267" width="964" height="120" stroke="#0d9488"/>
-          <text class="layer-label" x="22" y="290" fill="#67e8f9">driver / HAL</text>
-          <rect class="layer-box" x="8" y="399" width="964" height="220" stroke="#ea580c"/>
-          <text class="layer-label" x="22" y="422" fill="#fdba74">硬件设备 / IP / DMA</text>
-
-          <g id="operator" class="node business"><rect x="55" y="45" width="180" height="50"/><g class="modtag app"><rect x="118" y="37" width="54" height="15" rx="7.5"/><text x="145" y="49">SW·应用</text></g><text x="145" y="67">预览/测温业务<tspan class="sub" x="145" dy="17">启动预览 / 参数切换</tspan></text></g>
-          <g id="objects" class="node business"><rect x="740" y="45" width="180" height="50"/><g class="modtag app"><rect x="803" y="37" width="54" height="15" rx="7.5"/><text x="830" y="49">SW·应用</text></g><text x="830" y="67">PIC / TEMP<tspan class="sub" x="830" dy="17">观察图 / 测温面阵</tspan></text></g>
-
-          <g id="camera" class="node firmware"><rect x="45" y="170" width="185" height="58"/><g class="modtag svc"><rect x="110" y="162" width="54" height="15" rx="7.5"/><text x="137" y="174">SW·服务</text></g><text x="137" y="194">相机流配置<tspan class="sub" x="137" dy="18">业务编排与参数加载</tspan></text></g>
-          <g id="sensor" class="node firmware"><rect x="282" y="170" width="180" height="58"/><g class="modtag svc"><rect x="345" y="162" width="54" height="15" rx="7.5"/><text x="372" y="174">SW·服务</text></g><text x="372" y="194">传感器输入<tspan class="sub" x="372" dy="18">IRSC source/profile</tspan></text></g>
-          <g id="pipeline" class="node firmware"><rect x="518" y="170" width="190" height="58"/><g class="modtag svc"><rect x="586" y="162" width="54" height="15" rx="7.5"/><text x="613" y="174">SW·服务</text></g><text x="613" y="194">ISP Pipeline/Node<tspan class="sub" x="613" dy="18">58 个生成节点实例</tspan></text></g>
-          <g id="video" class="node firmware"><rect x="756" y="170" width="180" height="58"/><g class="modtag svc"><rect x="819" y="162" width="54" height="15" rx="7.5"/><text x="846" y="174">SW·服务</text></g><text x="846" y="194">视频流<tspan class="sub" x="846" dy="18">PIC/TEMP 一级缓冲</tspan></text></g>
-
-          <g id="irscdrv" class="node driver"><rect x="270" y="308" width="195" height="50"/><g class="modtag drv"><rect x="340" y="300" width="54" height="15" rx="7.5"/><text x="367" y="312">SW·驱动</text></g><text x="367" y="330">IRSC 驱动 / HAL<tspan class="sub" x="367" dy="16">控制命令→寄存器</tspan></text></g>
-          <g id="ispdrv" class="node driver"><rect x="514" y="308" width="210" height="50"/><g class="modtag drv"><rect x="592" y="300" width="54" height="15" rx="7.5"/><text x="619" y="312">SW·驱动</text></g><text x="619" y="330">ISP 驱动 / HAL<tspan class="sub" x="619" dy="16">节点配置 / ISR</tspan></text></g>
-          <g id="event" class="node driver"><rect x="760" y="308" width="180" height="50"/><g class="modtag drv"><rect x="823" y="300" width="54" height="15" rx="7.5"/><text x="850" y="312">SW·驱动</text></g><text x="850" y="330">设备事件<tspan class="sub" x="850" dy="16">保存 DONE / ERR mask</tspan></text></g>
-
-          <g id="detector" class="node hardware"><rect x="45" y="464" width="150" height="58"/><g class="modtag hw"><rect x="93" y="456" width="54" height="15" rx="7.5"/><text x="120" y="468">HW·硬件</text></g><text x="120" y="488">红外探测器<tspan class="sub" x="120" dy="18">原始 DN</tspan></text></g>
-          <g id="irsc" class="node hardware"><rect x="240" y="464" width="150" height="58"/><g class="modtag hw"><rect x="288" y="456" width="54" height="15" rx="7.5"/><text x="315" y="468">HW·硬件</text></g><text x="315" y="488">IRSC IP<tspan class="sub" x="315" dy="18">时序/裁剪/输出</tspan></text></g>
-          <g id="gain" class="node hardware"><rect x="432" y="443" width="175" height="58"/><g class="modtag hw"><rect x="492" y="435" width="54" height="15" rx="7.5"/><text x="519" y="447">HW·硬件</text></g><text x="519" y="472">双增益前段<tspan class="sub" x="519" dy="18">低/高增益前段 → HL 融合</tspan></text></g>
-          <g id="tpd" class="node hardware"><rect x="650" y="443" width="180" height="58"/><g class="modtag hw"><rect x="713" y="435" width="54" height="15" rx="7.5"/><text x="740" y="447">HW·硬件</text></g><text x="740" y="472">ISP 后段 / TPD<tspan class="sub" x="740" dy="18">图像增强→PIC / TPD→TEMP</tspan></text></g>
-          <g id="dma" class="node hardware dma"><rect x="432" y="560" width="398" height="45"/><g class="modtag dma"><rect x="601" y="552" width="61" height="15" rx="7.5"/><text x="631" y="564">HW·DMA</text></g><text x="631" y="579">ISP Stream S0–S3 DMA<tspan class="sub" x="631" dy="16">S0–S3 写 DDR 三帧缓冲</tspan></text></g>
-
-          <path id="e-op-camera" class="edge command" d="M145 95 V133 H137 V170"/>
-          <path id="e-camera-sensor" class="edge command" d="M230 188 H282"/>
-          <path id="e-camera-pipeline" class="edge command" d="M230 207 H518"/>
-          <path id="e-camera-video" class="edge command" d="M230 220 H756"/>
-          <path id="e-sensor-irscdrv" class="edge command" d="M372 228 V308"/>
-          <path id="e-pipeline-ispdrv" class="edge command" d="M613 228 V308"/>
-          <path id="e-irscdrv-irsc" class="edge command" d="M347 358 L315 464"/>
-          <path id="e-ispdrv-gain" class="edge command" d="M585 358 L540 443"/>
-          <path id="e-ispdrv-tpd" class="edge command" d="M665 358 L720 443"/>
-          <path id="e-detector-irsc" class="edge data" d="M195 493 H240"/>
-          <path id="e-irsc-gain" class="edge data" d="M390 493 H432"/>
-          <path id="e-gain-tpd" class="edge data" d="M607 472 H650"/>
-          <path id="e-tpd-dma" class="edge data" d="M740 501 L700 560"/>
-          <path id="e-dma-video" class="edge data" d="M810 582 C920 580 920 245 846 228"/>
-          <path id="e-video-objects" class="edge data" d="M846 170 V95"/>
-          <path id="e-dma-ispdrv" class="edge event" d="M570 560 L619 358"/>
-          <path id="e-ispdrv-event" class="edge event" d="M724 333 H760"/>
-          <path id="e-dma-error" class="edge error" d="M790 560 L850 358"/>
-
-          <text id="l-op-camera" class="edge-label command" x="156" y="132">启动预览</text>
-          <text id="l-irsc-config" class="edge-label command" x="278" y="409">profile / timing</text>
-          <text id="l-dn" class="edge-label data" x="205" y="480">DN</text>
-          <text id="l-pixel" class="edge-label data" x="397" y="480">像素流</text>
-          <text id="l-pictemp" class="edge-label data" x="672" y="568">PIC/TEMP 帧</text>
-          <text id="l-done" class="edge-label event" x="625" y="430">WR DONE</text>
-          <text id="l-error" class="edge-label error" x="807" y="445">ERR/FIFO</text>
-        </svg>
+<!-- ============ 2 ============ -->
+<section id="s2">
+  <h2><span class="n">2</span>ISP 处理：校正、增强与测温分支</h2>
+  <p>ISP 管线由<b>静态装配的节点</b>组成，分前段与后段：前段做双增益校正并经 HL 融合，后段做图像增强；测温走独立的 TPD 链，最终在同一份硬件链上形成观察图与测温面阵两套语义。</p>
+  <table>
+    <tr><th>支路</th><th>职责</th><th>产物</th></tr>
+    <tr><td>双增益前段</td><td>低 / 高增益校正 → HL 融合</td><td>融合后像素</td></tr>
+    <tr><td>图像增强后段</td><td>SNR / AGC / DDEP / EE / BC / GAMMA / MIRROR</td><td>观察图</td></tr>
+    <tr><td>TPD 测温链</td><td>TPD_CORRECT → TPD_TNR → TPD_SNR → MIRROR_TPD</td><td>测温面阵</td></tr>
+  </table>
+  <div class="keybox"><b>语义边界：</b>DN 是探测器响应值，不等于灰度、RGB 或摄氏温度；Y16 只是 16-bit 单分量容器，不能仅凭格式断言其中已经是温度。</div>
+  <div class="demo" id="d2">
+    <h3>本节演示 <small>管线装配 → 双增益校正 → 增强 / 测温分支</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s2t"></b><span id="s2m"></span></div>
+      <div class="dcanvas"><svg id="s2g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s2a"></b><span class="fact" id="s2l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s2sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s2hw"></span></div>
       </div>
-
-      <aside class="narration">
-        <div id="sceneIndex" class="scene-index"></div>
-        <h2 id="sceneTitle"></h2>
-        <p id="sceneSummary" class="summary"></p>
-        <div class="flow-badges">
-          <span id="badge-command" class="flow-badge command">命令流</span>
-          <span id="badge-data" class="flow-badge data">图像数据流</span>
-          <span id="badge-event" class="flow-badge event">中断事件流</span>
-          <span id="badge-error" class="flow-badge error">错误流</span>
-        </div>
-        <div class="layer-notes">
-          <div class="note business"><strong>业务应用 / 外部</strong><p id="noteBusiness"></p></div>
-          <div class="note firmware"><strong>Service / Component</strong><p id="noteFirmware"></p></div>
-          <div class="note driver"><strong>driver / HAL</strong><p id="noteDriver"></p></div>
-          <div class="note hardware"><strong>硬件 IP / 寄存器</strong><p id="noteHardware"></p></div>
-        </div>
-        <div id="evidence" class="evidence"></div>
-        <div id="warning" class="warning"></div>
-      </aside>
-    </section>
-
-    <section class="timeline">
-      <div id="steps" class="steps"></div>
-      <div class="controls">
-        <button id="prevBtn" type="button">上一步</button>
-        <button id="playBtn" type="button">播放</button>
-        <button id="nextBtn" type="button">下一步</button>
-        <span id="progress" class="progress"></span>
-        <div class="speedbar">
-          <span>自动播放速度</span>
-          <input type="range" id="spd" min="5" max="100" value="100">
-          <span id="spdv">1.00x</span>
-        </div>
+      <div class="dnarr"><h4 id="s2d"></h4><p id="s2p"></p><div class="dnote" id="s2n"></div></div>
+      <div class="dcontrols">
+        <button id="s2prev">⟵</button><button class="play" id="s2play">▶</button><button id="s2next">⟶</button>
+        <span class="speed">速度<input type="range" id="s2spd" min="8" max="100" value="40"><span class="spdv" id="s2v">0.4x</span></span>
+        <div class="dprogress" id="s2pbar"></div>
       </div>
-    </section>
-  </main>
+    </div>
+  </div>
+</section>
 
-  <script>
-    "use strict";
+<!-- ============ 3 ============ -->
+<section id="s3">
+  <h2><span class="n">3</span>像素流输出：一级 DMA 与流消费</h2>
+  <p>ISP 后段的结果由 Stream DMA 写入<b>一级三帧缓冲</b>，Video 按用途建模为 PIC / TEMP 流，最终封装到物理接口：UVC 经 USB endpoint 输出，红外 / 测温数据可走 MIPI CSI-2，同一物理链路用 VC 与 data type 区分。</p>
+  <table>
+    <tr><th>层级</th><th>职责</th></tr>
+    <tr><td>一级 DMA</td><td>S0–S3 按 length + 三帧地址循环写帧</td></tr>
+    <tr><td>视频流</td><td>消费缓冲，建模 PIC / TEMP 语义</td></tr>
+    <tr><td>输出封装</td><td>UVC payload / CSI-2 packet</td></tr>
+  </table>
+  <div class="keybox"><b>坑：</b>length 必须与所在层分辨率、格式、信息行一致，不能照搬最终输出长度；最终 payload 长度不是一级 DMA 长度。</div>
+  <pre>
+后段结果 → Stream DMA → 三帧缓冲 → 视频流消费
+  → PIC / TEMP 语义
+  → 封装：UVC endpoint / CSI-2 VC + data type</pre>
+  <div class="demo" id="d3">
+    <h3>本节演示 <small>一级 DMA 写入 → 流消费 → 输出方向</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s3t"></b><span id="s3m"></span></div>
+      <div class="dcanvas"><svg id="s3g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s3a"></b><span class="fact" id="s3l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s3sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s3hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s3d"></h4><p id="s3p"></p><div class="dnote" id="s3n"></div></div>
+      <div class="dcontrols">
+        <button id="s3prev">⟵</button><button class="play" id="s3play">▶</button><button id="s3next">⟶</button>
+        <span class="speed">速度<input type="range" id="s3spd" min="8" max="100" value="40"><span class="spdv" id="s3v">0.4x</span></span>
+        <div class="dprogress" id="s3pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
 
-    const scenes = [
-      {
-        short: "业务启动", title: "业务发起预览：先配置，再允许出图",
-        summary: "启动预览是带顺序的业务编排，不是寄存器开关：参数、ISP Pipeline、PIC/TEMP 就绪后，才使能 KBC 与 IRSC 输出。",
-        flows: ["command"], nodes: ["operator", "camera", "sensor", "pipeline", "video"],
-        edges: ["e-op-camera", "e-camera-sensor", "e-camera-pipeline", "e-camera-video"], labels: ["l-op-camera"],
-        business: "业务选定模式/分辨率/帧率/增益/温区，下发启动预览命令；此刻无像素输出。",
-        firmware: "相机流配置服务加载参数，初始化 ISP Pipeline 与 PIC；非仅 PIC 模式还初始化 TEMP。",
-        driver: "本步只建配置对象；驱动写寄存器在后续 init/start。",
-        hardware: "IRSC 与 KBC 输出受控，防止下游未就绪时提前送帧。",
-        evidence: "要点：启动是分阶段编排：参数加载 → 管线/流对象就绪 → 才使能输出；任一阶段失败都不应进入出图状态。",
-        warning: "注意：命令返回成功只说明配置路径执行完成，不等于已经产生第一帧。"
-      },
-      {
-        short: "IRSC 配置", title: "传感器输入将业务参数翻译成 IRSC 时序",
-        summary: "红外入口用 IRSC 输入源：Service/Component 管 source/profile，driver/HAL 把时序、裁剪与输出控制写入 IRSC IP。",
-        flows: ["command"], nodes: ["camera", "sensor", "irscdrv", "irsc"],
-        edges: ["e-camera-sensor", "e-sensor-irscdrv", "e-irscdrv-irsc"], labels: ["l-irsc-config"],
-        business: "业务层给 sensor profile、输出尺寸与节拍约束，不直接算寄存器位。",
-        firmware: "传感器输入服务选 IRSC source；IRSC 组件按参数算时序、DMA 长度与 DelayChain。",
-        driver: "IRSC 驱动接收控制命令，HAL 完成寄存器级读写。",
-        hardware: "IRSC IP 负责采集时序、有效区、裁剪、丢帧与输出门控。",
-        evidence: "要点：业务给 profile/尺寸/节拍，服务层换算时序与门控，驱动层做寄存器读写；三层各管一段，业务不直接碰寄存器。",
-        warning: "注意：IRSC 输出尺寸、ISP 输入尺寸和最终视频输出尺寸属于三个不同边界。"
-      },
-      {
-        short: "DN 入流", title: "探测器 DN 进入 IRSC，再流向 ISP",
-        summary: "配置后像素由硬件持续流动，CPU 不逐像素搬运：探测器出 DN，IRSC 采集有效像素送入 ISP。",
-        flows: ["data"], nodes: ["detector", "irsc", "gain"],
-        edges: ["e-detector-irsc", "e-irsc-gain"], labels: ["l-dn", "l-pixel"],
-        business: "上层只等可用帧或状态事件，不参与帧内像素搬运。",
-        firmware: "已初始化的传感器输入服务与 ISP Pipeline 保持运行，软件仅在参数切换或异常时介入。",
-        driver: "驱动维护硬件状态与中断，不把整帧 DN 复制到节点之间。",
-        hardware: "探测器产生 DN；IRSC 按配置提取有效区，经硬件通路送入 ISP 前段。",
-        evidence: "要点：配置完成后像素在硬件链路持续流动；软件只在参数切换或异常时介入，CPU 不逐像素搬运整帧。",
-        warning: "注意：DN 是探测器响应值，不等于灰度、RGB 或摄氏温度。"
-      },
-      {
-        short: "ISP 处理", title: "双增益校正、HL 融合与图像增强",
-        summary: "ISP Pipeline 由 58 个生成节点组成：低/高增益前段经 HL 融合，再进入 SNR、AGC、DDEP、EE、BC、GAMMA、MIRROR 后段。",
-        flows: ["command", "data"], nodes: ["pipeline", "ispdrv", "gain", "tpd"],
-        edges: ["e-pipeline-ispdrv", "e-ispdrv-gain", "e-ispdrv-tpd", "e-gain-tpd"], labels: ["l-pixel"],
-        business: "业务参数决定场景、增益与算法参数集，不动态发明新硬件节点。",
-        firmware: "Pipeline Manager 用生成资源建静态节点；node 各自管理参数、DMA 与 driver 命令。",
-        driver: "ISP 控制命令经 ISP 驱动和 HAL 转成硬件配置。",
-        hardware: "KBC/BPVHBC/RMVC/TNR/HBCDPC/VBC 前段进 HL，再进图像增强后段。",
-        evidence: "要点：ISP 管线分前段（增益校正、HL 融合）与后段（SNR/AGC/DDEP/EE/BC/GAMMA/MIRROR），节点按配置静态装配，算法参数集由业务决定。",
-        warning: "注意：双增益兼顾灵敏度与动态范围，具体阈值以项目参数为准。"
-      },
-      {
-        short: "PIC/TEMP", title: "同一 ISP 后段形成观察图与测温数据语义",
-        summary: "图像支路→PIC 候选；TPD 支路按 TECLESS_TPD→DCL→TPD→TPD_CORRECT→TPD_TNR→TPD_SNR→MIRROR_TPD 顺序→TEMP 候选。",
-        flows: ["data"], nodes: ["gain", "tpd", "dma", "objects"],
-        edges: ["e-gain-tpd", "e-tpd-dma", "e-dma-video", "e-video-objects"], labels: ["l-pictemp"],
-        business: "PIC 服务观察/显示，TEMP 服务测温面阵；两者可同时运行，也可被业务模式裁剪。",
-        firmware: "ISP midout 决定一级 DMA 取哪一处理阶段；Video 将结果建模为 PIC/TEMP stream。",
-        driver: "ISP Stream 驱动为 S0–S3 配置源、尺寸、格式、三帧地址和中断。",
-        hardware: "TPD 是 ISP 硬件链；Stream DMA 把选定 midout 写入 Video 域缓冲。",
-        evidence: "要点：同一 ISP 后段可按用途分叉——图像支路形成观察图语义，测温支路按 TPD 链处理成测温面阵语义；两者可并行也可裁剪。",
-        warning: "注意：Y16 只是 16-bit 单分量容器，不能仅凭格式断言其中已经是摄氏温度。"
-      },
-      {
-        short: "三帧 DMA", title: "ISP Stream S0–S3 写入一级三帧缓冲",
-        summary: "每路一级 DMA 配置为 length + address0/1/2，硬件循环写帧、Video stream 消费缓冲；本步跨越 ISP 域与 Video 域。",
-        flows: ["command", "data"], nodes: ["pipeline", "ispdrv", "tpd", "dma", "video", "objects"],
-        edges: ["e-pipeline-ispdrv", "e-ispdrv-tpd", "e-tpd-dma", "e-dma-video", "e-video-objects"], labels: ["l-pictemp"],
-        business: "业务看到的是帧语义和输出节拍，不直接操作三组物理地址。",
-        firmware: "stream 配置区分一级流 DMA 缓冲和后续二级流输出 DMA 缓冲。",
-        driver: "ISP 流驱动配置 stream source、DMA 长度、地址与使能位。",
-        hardware: "S0–S3 DMA 按帧写 address0/1/2；写完一帧产生 WR DONE，长度或吞吐异常产生 ERR/FIFO OVERFLOW。",
-        evidence: "要点：一级 DMA 配置 length 与三帧地址，硬件循环写、软件按帧消费；长度必须与该层分辨率、格式、信息行一致，不能照搬最终输出长度。",
-        warning: "注意：length 须与所在层分辨率/格式/信息行一致，不能照搬最终 UVC payload 长度。"
-      },
-      {
-        short: "中断反馈", title: "硬件完成/错误经 ISR 写入设备事件",
-        summary: "ISP connection ISR 清 S0–S3 标志并映射为设备中断 mask，Video 接收回调记日志并写入设备事件对象；事件不承载像素。",
-        flows: ["event", "error"], nodes: ["dma", "ispdrv", "event"],
-        edges: ["e-dma-ispdrv", "e-ispdrv-event", "e-dma-error"], labels: ["l-done", "l-error"],
-        business: "上层不能假设硬件事件自动变成 frame-ready/error callback，须经明确等待、查询或专用流程判断。",
-        firmware: "接收回调只记日志并发送设备事件，不直接驱动状态机，也不写流错误记录。",
-        driver: "ISR 读/清 WR DONE、ERR、FIFO OVERFLOW，把硬件标志映射为流中断掩码。",
-        hardware: "ISP 写帧完成或异常时置中断标志；像素仍走 DMA 通路，不经事件复制。",
-        evidence: "要点：中断/回调只表达完成或错误状态，不携带像素；上层须用明确的等待、查询或流程判断帧就绪，不能假设事件自动驱动状态机。",
-        warning: "事实边界：只有状态变更回调有明确触发点；不要补画不存在的错误/缓冲溢出回调。"
-      }
-    ];
+<!-- ============ 4 ============ -->
+<section id="s4">
+  <h2><span class="n">4</span>时序与同步：节拍与事件反馈</h2>
+  <p>红外链路的节拍由同步控制器约束；DMA 的完成与错误经中断反馈。事件只表达状态，<b>不携带像素，也不自动驱动状态机</b>——帧就绪要靠上层明确的等待、查询或专用流程判断。</p>
+  <table>
+    <tr><th>事件</th><th>含义</th><th>软件动作</th></tr>
+    <tr><td>WR DONE</td><td>一帧写完</td><td>ISR 清标志，映射中断掩码</td></tr>
+    <tr><td>ERR / FIFO OVERFLOW</td><td>长度或吞吐异常</td><td>记录错误状态</td></tr>
+    <tr><td>帧就绪</td><td>状态变更回调</td><td>等待 / 查询 / 专用流程</td></tr>
+  </table>
+  <div class="keybox"><b>事实边界：</b>中断 / 回调只表达完成或错误状态；只有状态变更回调有明确触发点，不要补画不存在的错误回调。</div>
+  <div class="demo" id="d4">
+    <h3>本节演示 <small>采集节拍 → 完成 / 错误事件</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s4t"></b><span id="s4m"></span></div>
+      <div class="dcanvas"><svg id="s4g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s4a"></b><span class="fact" id="s4l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s4sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s4hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s4d"></h4><p id="s4p"></p><div class="dnote" id="s4n"></div></div>
+      <div class="dcontrols">
+        <button id="s4prev">⟵</button><button class="play" id="s4play">▶</button><button id="s4next">⟶</button>
+        <span class="speed">速度<input type="range" id="s4spd" min="8" max="100" value="40"><span class="spdv" id="s4v">0.4x</span></span>
+        <div class="dprogress" id="s4pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
 
-    let current = 0;
-    let timer = null;
-    const ORIGINAL_INTERVAL = 5200;
-    let SPEED = 1;
+<!-- ============ 5 ============ -->
+<section id="s5">
+  <h2><span class="n">5</span>格式与配置：data type 与尺寸边界</h2>
+  <p>像素格式是数据的<b>解释契约</b>：Y16 单分量、NV12 半平面、RGB 三分量。同时有三个尺寸边界必须逐一核对：IRSC 输出、ISP 输入与最终输出，各算各的长度。</p>
+  <table>
+    <tr><th>边界</th><th>决定因素</th></tr>
+    <tr><td>IRSC 输出尺寸</td><td>时序与裁剪配置</td></tr>
+    <tr><td>ISP 输入尺寸</td><td>管线输入分辨率</td></tr>
+    <tr><td>最终输出尺寸</td><td>封装类型与接收端解释</td></tr>
+  </table>
+  <div class="keybox"><b>注意：</b>分辨率、格式、信息行共同决定每个 DMA 的 length；不能用一个最终长度反推所有层的 length。</div>
+  <pre>
+length = 分辨率 × 分量数 × 位宽 × 信息行
+三个边界分别核对，不能互相反推</pre>
+  <div class="demo" id="d5">
+    <h3>本节演示 <small>格式语义 → 尺寸边界</small></h3>
+    <div class="dwrap">
+      <div class="dhead"><b id="s5t"></b><span id="s5m"></span></div>
+      <div class="dcanvas"><svg id="s5g" viewBox="0 0 1320 650"></svg></div>
+      <div class="detail">
+        <div><div class="lbl">动作</div><b id="s5a"></b><span class="fact" id="s5l"></span></div>
+        <div><div class="lbl">软件责任</div><span id="s5sw"></span></div>
+        <div><div class="lbl">硬件 / 内存结果</div><span id="s5hw"></span></div>
+      </div>
+      <div class="dnarr"><h4 id="s5d"></h4><p id="s5p"></p><div class="dnote" id="s5n"></div></div>
+      <div class="dcontrols">
+        <button id="s5prev">⟵</button><button class="play" id="s5play">▶</button><button id="s5next">⟶</button>
+        <span class="speed">速度<input type="range" id="s5spd" min="8" max="100" value="40"><span class="spdv" id="s5v">0.4x</span></span>
+        <div class="dprogress" id="s5pbar"></div>
+      </div>
+    </div>
+  </div>
+</section>
 
-    const nodeIds = ["operator", "objects", "camera", "sensor", "pipeline", "video", "irscdrv", "ispdrv", "event", "detector", "irsc", "gain", "tpd", "dma"];
-    const edgeIds = ["e-op-camera", "e-camera-sensor", "e-camera-pipeline", "e-camera-video", "e-sensor-irscdrv", "e-pipeline-ispdrv", "e-irscdrv-irsc", "e-ispdrv-gain", "e-ispdrv-tpd", "e-detector-irsc", "e-irsc-gain", "e-gain-tpd", "e-tpd-dma", "e-dma-video", "e-video-objects", "e-dma-ispdrv", "e-ispdrv-event", "e-dma-error"];
-    const labelIds = ["l-op-camera", "l-irsc-config", "l-dn", "l-pixel", "l-pictemp", "l-done", "l-error"];
+<div class="summary"><b>一句话总结</b><p>红外图像处理链路从探测器原始 DN 出发，经 IRSC 同步、双增益校正与后段增强 / 测温分支，由一级 DMA 三帧缓冲交给视频流消费，再按 data type 与尺寸边界封装输出——配置、计算与搬运每一段都有清晰的分层边界。</p></div>
 
-    function setText(id, value) { document.getElementById(id).innerHTML = value; }
+</div>
 
-    function render() {
-      const scene = scenes[current];
-      setText("sceneIndex", `场景 ${current + 1} / ${scenes.length}`);
-      setText("sceneTitle", scene.title);
-      setText("sceneSummary", scene.summary);
-      setText("noteBusiness", scene.business);
-      setText("noteFirmware", scene.firmware);
-      setText("noteDriver", scene.driver);
-      setText("noteHardware", scene.hardware);
-      setText("evidence", scene.evidence);
-      setText("warning", scene.warning);
-      setText("progress", `${current + 1} / ${scenes.length}`);
-
-      nodeIds.forEach((id) => {
-        const node = document.getElementById(id);
-        node.classList.toggle("active", scene.nodes.includes(id));
-        node.classList.toggle("dim", !scene.nodes.includes(id));
-      });
-      edgeIds.forEach((id) => document.getElementById(id).classList.toggle("active", scene.edges.includes(id)));
-      labelIds.forEach((id) => document.getElementById(id).classList.toggle("active", scene.labels.includes(id)));
-      ["command", "data", "event", "error"].forEach((flow) => document.getElementById(`badge-${flow}`).classList.toggle("active", scene.flows.includes(flow)));
-      document.querySelectorAll(".step").forEach((step, index) => step.classList.toggle("active", index === current));
-      document.getElementById("prevBtn").disabled = current === 0;
-      document.getElementById("nextBtn").disabled = current === scenes.length - 1;
-    }
-
-    function stop() {
-      if (timer !== null) {
-        window.clearInterval(timer);
-        timer = null;
-      }
-      document.getElementById("playBtn").textContent = "播放";
-    }
-
-    function go(index) {
-      current = Math.max(0, Math.min(index, scenes.length - 1));
-      render();
-    }
-
-    function tick() {
-      if (current === scenes.length - 1) {
-        stop();
-      } else {
-        current += 1;
-        render();
-      }
-    }
-
-    function togglePlay() {
-      if (timer !== null) {
-        stop();
-        return;
-      }
-      if (current === scenes.length - 1) current = 0;
-      document.getElementById("playBtn").textContent = "暂停";
-      render();
-      timer = window.setInterval(tick, Math.round(ORIGINAL_INTERVAL / SPEED));
-    }
-
-    const steps = document.getElementById("steps");
-    scenes.forEach((scene, index) => {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "step";
-      button.innerHTML = `<b>${index + 1}. ${scene.short}</b>${scene.title}`;
-      button.addEventListener("click", () => { stop(); go(index); });
-      steps.appendChild(button);
-    });
-
-    document.getElementById("prevBtn").addEventListener("click", () => { stop(); go(current - 1); });
-    document.getElementById("nextBtn").addEventListener("click", () => { stop(); go(current + 1); });
-    document.getElementById("playBtn").addEventListener("click", togglePlay);
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "ArrowLeft") { stop(); go(current - 1); }
-      if (event.key === "ArrowRight") { stop(); go(current + 1); }
-      if (event.key === " ") { event.preventDefault(); togglePlay(); }
-    });
-
-    const spd = document.getElementById("spd");
-    const spdv = document.getElementById("spdv");
-    spd.addEventListener("input", () => {
-      SPEED = spd.value / 100;
-      spdv.textContent = SPEED.toFixed(2) + "x";
-      if (timer !== null) {
-        window.clearInterval(timer);
-        timer = window.setInterval(tick, Math.round(ORIGINAL_INTERVAL / SPEED));
-      }
-    });
-
-    render();
-  </script>
+<script>
+"use strict";
+const lanes={external:{title:'业务应用 / 外部',sub:'启动预览、参数、PIC/TEMP 对象',x:20,w:285},app:{title:'固件服务',sub:'流配置、管线节点、视频流',x:330,w:300},driver:{title:'Driver / HAL',sub:'寄存器、节点配置、ISR',x:655,w:300},hardware:{title:'硬件 IP / DMA',sub:'探测器、IRSC、ISP、封装',x:980,w:320}};
+const nodes={
+  business:['业务应用','预览 / 测温业务','external'],
+  objects:['PIC/TEMP 对象','观察图 / 测温面阵','external'],
+  camera:['相机流配置','业务编排与参数加载','app'],
+  sensor:['传感器输入','IRSC source / profile','app'],
+  pipeline:['ISP 管线','校正 / 增强 / 测温节点','app'],
+  video:['视频流','一级缓冲消费','app'],
+  irscdrv:['IRSC 驱动 / HAL','控制命令→寄存器','driver'],
+  ispdrv:['ISP 驱动 / HAL','节点配置 / ISR','driver'],
+  event:['设备事件','DONE / ERR mask','driver'],
+  detector:['红外探测器','原始 DN','hardware'],
+  irsc:['IRSC IP','同步 / 裁剪 / 门控','hardware'],
+  gain:['双增益前段','低 / 高增益→HL 融合','hardware'],
+  tpd:['ISP 后段 / TPD','增强→PIC / TPD→TEMP','hardware'],
+  dma:['ISP Stream DMA','S0–S3 三帧缓冲','hardware'],
+  sync:['同步控制器','帧有效 / 节拍 / 丢帧','hardware'],
+  fmt:['输出封装','UVC / MIPI CSI','hardware']
+};
+const laneOrder=['external','app','driver','hardware'];
+function layout(item){const group={external:[],app:[],driver:[],hardware:[]},out={};item.nodes.forEach(id=>group[nodes[id][2]].push(id));laneOrder.forEach(k=>{const lane=lanes[k],arr=group[k],gap=480/Math.max(arr.length,1);arr.forEach((id,i)=>out[id]={x:lane.x+lane.w/2,y:105+gap*(i+.5)});});return out}
+function geom(a,b,pos){const p=pos[a],q=pos[b],same=nodes[a][2]===nodes[b][2];if(same){const d=q.y>=p.y?1:-1;return{d:`M${p.x+90} ${p.y+25*d} C${p.x+145} ${p.y+55*d},${q.x+145} ${q.y-55*d},${q.x+90} ${q.y-25*d}`,x:p.x+142,y:(p.y+q.y)/2}}const d=q.x>p.x?1:-1;return{d:`M${p.x+90*d} ${p.y} C${p.x+155*d} ${p.y},${q.x-155*d} ${q.y},${q.x-90*d} ${q.y}`,x:(p.x+q.x)/2,y:(p.y+q.y)/2}}
+function draw(svgEl,item){const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="m${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';laneOrder.forEach(k=>{const l=lanes[k];s+=`<rect x="${l.x}" y="20" width="${l.w}" height="610" rx="13" style="stroke:#cbd5e1;stroke-dasharray:5 5;fill:#eef2f7"/><text x="${l.x+15}" y="46" style="fill:#334155;font-size:13px;font-weight:800">${l.title}</text><text x="${l.x+15}" y="63" style="fill:#64748b;font-size:9px">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path d="${g.d}" marker-end="url(#m${k})" style="fill:none;stroke-width:3;stroke:var(--${k})"/><rect x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10" style="fill:#fff;stroke:var(--${k})"/><text x="${g.x}" y="${g.y+1}" text-anchor="middle" style="fill:#334155;font-size:8.5px;font-weight:700">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],style=n[3]||n[2],role=n[3]==='memory'?'内存区':{external:'SW·应用',app:'SW·模块',driver:'SW·驱动',hardware:'HW·硬件'}[n[2]],tw=role.length*7+12;s+=`<g><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9" style="fill:#ffffff;stroke-width:2;stroke:${style==='memory'?'#d97706':'#94a3b8'}"/><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5" style="fill:${style==='memory'?'#d97706':'#64748b'}"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle" style="fill:#fff;font-size:8.5px;font-weight:700">${role}</text><text x="${p.x}" y="${p.y-5}" text-anchor="middle" style="fill:#0f172a;font-size:11px;font-weight:800">${n[0]}</text><text x="${p.x}" y="${p.y+13}" text-anchor="middle" style="fill:#475569;font-size:8.5px">${n[1]}</text></g>`});svgEl.innerHTML=s}
+function makePlayer(p,steps){
+  const $=id=>document.getElementById(p+id);
+  let idx=0,timer=null,SPEED=0.4;
+  const spdEl=$('spd'),spdVal=$('v');
+  spdEl.addEventListener('input',function(){SPEED=spdEl.value/100;spdVal.textContent=SPEED.toFixed(2)+'x';if(timer){stop();$('play').click();}});
+  function render(){const x=steps[idx];$('t').textContent=x.title;$('m').textContent=`步骤 ${idx+1} / ${steps.length}`;$('a').textContent=x.action;$('l').textContent=x.level;$('sw').textContent=x.software;$('hw').textContent=x.hardware;$('d').textContent=x.title;$('p').textContent=x.description;$('n').textContent=x.note;$('pbar').innerHTML=steps.map((_,i)=>`<i class="${i===idx?'on':''}"></i>`).join('');draw($('g'),x)}
+  function next(){idx=(idx+1)%steps.length;render()}
+  function prev(){idx=(idx-1+steps.length)%steps.length;render()}
+  function stop(){if(timer){clearInterval(timer);timer=null}$('play').textContent='▶'}
+  $('prev').onclick=function(){stop();prev()};$('next').onclick=function(){stop();next()};$('play').onclick=function(){if(timer){stop()}else{timer=setInterval(next,Math.round(3200/SPEED));$('play').textContent='Ⅱ'}};
+  render();
+}
+const S1=[
+ {title:'业务启动',action:'启动预览：先配置，再允许出图',level:'机制说明',software:'业务按模式/分辨率/帧率/增益下发启动预览；此刻无像素输出。',hardware:'IRSC 与输出门控受控，防止下游未就绪时提前送帧。',description:'启动是分阶段编排：参数加载→管线/流对象就绪→才使能输出。',note:'命令返回成功只说明配置路径执行完成，不等于已产生第一帧。',nodes:['business','camera','sensor'],edges:[['business','camera','command','启动预览'],['camera','sensor','command','加载参数']]},
+ {title:'IRSC 同步配置',action:'业务参数被翻译成 IRSC 时序',level:'机制说明',software:'服务层选 IRSC source/profile，换算时序、裁剪与输出门控。',hardware:'IRSC IP 负责采集时序、有效区、裁剪、丢帧与输出门控。',description:'业务给 profile/尺寸/节拍；驱动做寄存器级读写，三层各管一段。',note:'IRSC 输出尺寸、ISP 输入尺寸与最终视频输出尺寸是三个不同边界。',nodes:['camera','sensor','irscdrv','irsc'],edges:[['camera','sensor','command','选 source'],['sensor','irscdrv','command','时序/裁剪'],['irscdrv','irsc','command','寄存器']]},
+ {title:'DN 入流',action:'探测器 DN 进入 IRSC，形成像素流',level:'机制说明',software:'配置完成后软件仅在参数切换或异常时介入，不逐像素搬运整帧。',hardware:'探测器产生 DN；IRSC 提取有效区送入 ISP 前段。',description:'像素由硬件持续流动，CPU 不逐像素搬运整帧。',note:'DN 是探测器响应值，不等于灰度、RGB 或摄氏温度。',nodes:['detector','irsc','gain'],edges:[['detector','irsc','data','DN'],['irsc','gain','data','像素流']]}
+];
+const S2=[
+ {title:'管线装配',action:'ISP 管线按生成资源静态装配',level:'机制说明',software:'管线管理按配置建静态节点；节点各自管理参数、DMA 与驱动命令。',hardware:'前段与后段节点映射到硬件 IP 配置。',description:'节点由配置静态生成，不是运行时动态发明。',note:'算法参数集由业务决定；业务不动态新增硬件节点。',nodes:['pipeline','ispdrv','gain'],edges:[['pipeline','ispdrv','command','节点配置'],['ispdrv','gain','command','寄存器']]},
+ {title:'双增益校正',action:'低/高增益前段经 HL 融合',level:'机制说明',software:'驱动把校正参数写入增益前段；软件不逐像素计算。',hardware:'低/高增益前段对 DN 校正后融合成单路像素。',description:'双增益兼顾灵敏度与动态范围。',note:'融合阈值等参数以项目配置为准。',nodes:['irsc','gain','tpd'],edges:[['irsc','gain','data','像素流'],['gain','tpd','data','HL 融合']]},
+ {title:'增强与测温分支',action:'同一后段形成观察图与测温语义',level:'机制说明 + 工程验证',software:'midout 决定一级 DMA 取哪一处理阶段。',hardware:'图像支路→PIC 候选；TPD 支路→TEMP 候选。',description:'后段做 SNR/AGC/DDEP/EE/BC/GAMMA/MIRROR 等增强；TPD 链处理成测温面阵语义。',note:'Y16 只是 16-bit 单分量容器，不等于其中已是摄氏温度。',nodes:['gain','tpd','dma'],edges:[['gain','tpd','data','增强/TPD'],['tpd','dma','data','PIC/TEMP 帧']]}
+];
+const S3=[
+ {title:'一级 DMA 写入',action:'ISP Stream S0–S3 写入三帧缓冲',level:'机制说明',software:'stream 配置区分一级流 DMA 缓冲与二级流输出 DMA 缓冲。',hardware:'S0–S3 DMA 按帧写三帧地址；写完一帧产生 WR DONE。',description:'DMA 配置为 length + 三帧地址，硬件循环写帧、软件按帧消费。',note:'length 须与该层分辨率、格式、信息行一致。',nodes:['tpd','dma','video'],edges:[['tpd','dma','data','帧'],['dma','video','data','写缓冲']]},
+ {title:'流消费',action:'Video 把结果建模为 PIC/TEMP 流',level:'机制说明',software:'视频流服务消费一级缓冲，形成观察图/测温面阵语义。',hardware:'缓冲在 DDR；对象只是语义视图，不是数据副本。',description:'PIC 服务观察/显示，TEMP 服务测温面阵；两者可并行也可被裁剪。',note:'业务看到的是帧语义与输出节拍，不直接操作物理地址。',nodes:['video','objects'],edges:[['video','objects','data','PIC/TEMP']]},
+ {title:'输出方向',action:'像素流封装为 UVC / MIPI CSI 输出',level:'机制说明',software:'按目标接口选择封装类型与 data type。',hardware:'USB 封装 UVC payload；MIPI 封装 CSI-2 packet。',description:'同一份像素语义可流向不同物理接口；CSI-2 用 VC 区分虚拟通道。',note:'最终输出 payload 长度不是一级 DMA 长度。',nodes:['video','fmt','objects'],edges:[['video','fmt','data','像素流'],['fmt','objects','data','帧']]}
+];
+const S4=[
+ {title:'采集节拍',action:'IRSC 按同步配置约束输出节拍',level:'机制说明',software:'服务层给出帧率与节拍约束；驱动配置同步控制器。',hardware:'同步控制器管理帧有效、行有效、裁剪与丢帧。',description:'丢帧用于维持节拍稳定；有效区决定送入 ISP 的像素范围。',note:'节拍与有效区配置不当会导致下游 DMA 长度不匹配。',nodes:['irsc','sync','dma'],edges:[['irsc','sync','command','节拍约束'],['sync','dma','data','有效像素']]},
+ {title:'完成与错误事件',action:'DONE / ERR 经 ISR 写入设备事件',level:'机制说明 + 工程验证',software:'ISR 清标志并映射为中断掩码；接收回调记录状态事件。',hardware:'ISP 写帧完成或异常时置中断标志；像素仍走 DMA 通路。',description:'事件只表达完成或错误状态，不携带像素，也不自动驱动状态机。',note:'上层须用明确的等待、查询或专用流程判断帧就绪。',nodes:['dma','ispdrv','event'],edges:[['dma','ispdrv','event','WR DONE'],['ispdrv','event','command','掩码'],['dma','event','error','ERR/FIFO']]}
+];
+const S5=[
+ {title:'格式语义',action:'像素格式决定数据解释方式',level:'机制说明',software:'业务配置 Y16/YUV/RGB/NV12 等目标语义。',hardware:'同一缓冲可按不同 data type 解释，但必须与接收端一致。',description:'格式是解释契约：Y16 单分量、NV12 半平面、RGB 三分量。',note:'光有格式还不够，还要保证分辨率与信息行一致。',nodes:['camera','pipeline','ispdrv','fmt'],edges:[['camera','pipeline','command','格式参数'],['pipeline','ispdrv','command','配置'],['ispdrv','fmt','command','data type']]},
+ {title:'尺寸边界',action:'三个尺寸边界需逐一核对',level:'机制说明 + 工程验证',software:'IRSC 输出、ISP 输入、最终输出各算各的尺寸与长度。',hardware:'DMA 按所在层长度搬运；越界或短帧会触发错误。',description:'不能把最终输出长度反推为所有层 DMA 长度。',note:'信息行、分辨率、格式一起决定每个 length。',nodes:['ispdrv','dma','fmt','video'],edges:[['ispdrv','dma','command','长度/地址'],['dma','fmt','data','搬运'],['dma','video','data','帧']]}
+];
+makePlayer('s1',S1);
+makePlayer('s2',S2);
+makePlayer('s3',S3);
+makePlayer('s4',S4);
+makePlayer('s5',S5);
+</script>
 </body>
 </html>
