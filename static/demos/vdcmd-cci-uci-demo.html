@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VDCMD 传输演示：CCI (I2C) vs UCI (UART)</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --line:#334155;
+    --cyan:#22d3ee; --blue:#3b82f6; --orange:#fb923c; --purple:#a78bfa;
+    --green:#22c55e; --red:#ef4444; --yellow:#facc15; --text:#e2e8f0; --dim:#94a3b8;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif; padding:24px; line-height:1.6;}
+  h1{font-size:22px; margin-bottom:4px;}
+  h1 .s{color:var(--dim); font-size:14px; font-weight:normal;}
+  .tagline{color:var(--dim); font-size:14px; margin-bottom:14px;}
+  .tagline b{color:var(--cyan);} .tagline i{color:var(--orange);}
+
+  .speedbar{display:flex; align-items:center; gap:14px; margin-bottom:20px; padding:10px 16px; background:var(--panel); border:1px solid var(--line); border-radius:10px; font-size:13px; color:var(--dim); flex-wrap:wrap;}
+  .speedbar b{color:var(--text);}
+  .speedbar input{width:240px; accent-color:#38bdf8; cursor:pointer;}
+  .spdv{font-weight:700; color:var(--cyan); min-width:48px; font-size:15px;}
+  .spdtip{color:var(--dim); font-size:12px;}
+
+  section{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px 20px; margin-bottom:26px;}
+  section h2{font-size:18px; margin-bottom:2px; display:flex; align-items:center; gap:10px;}
+  .chip-tag{font-size:12px; padding:2px 10px; border-radius:99px; color:#fff;}
+  .tag-cci{background:linear-gradient(90deg,#0891b2,#2563eb);}
+  .tag-uci{background:linear-gradient(90deg,#ea580c,#7c3aed);}
+  .intro{color:var(--dim); font-size:13px; margin:6px 0 12px;}
+  .intro b{color:var(--text);}
+
+  /* hardware vs software responsibility banner */
+  .layers{display:flex; border-radius:10px; overflow:hidden; font-size:12px; border:1px solid var(--line); margin-bottom:12px;}
+  .layers .hw,.layers .sw{flex:1; padding:7px 12px;}
+  .layers .taghw,.layers .tagsw{font-weight:700; font-size:12px; display:block;}
+  .layers .detail{font-weight:400; font-size:11px; display:block; margin-top:2px; color:var(--dim);}
+  .layers .hw{background:#0c1a2e; border-right:1px dashed var(--line);}
+  .layers .sw{background:#101828;}
+  .layers .taghw{color:var(--cyan);} .layers .tagsw{color:var(--purple);}
+  .layers .hw .detail{color:#67e8f9;} .layers .sw .detail{color:#c4b5fd;}
+
+  /* ------- stage canvas ------- */
+  .stage{position:relative; height:360px; border:1px dashed var(--line); border-radius:10px; background:linear-gradient(180deg,#0b1220,#101a2e); overflow:hidden;}
+
+  .box{position:absolute; border-radius:8px; padding:8px 10px; font-size:13px; text-align:center; border:1px solid var(--line); background:#17223b; color:var(--text); transition:border-color .3s, box-shadow .3s, transform .3s;}
+  .box small{display:block; color:var(--dim); font-size:11px; margin-top:2px; min-height:14px;}
+  .host{left:14px; top:150px; width:118px;}
+  .fw{right:14px; top:150px; width:148px;}
+  .biz{right:14px; top:272px; width:148px;}
+
+  .track{position:absolute; left:150px; right:150px; top:180px; height:44px;}
+  .rail{position:absolute; top:20px; left:0; right:0; height:3px; border-radius:3px; background:var(--line);}
+  .byte{position:absolute; top:4px; width:34px; height:34px; border-radius:8px; font-size:11px; font-weight:700; color:#fff; display:flex; align-items:center; justify-content:center; opacity:0; box-shadow:0 2px 8px rgba(0,0,0,.45);}
+  .byte.b-cmd{background:var(--blue);}
+  .byte.b-ack{background:var(--green);}
+  .byte.b-poll{background:#64748b; width:16px; height:16px; border-radius:50%; top:14px;}
+  .byte.b-u{background:#60a5fa;} .byte.b-c{background:#34d399;} .byte.b-i{background:#f472b6;}
+  .byte.b-len{background:var(--orange); width:52px;}
+  .byte.b-pl{background:var(--purple); width:64px;}
+
+  @keyframes flyL2R{0%{left:-40px; opacity:0} 8%{opacity:1} 92%{opacity:1} 100%{left:calc(100% - 8px); opacity:0}}
+  @keyframes flyR2L{0%{left:calc(100% - 8px); opacity:0} 8%{opacity:1} 92%{opacity:1} 100%{left:-40px; opacity:0}}
+  .fly-l2r{animation:flyL2R linear forwards;}
+  .fly-r2l{animation:flyR2L linear forwards;}
+  @keyframes pollLoop{0%{left:0; opacity:0} 15%{opacity:1} 50%{left:calc(100% - 16px)} 85%{opacity:1} 100%{left:0; opacity:0}}
+
+  .polltxt{position:absolute; top:-28px; left:0; right:0; text-align:center; font-size:12px; color:var(--cyan); opacity:0;}
+
+  /* ------- CCI chip internals ------- */
+  .chip{position:absolute; left:50%; transform:translateX(-50%); top:24px; width:320px; height:186px; border:1px solid var(--cyan); border-radius:12px; background:#0c1a2e; box-shadow:0 0 0 3px rgba(34,211,238,.08);}
+  .chip .name{position:absolute; left:10px; top:6px; font-size:12px; color:var(--cyan);}
+  .chip .addr{position:absolute; right:10px; top:6px; font-size:11px; color:var(--dim);}
+  .hwip{position:absolute; left:8px; top:170px; font-size:10px; color:#67e8f9; background:#0f2542; border:1px solid rgba(34,211,238,.4); padding:0 6px; border-radius:4px;}
+  .cmdbuf{position:absolute; left:12px; top:30px; width:168px; height:134px; border:1px solid var(--blue); border-radius:8px; background:#0f2542;}
+  .cmdbuf .lbl{font-size:11px; color:var(--blue); padding:4px 6px;}
+  .cmdbuf .slot{display:inline-block; width:26px; height:22px; margin:2px 4px; border-radius:4px; text-align:center; font-size:11px; line-height:22px; color:#fff; font-weight:700;}
+  .slot.in{background:var(--yellow); color:#0f172a;}
+  .slot.out{background:var(--green); color:#0f172a;}
+  .bufinfo{position:absolute; bottom:4px; left:0; right:0; font-size:9px; color:var(--dim); text-align:center; min-height:12px; font-family:Consolas,monospace;}
+  .statusbox{position:absolute; right:12px; top:30px; width:132px; height:134px; border:1px solid var(--red); border-radius:8px; background:#2a1117; transition:border-color .4s, background .4s;}
+  .statusbox .lbl{font-size:11px; color:var(--red); padding:4px 6px;}
+  .statusbox .val{position:absolute; bottom:26px; left:0; right:0; text-align:center; font-size:16px; font-weight:700; color:var(--red);}
+  .statusbox .code{position:absolute; bottom:8px; left:0; right:0; text-align:center; font-size:10px; color:var(--dim); font-family:Consolas,monospace;}
+  .statusbox.done{border-color:var(--green); background:#0e2a1c;}
+  .statusbox.done .lbl{color:var(--green);}
+  .statusbox.done .val{color:var(--green);}
+  .statusbox.done .code{color:#4ade80;}
+  .bell{position:absolute; right:6px; top:6px; width:16px; height:16px; border-radius:50%; background:#f59e0b; opacity:.15;}
+  .bell.ring{animation:ring .5s ease-in-out infinite;}
+  @keyframes ring{0%,100%{transform:scale(1); box-shadow:0 0 0 0 rgba(245,158,11,.7)} 50%{transform:scale(1.5); box-shadow:0 0 0 8px rgba(245,158,11,0)}}
+
+  .pulse{animation:pulse .6s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(34,211,238,.0)} 50%{box-shadow:0 0 0 6px rgba(34,211,238,.25); border-color:var(--cyan)}}
+  .busy-anim{animation:busy 1s ease-in-out infinite;}
+  @keyframes busy{0%,100%{transform:scale(1)} 50%{transform:scale(1.04)}}
+  .glow{box-shadow:0 0 14px rgba(59,130,246,.6); border-color:var(--blue)!important;}
+  .green-glow{box-shadow:0 0 14px rgba(34,197,94,.55); border-color:var(--green)!important;}
+
+  .wire{position:absolute; left:50%; top:210px; width:2px; height:66px; background:var(--line); transform:translateX(-50%);}
+  .wire::after{content:"▼"; position:absolute; bottom:-4px; left:-5px; font-size:10px; color:var(--dim);}
+  .link-h2f{position:absolute; left:50%; transform:translateX(-50%); top:286px; width:90px; height:2px; background:var(--line);}
+  .link-h2f::after{content:"→"; position:absolute; right:-4px; top:-9px; color:var(--dim); font-size:11px;}
+
+  /* ------- UCI state machine + frame layout ------- */
+  .smlbl{position:absolute; right:14px; top:2px; font-size:10px; color:#c4b5fd;}
+  .sm{position:absolute; right:14px; top:34px; width:150px; display:flex; flex-direction:column; gap:6px;}
+  .sm div{font-size:11px; padding:4px 6px; border:1px solid var(--line); border-radius:6px; color:var(--dim); background:#141f38; transition:all .3s;}
+  .sm div.on{color:#fff; border-color:var(--cyan); background:#0f2542; box-shadow:0 0 10px rgba(34,211,238,.25);}
+  .prog{position:absolute; right:14px; top:200px; width:150px; height:10px; background:#0b1426; border:1px solid var(--line); border-radius:6px; overflow:hidden;}
+  .prog .fill{height:100%; width:0%; background:linear-gradient(90deg,var(--purple),var(--cyan)); transition:width .6s;}
+  .fmlayout{position:absolute; left:150px; right:172px; top:234px; height:26px; display:flex; gap:6px;}
+  .fmlayout span{flex:1; font-size:11px; text-align:center; color:var(--dim); border:1px solid var(--line); border-radius:6px; line-height:24px; background:#141f38; transition:all .3s;}
+  .fmlayout span.on{color:#fff; border-color:var(--cyan); background:#0f2542;}
+  .rfbox{position:absolute; top:4px; height:34px; display:flex; border-radius:8px; overflow:hidden; opacity:0; font-size:10px; font-weight:700; color:#fff; box-shadow:0 2px 8px rgba(0,0,0,.45);}
+  .rf{padding:0 8px; line-height:34px; white-space:nowrap;}
+  .s-be{background:#22d3ee;} .s-st{background:#ef4444;} .s-dt{background:#22c55e;} .s-cr{background:#fb923c;} .s-en{background:#f472b6;}
+
+  .capwrap{position:absolute; left:0; right:0; bottom:10px; text-align:center;}
+  .cap{display:inline-block; font-size:13px; color:var(--text); background:#0b1426; border:1px solid var(--line); padding:4px 14px; border-radius:99px; min-height:24px;}
+
+  .controls{display:flex; align-items:center; gap:12px; margin-top:12px; flex-wrap:wrap;}
+  button{cursor:pointer; border:none; border-radius:8px; padding:8px 16px; font-size:14px; font-weight:700; color:#fff; transition:transform .1s;}
+  button:active{transform:scale(.96);}
+  .btn-cci{background:linear-gradient(90deg,#0891b2,#2563eb);}
+  .btn-uci{background:linear-gradient(90deg,#ea580c,#7c3aed);}
+  .btn-step{background:#334155;}
+  .stepno{font-size:12px; color:var(--dim);}
+  .stepno b{color:var(--text); font-size:15px;}
+  .hint{font-size:11px; color:var(--dim);}
+  .legend{font-size:12px; color:var(--dim); display:flex; gap:14px; flex-wrap:wrap;}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .dot{width:12px; height:12px; border-radius:3px; display:inline-block;}
+</style>
+</head>
+<body>
+
+<h1>VDCMD 传输原理演示 <span class="s">CCI (I2C 硬件信箱 · 自取轮询)  vs  UCI (UART 软件信封 · 主动回推)</span></h1>
+<div class="tagline">命令执行核心(<b>vdcmd_parse</b>)两者完全一样,差别只在<b>硬件/软件分工</b>与"结果怎么回来"。支持<b>自动循环</b>与<b>手动单步</b>(上一步/下一步)。</div>
+
+<div class="speedbar">
+  <span><b>自动播放速度</b></span>
+  <input type="range" id="spd" min="10" max="100" value="50">
+  <span class="spdv" id="spdv">0.5x</span>
+  <span class="spdtip">仅影响"▶ 播放"自动循环;手动单步由你控制节奏</span>
+</div>
+
+<!-- ==================== CCI ==================== -->
+<section>
+  <h2><span class="chip-tag tag-cci">CCI</span> I2C 硬件信箱 + 状态轮询</h2>
+  <div class="intro">主机把命令写进芯片的 <b>CMD_BUF 寄存器信箱</b> → 硬件响铃 → 固件取信执行 → 结果<b>原地写回</b> → 翻 <b>CMD_STATUS 牌子</b> → 主机<b>自己轮询</b>后回读。</div>
+
+  <div class="layers">
+    <div class="hw"><span class="taghw">硬件层 · I2C 从机控制器(芯片内专用 IP)</span>
+      <span class="detail">寄存器 CMD_BUF 天然成帧 · 中断响铃 · CMD_STATUS 状态寄存器 —— 边界/状态由硬件完成</span></div>
+    <div class="sw"><span class="tagsw">软件层 · vdcmd 线程</span>
+      <span class="detail">取信 · CRC 校验 · 三层查表 · rte_write · 结果回写 —— 只处理命令语义</span></div>
+  </div>
+
+  <div class="stage">
+    <div class="box host" id="cci-host">SDK 主机<small>I2C Master</small></div>
+    <div class="track">
+      <div class="rail"></div>
+      <div class="byte b-cmd" id="cci-cmd-byte">VdCMD</div>
+      <div class="byte b-ack" id="cci-data-back">DATA</div>
+      <div class="byte b-poll" id="cci-poll"></div>
+      <div class="polltxt" id="cci-polltxt">轮询 CMD_STATUS…</div>
+    </div>
+
+    <div class="chip" id="cci-chip">
+      <div class="name">CCI 从机（硬件 IP）</div>
+      <div class="addr" id="cci-chipmeta">0x78 · path A</div>
+      <div class="bell" id="cci-bell"></div>
+      <div class="cmdbuf" id="cci-cmdbuf">
+        <div class="lbl">CMD_BUF 信箱 (256B)</div>
+        <div class="slot in" id="cci-letter-in" style="opacity:0">信</div>
+        <div class="slot out" id="cci-letter-out" style="opacity:0">回</div>
+        <div class="bufinfo" id="cci-bufinfo"></div>
+      </div>
+      <div class="statusbox" id="cci-status">
+        <div class="lbl">CMD_STATUS</div>
+        <div class="val" id="cci-status-val">busy</div>
+        <div class="code" id="cci-status-code">reg = 0x00</div>
+      </div>
+      <div class="hwip">硬件：寄存器成帧 / 中断 / 状态</div>
+    </div>
+    <div class="wire"></div>
+    <div class="box fw" id="cci-fw">vdcmd 线程<small id="cci-fwstat">取信 / 解析</small></div>
+    <div class="link-h2f"></div>
+    <div class="box biz" id="cci-biz">业务模块<small>rte_write 信号</small></div>
+
+    <div class="capwrap"><span class="cap" id="cci-cap">初始:信箱空、牌子 busy,等待主机来信</span></div>
+  </div>
+
+  <div class="controls">
+    <button class="btn-cci" id="cci-play">▶ 播放</button>
+    <button class="btn-step" id="cci-prev">⟵ 上一步</button>
+    <button class="btn-step" id="cci-next">下一步 ⟶</button>
+    <span class="stepno">步骤 <b id="cci-step">0</b> / <span id="cci-stepmax">9</span></span>
+    <span class="hint">自动播放中点击"▶"即暂停;用 上一步/下一步 手动逐步。</span>
+  </div>
+</section>
+
+<!-- ==================== UCI ==================== -->
+<section>
+  <h2><span class="chip-tag tag-uci">UCI</span> UART 软件信封 + 主动回推</h2>
+  <div class="intro">串口是<b>无边界字节流</b>,固件用<b>软件状态机</b>拆信封(<b>UCI 邮戳 → 长度 → payload</b>)。执行完固件<b>主动组回复帧</b>推回,主机 <b>select 阻塞等待</b>。</div>
+
+  <div class="layers">
+    <div class="hw"><span class="taghw">硬件层 · UART 外设</span>
+      <span class="detail">只收发原始字节流,不知道帧边界在哪 —— 成帧/拆帧全靠软件</span></div>
+    <div class="sw"><span class="tagsw">软件层 · vdcmd + UCI 状态机</span>
+      <span class="detail">找"UCI"同步字 · 读长度校验 · 收 payload · 组回复帧(0xBEAA…EBAA)</span></div>
+  </div>
+
+  <div class="stage">
+    <div class="box host" id="uci-host">SDK 主机<small>串口 Host</small></div>
+    <div class="track">
+      <div class="rail"></div>
+      <div class="byte b-u" id="uci-b1">U</div>
+      <div class="byte b-c" id="uci-b2">C</div>
+      <div class="byte b-i" id="uci-b3">I</div>
+      <div class="byte b-len" id="uci-blen">len=42</div>
+      <div class="byte b-pl" id="uci-bpl">payload</div>
+      <div class="rfbox" id="uci-reply">
+        <span class="rf s-be">0xBEAA</span><span class="rf s-st">status</span>
+        <span class="rf s-dt">data</span><span class="rf s-cr">CRC</span><span class="rf s-en">EBAA</span>
+      </div>
+    </div>
+    <div class="fmlayout">
+      <span id="uci-fl1">① 邮戳 UCI</span>
+      <span id="uci-fl2">② 长度 2B(小端)</span>
+      <span id="uci-fl3">③ VdCMD payload</span>
+    </div>
+
+    <div class="smlbl">固件内软件状态机</div>
+    <div class="sm">
+      <div id="uci-sm1">① 找邮戳 "UCI"</div>
+      <div id="uci-sm2">② 读长度 (2B, 范围校验)</div>
+      <div id="uci-sm3">③ 收满 payload (分包累积)</div>
+    </div>
+    <div class="prog"><div class="fill" id="uci-prog"></div></div>
+
+    <div class="box fw" id="uci-fw" style="top:238px">vdcmd 线程<small>uci_hex 执行</small></div>
+    <div class="box biz" id="uci-biz" style="top:308px">业务模块<small>rte_write 信号</small></div>
+
+    <div class="capwrap"><span class="cap" id="uci-cap">初始:串口空、状态机待命,等待主机发帧</span></div>
+  </div>
+
+  <div class="controls">
+    <button class="btn-uci" id="uci-play">▶ 播放</button>
+    <button class="btn-step" id="uci-prev">⟵ 上一步</button>
+    <button class="btn-step" id="uci-next">下一步 ⟶</button>
+    <span class="stepno">步骤 <b id="uci-step">0</b> / <span id="uci-stepmax">10</span></span>
+    <span class="hint">自动播放中点击"▶"即暂停;用 上一步/下一步 手动逐步。</span>
+  </div>
+</section>
+
+<script>
+"use strict";
+
+/* ---------- global speed (auto-play only) ---------- */
+let SPEED = 0.8;
+function sleep(ms){ return new Promise(r => setTimeout(r, Math.round(ms / SPEED))); }
+const spdEl = document.getElementById("spd");
+const spdVal = document.getElementById("spdv");
+spdEl.addEventListener("input", () => {
+  SPEED = spdEl.value / 100;
+  spdVal.textContent = SPEED.toFixed(1) + "x";
+});
+
+/* ---------- quick-mode flag: fast-forward replay for "上一步" ---------- */
+let QUICK = false;
+function fly(el, dir, dur){
+  el.classList.remove("fly-l2r","fly-r2l");
+  void el.offsetWidth;
+  el.style.animationDuration = (QUICK ? 20 : dur) + "ms";
+  el.classList.add(dir);
+}
+
+/* ---------- step player (auto cycle + manual step) ---------- */
+function makePlayer(cfg){
+  const P = {
+    els: cfg.els(),
+    btn: document.getElementById(cfg.btnId),
+    prevBtn: document.getElementById(cfg.prevId),
+    nextBtn: document.getElementById(cfg.nextId),
+    stepEl: document.getElementById(cfg.stepId),
+    cap: document.getElementById(cfg.capId),
+    maxEl: document.getElementById(cfg.maxId),
+    steps: cfg.steps,
+    running: false,
+    cur: -1,
+  };
+  P.maxEl.textContent = P.steps.length;
+
+  P.reset = function(){
+    cfg.clear(P.els);
+    P.cur = -1;
+    P.stepEl.textContent = 0;
+    P.cap.textContent = cfg.initCap;
+  };
+  P.apply = function(i){ cfg.apply(P.els, i); };
+  P.goto = function(i){
+    P.cur = i;
+    P.stepEl.textContent = i + 1;
+    P.cap.textContent = P.steps[i].cap;
+    P.apply(i);
+  };
+  P.stop = function(){ P.running = false; P.btn.textContent = "▶ 播放"; };
+
+  P.next = function(){
+    if (P.running) P.stop();
+    if (P.cur < P.steps.length - 1) P.goto(P.cur + 1);
+  };
+  P.prev = function(){
+    if (P.running) P.stop();
+    if (P.cur < 0) return;
+    if (P.cur === 0) { P.reset(); return; }
+    const target = P.cur - 1;
+    P.reset();
+    QUICK = true;
+    for (let i = 0; i <= target; i++) P.apply(i);
+    QUICK = false;
+    P.cur = target;
+    P.stepEl.textContent = target + 1;
+    P.cap.textContent = P.steps[target].cap;
+  };
+  P.play = async function(){
+    if (P.running) { P.stop(); return; }
+    P.running = true; P.btn.textContent = "■ 暂停";
+    P.reset();
+    for (let i = 0; i < P.steps.length; i++){
+      if (!P.running) break;
+      P.goto(i);
+      await sleep(P.steps[i].dur);
+    }
+    if (P.running){ P.cap.textContent = cfg.doneCap; P.btn.textContent = "▶ 重播"; }
+    P.running = false;
+  };
+
+  P.btn.addEventListener("click", () => P.play());
+  P.prevBtn.addEventListener("click", () => P.prev());
+  P.nextBtn.addEventListener("click", () => P.next());
+  return P;
+}
+
+/* ==================== CCI ==================== */
+const cci = makePlayer({
+  btnId:"cci-play", prevId:"cci-prev", nextId:"cci-next",
+  stepId:"cci-step", capId:"cci-cap", maxId:"cci-stepmax",
+  initCap:"初始:信箱空、牌子 busy,等待主机来信",
+  doneCap:"✓ 完成:主机拿到数据,一条命令走完整个 CCI 流程",
+  els:()=>({
+    cmd:id("cci-cmd-byte"), dataBack:id("cci-data-back"), poll:id("cci-poll"),
+    letterIn:id("cci-letter-in"), letterOut:id("cci-letter-out"), status:id("cci-status"),
+    statusVal:id("cci-status-val"), statusCode:id("cci-status-code"), bell:id("cci-bell"),
+    chip:id("cci-chip"), fw:id("cci-fw"), biz:id("cci-biz"), host:id("cci-host"),
+    bufInfo:id("cci-bufinfo"), fwStat:id("cci-fwstat"), pollTxt:id("cci-polltxt"),
+  }),
+  clear(E){
+    ["cmd-byte","data-back","poll"].forEach(n=>{const e=document.getElementById("cci-"+n); e.classList.remove("fly-l2r","fly-r2l"); e.style.opacity=0;});
+    E.letterIn.style.opacity=0; E.letterOut.style.opacity=0;
+    E.status.classList.remove("done"); E.statusVal.textContent="busy"; E.statusCode.textContent="reg = 0x00";
+    E.bell.classList.remove("ring"); E.chip.classList.remove("glow");
+    E.fw.classList.remove("pulse"); E.biz.classList.remove("busy-anim","green-glow");
+    E.host.classList.remove("glow","green-glow");
+    E.poll.style.opacity=0; E.pollTxt.style.opacity=0;
+    E.bufInfo.textContent=""; E.fwStat.textContent="取信 / 解析";
+  },
+  apply(E,i){
+    switch(i){
+      case 0:{ E.host.classList.add("glow"); fly(E.cmd,"fly-l2r",1500); E.letterIn.style.opacity=1;
+               E.bufInfo.textContent="[cmd 0x14][sub 0x00][len 42]"; break; }
+      case 1:{ E.bell.classList.add("ring"); E.chip.classList.add("glow"); E.cmd.style.opacity=0;
+               E.host.classList.remove("glow"); break; }
+      case 2:{ E.letterIn.style.opacity=0; E.chip.classList.remove("glow");
+               E.fw.classList.add("pulse"); E.fwStat.textContent="CRC 校验 → 三层查表"; break; }
+      case 3:{ E.fwStat.textContent="rte_write → 业务"; E.biz.classList.add("busy-anim"); break; }
+      case 4:{ E.biz.classList.remove("busy-anim"); E.biz.classList.add("green-glow");
+               E.letterOut.style.opacity=1; E.fwStat.textContent="数据返回"; E.fw.classList.remove("pulse"); break; }
+      case 5:{ E.fwStat.textContent="结果写回 CMD_BUF"; break; }
+      case 6:{ E.status.classList.add("done"); E.statusVal.textContent="done"; E.statusCode.textContent="reg = 0x00 · ok";
+               E.bufInfo.textContent="返回数据已写回"; break; }
+      case 7:{ E.poll.style.opacity=1; E.poll.style.animation="pollLoop 0.7s ease-in-out 3"; E.pollTxt.style.opacity=1; break; }
+      case 8:{ E.poll.style.opacity=0; E.pollTxt.style.opacity=0; E.letterOut.style.opacity=0; E.bufInfo.textContent="";
+               fly(E.dataBack,"fly-r2l",1500); E.host.classList.add("green-glow"); break; }
+    }
+  },
+  steps:[
+    {cap:"① 主机经 I2C 把 VdCMD 命令写入 CMD_BUF（从机 0x78，硬件成帧）", dur:1500},
+    {cap:"② 硬件响铃触发 CCI 中断，唤醒 vdcmd 线程", dur:1200},
+    {cap:"③ 固件取信：GET_MSG → 校验命令头 CRC → 三层查表", dur:1200},
+    {cap:"④ 命中命令 → rte_write 信号送业务模块执行", dur:1200},
+    {cap:"⑤ 业务处理完成，数据返回固件", dur:1200},
+    {cap:"⑥ 结果原地写回 CMD_BUF（读命令），补算返回数据 CRC", dur:900},
+    {cap:"⑦ SET_CMD_DONE 翻牌子：CMD_STATUS busy → done(0)", dur:1300},
+    {cap:"⑧ 主机不被通知，只能自己轮询 CMD_STATUS 直到翻牌", dur:2400},
+    {cap:"⑨ 成功则主机回读 CMD_BUF 取数据，命令结束", dur:1600},
+  ],
+});
+
+/* ==================== UCI ==================== */
+const uci = makePlayer({
+  btnId:"uci-play", prevId:"uci-prev", nextId:"uci-next",
+  stepId:"uci-step", capId:"uci-cap", maxId:"uci-stepmax",
+  initCap:"初始:串口空、状态机待命,等待主机发帧",
+  doneCap:"✓ 完成:主机收到并校验回复帧,一条命令走完整个 UCI 流程",
+  els:()=>({
+    b1:id("uci-b1"), b2:id("uci-b2"), b3:id("uci-b3"), blen:id("uci-blen"),
+    bpl:id("uci-bpl"), reply:id("uci-reply"), sm1:id("uci-sm1"), sm2:id("uci-sm2"),
+    sm3:id("uci-sm3"), prog:id("uci-prog"), fw:id("uci-fw"), biz:id("uci-biz"), host:id("uci-host"),
+    fl1:id("uci-fl1"), fl2:id("uci-fl2"), fl3:id("uci-fl3"),
+  }),
+  clear(E){
+    ["b1","b2","b3","blen","bpl","reply"].forEach(n=>{const e=document.getElementById("uci-"+n); e.classList.remove("fly-l2r","fly-r2l"); e.style.opacity=0;});
+    E.sm1.classList.remove("on"); E.sm2.classList.remove("on"); E.sm3.classList.remove("on");
+    E.fl1.classList.remove("on"); E.fl2.classList.remove("on"); E.fl3.classList.remove("on");
+    E.prog.style.width="0%";
+    E.fw.classList.remove("pulse"); E.biz.classList.remove("busy-anim","green-glow");
+    E.host.classList.remove("glow","green-glow");
+  },
+  apply(E,i){
+    switch(i){
+      case 0:{ E.fl1.classList.add("on"); E.host.classList.add("glow"); fly(E.b1,"fly-l2r",700); break; }
+      case 1:{ fly(E.b2,"fly-l2r",700); break; }
+      case 2:{ fly(E.b3,"fly-l2r",700); E.host.classList.remove("glow"); break; }
+      case 3:{ E.fl1.classList.remove("on"); E.fl2.classList.add("on"); fly(E.blen,"fly-l2r",1000); break; }
+      case 4:{ E.fl2.classList.remove("on"); E.fl3.classList.add("on"); fly(E.bpl,"fly-l2r",1200); break; }
+      case 5:{ E.sm1.classList.add("on"); break; }
+      case 6:{ E.sm2.classList.add("on"); break; }
+      case 7:{ E.sm3.classList.add("on"); E.prog.style.width="100%"; break; }
+      case 8:{ E.fw.classList.add("pulse"); break; }
+      case 9:{ E.biz.classList.add("green-glow"); E.fw.classList.remove("pulse");
+               fly(E.reply,"fly-r2l",1700); E.host.classList.add("green-glow"); break; }
+    }
+  },
+  steps:[
+    {cap:"① 发送帧头邮戳：U", dur:800},
+    {cap:"② 发送帧头邮戳：C", dur:800},
+    {cap:"③ 发送帧头邮戳：I（UCI 同步字完成）", dur:800},
+    {cap:"④ 发送 2 字节小端长度（如 0x002A=42，校验 [12,4120]）", dur:1000},
+    {cap:"⑤ 发送 VdCMD 命令正文 payload", dur:1200},
+    {cap:"⑥ 状态机找邮戳：FRAME_SYNC（扫\"UCI\"）", dur:900},
+    {cap:"⑦ 状态机读长度并校验：HEADER_CHECK", dur:900},
+    {cap:"⑧ 状态机按长度收满 payload：PAYLOAD_RX（分包累积，10s 超时）", dur:1200},
+    {cap:"⑨ uci_hex → vdcmd_parse，校验命令头 CRC、查表执行", dur:1000},
+    {cap:"⑩ 固件组回复帧 0xBEAA|status|data|CRC|EBAA 推回，主机 select 等待", dur:1700},
+  ],
+});
+
+function id(s){ return document.getElementById(s); }
+
+/* 打开页面自动播放一遍;用户一旦手动操作则取消待触发的自动播 */
+let autoTimer = setTimeout(() => { cci.play(); uci.play(); }, 600);
+document.querySelectorAll("button").forEach(b => b.addEventListener("click", () => clearTimeout(autoTimer)));
+</script>
+</body>
+</html>
