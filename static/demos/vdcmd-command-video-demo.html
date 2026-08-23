@@ -66,6 +66,16 @@ svg{display:block;width:100%;min-width:900px;height:auto}
 .dprogress{display:flex;gap:4px;margin-left:auto}
 .dprogress i{width:8px;height:8px;border-radius:50%;background:#cbd5e1}
 .dprogress i.on{background:var(--blue)}
+/* 分步图解 */
+.stepfigs{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+.stepfigs>h4{color:var(--teal);font-size:14px;margin-bottom:10px}
+.stepfig{margin:12px 0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.fighead{padding:8px 12px;background:var(--panel2);font-size:13px;font-weight:700;color:var(--text);border-bottom:1px solid var(--line)}
+.fighead small{color:var(--muted);font-weight:400;margin-left:6px}
+.figcanvas{overflow-x:auto;padding:8px;background:#fbfcfe}
+.stepfig svg{min-width:900px}
+.figexp{padding:9px 12px;font-size:13px;color:var(--muted);line-height:1.7;border-top:1px solid var(--line)}
+.figexp b{color:var(--gold)}
 .summary{margin-top:34px;padding:16px 18px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--green);border-radius:12px}
 .summary b{color:var(--green);display:block;margin-bottom:6px;font-size:14px}
 .summary p{margin:0;color:var(--text);font-size:14px}
@@ -128,6 +138,15 @@ svg{display:block;width:100%;min-width:900px;height:auto}
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 命令帧到达</div>
+      <div class="figcanvas"><svg id="sfs1_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">多入口（CCI/UART/SPI）接收同一格式命令帧，汇入统一解析状态机。<b>命令用 class / index / subcmd 三级字段定位，参数为定长 mode 字。</b>构建配置决定启用哪些控制接口；多入口共享同一命令格式与解析状态机，避免每路各写一套协议——这是"一种协议、多物理口"的关键设计。</div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ 2 ============ -->
@@ -158,6 +177,20 @@ svg{display:block;width:100%;min-width:900px;height:auto}
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 解析与忙态</div>
+      <div class="figcanvas"><svg id="sfs2_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">状态机管理<b>空闲 / 忙 / 收尾三态</b>，按 class/index/subcmd 逐级路由；仅空闲态接受新命令，处理中与收尾阶段新命令被拒绝并返回错误。三入口可同时到达，解析层串行执行一条命令——<b>单状态机从源头避免竞态</b>，这是多入口并发的正确做法。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 2 · 双消息层</div>
+      <div class="figcanvas"><svg id="sfs2_1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">调用链为 <b>命令解析 → 服务消息层 → 命令应用 → 应用消息层 → 相机应用</b>：路由层写服务信号，命令应用解析参数，业务应用订阅应用信号；中间层复制参数并投递信号，把协议解析与业务执行解耦。此段纯属固件消息链，无驱动与硬件参与。</div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ 3 ============ -->
@@ -186,6 +219,20 @@ svg{display:block;width:100%;min-width:900px;height:auto}
         <span class="speed">速度<input type="range" id="s3spd" min="8" max="100" value="40"><span class="spdv" id="s3v">0.4x</span></span>
         <div class="dprogress" id="s3pbar"></div>
       </div>
+    </div>
+  </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 切换预览</div>
+      <div class="figcanvas"><svg id="sfs3_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">业务应用解析模式；若当前流处于运行态，<b>先同步停止旧预览，停流失败即返回</b>。旧数据通路先停并反初始化，避免新旧参数并存。<b>先停后启的同步序列保证任一时刻只有一套配置生效</b>——不是无缝双实例切换。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 2 · 启动链路</div>
+      <div class="figcanvas"><svg id="sfs3_1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">调用链为 <b>相机应用 → 流配置服务 → 流管理/节点 → 驱动/HAL → 硬件</b>：同步调用流配置服务，配置流管理器 / 节点 / 输出接口，经驱动与 HAL 启动像素处理链，USB 与 MIPI 两种物理输出就绪。<b>注意：初始化预览成功不等于接收端已显示第一帧</b>——链路就绪与帧显示是两个时刻。</div>
     </div>
   </div>
 </section>
@@ -219,6 +266,15 @@ svg{display:block;width:100%;min-width:900px;height:auto}
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 三线分离</div>
+      <div class="figcanvas"><svg id="sfs4_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">命令结果沿原控制入口回传（少量控制字）；像素走像素链与 USB / MIPI（持续大流量）；DONE/ERR/FIFO 走中断，ISR 清标志映射事件上报。<b>命令、数据、事件三条路径逻辑与物理分离，互不阻塞。</b>"命令成功""流运行""接收端看到完整帧"是三个独立观察点，验证时必须分开观察。</div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ 5 ============ -->
@@ -247,6 +303,20 @@ svg{display:block;width:100%;min-width:900px;height:auto}
         <span class="speed">速度<input type="range" id="s5spd" min="8" max="100" value="40"><span class="spdv" id="s5v">0.4x</span></span>
         <div class="dprogress" id="s5pbar"></div>
       </div>
+    </div>
+  </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 成功才提交</div>
+      <div class="figcanvas"><svg id="sfs5_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">启动返回成功才<b>提交新模式并置激活标志</b>，随后进入结果收尾按原入口封装返回。<b>失败不提交新 mode，旧预览已停也不自动恢复</b>。命令结果沿原入口回传，保证请求-响应配对一致——控制链只承载少量命令结果，不承载视频帧。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 2 · 同步时序</div>
+      <div class="figcanvas"><svg id="sfs5_1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">配置以<b>同步调用串行完成</b>，命令结果只在整条链路就绪后返回，业务应用同步等待。时序：请求 → 解析 → 业务执行 → 链路就绪 → 结果返回。<b>接收端看到完整帧晚于命令成功</b>——"命令成功""流运行""完整帧"三个观察点时间不同，不能混为一谈。</div>
     </div>
   </div>
 </section>
@@ -283,7 +353,7 @@ irq:['硬件状态','DONE / ERR / FIFO / 接口状态','hardware']};
 const laneOrder=['external','app','driver','hardware'];
 function layout(item){const group={external:[],app:[],driver:[],hardware:[]},out={};item.nodes.forEach(id=>group[nodes[id][2]].push(id));laneOrder.forEach(k=>{const lane=lanes[k],arr=group[k],gap=480/Math.max(arr.length,1);arr.forEach((id,i)=>out[id]={x:lane.x+lane.w/2,y:105+gap*(i+.5)});});return out}
 function geom(a,b,pos){const p=pos[a],q=pos[b],same=nodes[a][2]===nodes[b][2];if(same){const d=q.y>=p.y?1:-1;return{d:`M${p.x+90} ${p.y+25*d} C${p.x+145} ${p.y+55*d},${q.x+145} ${q.y-55*d},${q.x+90} ${q.y-25*d}`,x:p.x+142,y:(p.y+q.y)/2}}const d=q.x>p.x?1:-1;return{d:`M${p.x+90*d} ${p.y} C${p.x+155*d} ${p.y},${q.x-155*d} ${q.y},${q.x-90*d} ${q.y}`,x:(p.x+q.x)/2,y:(p.y+q.y)/2}}
-function draw(svgEl,item){const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="m${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';laneOrder.forEach(k=>{const l=lanes[k];s+=`<rect x="${l.x}" y="20" width="${l.w}" height="610" rx="13" style="stroke:#cbd5e1;stroke-dasharray:5 5;fill:#eef2f7"/><text x="${l.x+15}" y="46" style="fill:#334155;font-size:13px;font-weight:800">${l.title}</text><text x="${l.x+15}" y="63" style="fill:#64748b;font-size:9px">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path d="${g.d}" marker-end="url(#m${k})" style="fill:none;stroke-width:3;stroke:var(--${k})"/><rect x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10" style="fill:#fff;stroke:var(--${k})"/><text x="${g.x}" y="${g.y+1}" text-anchor="middle" style="fill:#334155;font-size:8.5px;font-weight:700">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],style=n[3]||n[2],role=n[3]==='memory'?'内存区':{external:'PC',app:'固件',driver:'驱动',hardware:'硬件'}[n[2]],tw=role.length*7+12;s+=`<g><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9" style="fill:#ffffff;stroke-width:2;stroke:${style==='memory'?'#d97706':'#94a3b8'}"/><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5" style="fill:${style==='memory'?'#d97706':'#64748b'}"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle" style="fill:#fff;font-size:8.5px;font-weight:700">${role}</text><text x="${p.x}" y="${p.y-5}" text-anchor="middle" style="fill:#0f172a;font-size:11px;font-weight:800">${n[0]}</text><text x="${p.x}" y="${p.y+13}" text-anchor="middle" style="fill:#475569;font-size:8.5px">${n[1]}</text></g>`});svgEl.innerHTML=s}
+function draw(svgEl,item,pfx){pfx=pfx||'';const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="${pfx}m${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';laneOrder.forEach(k=>{const l=lanes[k];s+=`<rect x="${l.x}" y="20" width="${l.w}" height="610" rx="13" style="stroke:#cbd5e1;stroke-dasharray:5 5;fill:#eef2f7"/><text x="${l.x+15}" y="46" style="fill:#334155;font-size:13px;font-weight:800">${l.title}</text><text x="${l.x+15}" y="63" style="fill:#64748b;font-size:9px">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path d="${g.d}" marker-end="url(#${pfx}m${k})" style="fill:none;stroke-width:3;stroke:var(--${k})"/><rect x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10" style="fill:#fff;stroke:var(--${k})"/><text x="${g.x}" y="${g.y+1}" text-anchor="middle" style="fill:#334155;font-size:8.5px;font-weight:700">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],style=n[3]||n[2],role=n[3]==='memory'?'内存区':{external:'PC',app:'固件',driver:'驱动',hardware:'硬件'}[n[2]],tw=role.length*7+12;s+=`<g><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9" style="fill:#ffffff;stroke-width:2;stroke:${style==='memory'?'#d97706':'#94a3b8'}"/><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5" style="fill:${style==='memory'?'#d97706':'#64748b'}"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle" style="fill:#fff;font-size:8.5px;font-weight:700">${role}</text><text x="${p.x}" y="${p.y-5}" text-anchor="middle" style="fill:#0f172a;font-size:11px;font-weight:800">${n[0]}</text><text x="${p.x}" y="${p.y+13}" text-anchor="middle" style="fill:#475569;font-size:8.5px">${n[1]}</text></g>`});svgEl.innerHTML=s}
 function makePlayer(p,steps){
   const $=id=>document.getElementById(p+id);
   let idx=0,timer=null,SPEED=0.4;
@@ -319,6 +389,14 @@ makePlayer('s2',S2);
 makePlayer('s3',S3);
 makePlayer('s4',S4);
 makePlayer('s5',S5);
+/* 静态分步图解：按顺序渲染每步图（复用 draw，前缀防 marker 冲突） */
+[['s1',S1],['s2',S2],['s3',S3],['s4',S4],['s5',S5]].forEach(function(gp){
+  var p=gp[0],steps=gp[1];
+  steps.forEach(function(st,si){
+    var el=document.getElementById('sf'+p+'_'+si+'g');
+    if(el){draw(el,st,'sf'+p+'_'+si+'_');}
+  });
+});
 </script>
 </body>
 </html>
