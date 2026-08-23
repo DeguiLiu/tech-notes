@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PySide6 线程模型与视频管线 · HCS 客户端</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --line:#334155;
+    --blue:#0078D7; --teal:#009999; --green:#00B050; --green2:#008000;
+    --amber:#F59E0B; --red:#EF4444; --purple:#7C3AED; --cyan:#22d3ee;
+    --text:#e2e8f0; --dim:#94a3b8; --speed:1;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif; padding:22px 26px 60px; line-height:1.65;}
+  h1{font-size:24px; margin-bottom:4px;}
+  h1 .s{color:var(--dim); font-size:14px; font-weight:normal; margin-left:8px;}
+  .tagline{color:var(--dim); font-size:14px; margin-bottom:8px;}
+  .tagline b{color:var(--cyan);} .tagline i{color:var(--green);} .tagline u{color:var(--amber); text-decoration:none;}
+  .toc{display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 22px;}
+  .toc a{color:var(--dim); text-decoration:none; border:1px solid var(--line); padding:4px 12px; border-radius:99px; font-size:12px; background:var(--panel);}
+  .toc a:hover{color:#fff; border-color:var(--blue);}
+
+  .speedbar{display:flex; align-items:center; gap:14px; margin:0 0 22px; padding:10px 16px; background:var(--panel); border:1px solid var(--line); border-radius:10px; font-size:13px; color:var(--dim); flex-wrap:wrap;}
+  .speedbar b{color:var(--text);}
+  .speedbar input{width:240px; accent-color:#38bdf8; cursor:pointer;}
+  .spdv{font-weight:700; color:var(--cyan); min-width:44px; font-size:15px;}
+  .spdtip{color:var(--dim); font-size:12px;}
+
+  section{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 22px 22px; margin-bottom:26px;}
+  section h2{font-size:19px; margin-bottom:2px; display:flex; align-items:center; gap:10px;}
+  .num{background:linear-gradient(135deg,var(--blue),var(--teal)); color:#fff; width:26px; height:26px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; font-size:14px; flex:none;}
+  .intro{color:var(--dim); font-size:13px; margin:8px 0 14px;}
+  .intro b{color:var(--text);} .intro em{color:var(--green); font-style:normal; font-weight:700;}
+
+  /* ---- 结论速览 ---- */
+  .verdict{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .vc{border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:#101828;}
+  .vc .q{font-size:13px; color:var(--dim); margin-bottom:6px; font-weight:700;}
+  .vc .a{font-size:13.5px; color:var(--text);}
+  .vc .a em{color:var(--green); font-style:normal; font-weight:700;}
+  .vc .a .warn{color:var(--amber); font-weight:700;}
+  .vc .a small{display:block; color:var(--dim); font-size:12px; margin-top:4px;}
+
+  /* ---- 表格 ---- */
+  table{width:100%; border-collapse:collapse; font-size:13px; margin-top:10px;}
+  th,td{border:1px solid var(--line); padding:8px 12px; text-align:left; vertical-align:top;}
+  th{background:#0F172A; color:var(--cyan); font-weight:700;}
+  td code{background:#0F172A; padding:1px 6px; border-radius:5px; color:#7dd3fc; font-size:12px;}
+  .k{color:var(--green); font-weight:700;} .k2{color:var(--amber); font-weight:700;}
+
+  /* ---- 动画舞台 ---- */
+  .stage-wrap{margin-top:8px;}
+  .stage{position:relative; height:230px; border:1px dashed var(--line); border-radius:10px; background:linear-gradient(180deg,#0b1220,#101a2e); overflow:hidden;}
+  .st-label{font-size:13px; color:var(--cyan); font-weight:700; margin:6px 0 4px;}
+  .legend{display:flex; gap:16px; flex-wrap:wrap; font-size:12px; color:var(--dim); margin:8px 0 2px;}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .dot{width:11px; height:11px; border-radius:50%; display:inline-block;}
+
+  .stat{position:absolute; top:20px; bottom:20px; width:17%; border-radius:10px; padding:8px 6px; text-align:center; font-size:12.5px; border:1.5px solid var(--line); background:rgba(23,34,59,.85); display:flex; flex-direction:column; justify-content:center; align-items:center; gap:3px; z-index:2;}
+  .stat small{color:var(--dim); font-size:11px; line-height:1.3;}
+  .stat b{font-size:13.5px;}
+  .s1{left:1.5%; border-color:var(--green);}     .s1 b{color:var(--green);}
+  .s2{left:23%; border-color:var(--blue);}       .s2 b{color:var(--blue);}
+  .s3{left:44.5%; border-color:var(--teal);}     .s3 b{color:var(--teal);}
+  .s4{left:66%; border-color:var(--purple);}     .s4 b{color:var(--purple);}
+  .s5{left:87.5%; border-color:var(--cyan);}     .s5 b{color:var(--cyan);}
+  .stat.glow{animation:stglow 1.2s ease-in-out infinite;}
+  @keyframes stglow{0%,100%{box-shadow:0 0 0 rgba(0,0,0,0);}50%{box-shadow:0 0 16px 2px var(--blue);}}
+
+  .rail{position:absolute; top:50%; left:1%; right:1%; height:3px; border-radius:3px; background:var(--line); z-index:1;}
+
+  .pkt{position:absolute; top:44%; width:26px; height:26px; border-radius:50%; z-index:3; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; color:#fff; box-shadow:0 2px 10px rgba(0,0,0,.5);}
+  .pk-green{background:radial-gradient(circle at 32% 30%, #4ADE80, var(--green)); border:2px solid var(--green2);}
+  .pk-blue{background:radial-gradient(circle at 32% 30%, #38BDF8, var(--blue)); border:2px solid #1D4ED8;}
+  .pk-amber{background:radial-gradient(circle at 32% 30%, #FCD34D, var(--amber)); border:2px solid #B45309;}
+  .pk-purple{background:radial-gradient(circle at 32% 30%, #A78BFA, var(--purple)); border:2px solid #5B21B6;}
+
+  /* 实时管线：一帧的旅程（生产者→共享内存→GUI轮询→GPU→屏幕） */
+  @keyframes journeyA{
+    0%{left:2.5%; opacity:0;}
+    4%{left:2.5%; opacity:1;}
+    20%{left:23%; opacity:1;}
+    30%{left:23%; opacity:1;}
+    42%{left:44.5%; opacity:1;}
+    54%{left:44.5%; opacity:1;}
+    63%{left:66%; opacity:1;}
+    73%{left:66%; opacity:1;}
+    82%{left:87.5%; opacity:1;}
+    100%{left:87.5%; opacity:0;}
+  }
+  .fa{animation:journeyA calc(6s / var(--speed)) linear infinite;}
+  .fa.d1{animation-delay:calc(-2s / var(--speed));}   /* 用负延迟铺开相位 */
+  .fa.d2{animation-delay:calc(-4s / var(--speed));}
+
+  /* 生产者连续产帧：小绿点流 */
+  @keyframes streamA{
+    0%{left:2.5%; opacity:0;}
+    12%{left:5%; opacity:.85;}
+    88%{left:22%; opacity:.85;}
+    100%{left:23%; opacity:0;}
+  }
+  .fs{position:absolute; top:49%; width:9px; height:9px; border-radius:50%; background:#4ADE80; z-index:3; opacity:0; animation:streamA calc(1.4s / var(--speed)) linear infinite;}
+  .fs.g1{animation-delay:0s;}
+  .fs.g2{animation-delay:calc(-.35s / var(--speed));}
+  .fs.g3{animation-delay:calc(-.7s / var(--speed));}
+  .fs.g4{animation-delay:calc(-1.05s / var(--speed));}
+
+  /* QTimer 轮询心跳 */
+  @keyframes tickP{0%,100%{transform:scale(1); opacity:.4;}50%{transform:scale(1.7); opacity:1;}}
+  .tick{position:absolute; top:58%; left:44.5%; width:14px; height:14px; border-radius:50%; background:var(--teal); z-index:3; animation:tickP calc(.8s / var(--speed)) ease-in-out infinite;}
+
+  /* GPU 上传闪烁 */
+  @keyframes upFlash{0%,100%{box-shadow:0 0 0 rgba(167,139,250,0);}50%{box-shadow:0 0 18px 3px rgba(167,139,250,.9);}}
+  .upflash{animation:upFlash calc(6s / var(--speed)) linear infinite;}
+
+  /* 回放管线：文件→解码线程→GUI→屏幕 */
+  @keyframes journeyB{
+    0%{left:3%; opacity:0;}
+    6%{left:3%; opacity:1;}
+    24%{left:32%; opacity:1;}
+    40%{left:32%; opacity:1;}
+    56%{left:60%; opacity:1;}
+    72%{left:60%; opacity:1;}
+    84%{left:88%; opacity:1;}
+    100%{left:88%; opacity:0;}
+  }
+  .fb{animation:journeyB calc(5s / var(--speed)) linear infinite;}
+  .fb.d1{animation-delay:calc(-2.5s / var(--speed));}
+
+  /* 跨线程信号虚线（解码线程 → GUI） */
+  @keyframes sigdash{0%{left:32%; opacity:0;}15%{opacity:1;}85%{left:60%; opacity:1;}100%{left:60%; opacity:0;}}
+  .sig{position:absolute; top:56%; width:34px; height:3px; border-radius:3px; background:repeating-linear-gradient(90deg, var(--amber) 0 6px, transparent 6px 11px); z-index:3; opacity:0; animation:sigdash calc(5s / var(--speed)) linear infinite;}
+
+  /* 总结要点 */
+  ul.tips{list-style:none; margin-top:10px;}
+  ul.tips li{padding:8px 12px 8px 30px; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; background:#101828; font-size:13px; position:relative;}
+  ul.tips li::before{content:"✓"; position:absolute; left:12px; color:var(--green); font-weight:900;}
+  ul.tips li .k{color:var(--green); font-weight:700;}
+  ul.tips li .k2{color:var(--amber); font-weight:700;}
+  .mermaid{background:#0F172A; border:1px solid var(--line); border-radius:10px; padding:12px; margin-top:10px; overflow-x:auto; text-align:center;}
+  .cap{color:var(--dim); font-size:12px; margin-top:8px;}
+  code{background:#0F172A; padding:1px 6px; border-radius:5px; color:#7dd3fc; font-size:12.5px;}
+  .wrap{overflow-x:auto;}
+
+  /* ---- 放 GIL 真并行：线程时间线 ---- */
+  .sub-h{font-size:15px; color:var(--cyan); margin:20px 0 6px; font-weight:700;}
+  .tl-block{border:1px solid var(--line); border-radius:10px; padding:12px 14px; margin-top:12px; background:#101828;}
+  .tl-title{font-size:13px; color:var(--text); font-weight:700; margin-bottom:8px;}
+  .tl-title .tag{font-size:11px; padding:2px 10px; border-radius:99px; margin-right:8px; font-weight:700;}
+  .tag-fake{background:#7A3E00; color:#FDE68A;}
+  .tag-real{background:#065F46; color:#D1FAE5;}
+  .tl{display:flex; flex-direction:column; gap:7px;}
+  .tl-row{display:flex; align-items:center; gap:10px;}
+  .tl-core{width:88px; font-size:12px; color:var(--dim); text-align:right; flex:none;}
+  .tl-track{flex:1; display:flex; height:26px; border-radius:6px; overflow:hidden; border:1px solid var(--line);}
+  .tl-seg{display:flex; align-items:center; justify-content:center; font-size:11px; color:#fff; font-weight:700; white-space:nowrap; overflow:hidden; min-width:0;}
+  .seg-a{background:#3B82F6;} .seg-b{background:#00B050;}
+  .seg-idle{background:#1E293B; color:var(--dim);}
+  .seg-wait{background:#334155; color:#CBD5E1;}
+  .seg-gil{background:#F59E0B;}
+  .tl-legend{font-size:12px; color:var(--dim); margin-top:10px; display:flex; gap:16px; flex-wrap:wrap;}
+  .tl-legend span{display:inline-flex; align-items:center; gap:6px;}
+  .tl-legend .sw{width:12px; height:12px; border-radius:3px; display:inline-block;}
+
+  /* ---- 代码片段 ---- */
+  pre{border:1px solid var(--line); background:#0B1220; border-radius:8px; padding:10px 14px; overflow-x:auto; margin:8px 0;}
+  pre code{background:none; padding:0; color:#93C5FD; font-family:Consolas,"Courier New",monospace; font-size:12.5px; line-height:1.55; display:block; white-space:pre;}
+  .pre-row{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px;}
+  .pre-cap{font-size:11.5px; color:var(--dim); margin-top:4px;}
+  @media (max-width:820px){.pre-row{grid-template-columns:1fr;}}
+
+  /* ---- 结论框 ---- */
+  .box{border:1px solid var(--green2); background:linear-gradient(180deg,#06281A,#0A3320); border-radius:10px; padding:12px 16px; margin:14px 0 4px; font-size:13.5px;}
+  .box .t{color:var(--green); font-weight:700; display:block; margin-bottom:4px;}
+</style>
+</head>
+<body>
+
+<h1>PySide6 线程模型与视频管线 <span class="s">HCS 客户端（RS500 红外上位机）</span></h1>
+<div class="tagline">
+  真实多线程 vs <u>GIL「假多线程」</u> · 视频窗口线程结构 · <i>1920×1440 @ 30fps</i> 是怎么扛下来的
+</div>
+
+<div class="toc">
+  <a href="#s1">① 结论速览</a>
+  <a href="#s2">② 真线程 vs GIL</a>
+  <a href="#s3">③ 线程层次</a>
+  <a href="#s4">④ 实时帧交互（动画）</a>
+  <a href="#s5">⑤ 视频窗口是单独线程吗</a>
+  <a href="#s6">⑥ 1920×1440 @ 30fps 原理</a>
+  <a href="#s7">⑦ 零拷贝底层</a>
+</div>
+
+<div class="speedbar">
+  <b>动画速度</b>
+  <input type="range" id="spd" min="0.2" max="3" step="0.1" value="1">
+  <span class="spdv" id="spdv">1.0×</span>
+  <span class="spdtip">拖动调节两段管线动画的播放速度；Mermaid 图是静态图，不受影响。</span>
+</div>
+
+<!-- ================= ① 结论速览 ================= -->
+<section id="s1">
+  <h2><span class="num">1</span>结论速览</h2>
+  <div class="intro">四个问题，先给结论，后面逐条展开。</div>
+  <div class="verdict">
+    <div class="vc">
+      <div class="q">Q1 · PySide6 是真正的多线程吗？</div>
+      <div class="a"><em>是。</em> Qt 的 <code>QThread</code> 是对原生线程的直接封装，每一个都是操作系统级线程，不是协程/绿色线程。<small>线程是「真的」，但代码跑不跑得动是另一回事——见 Q2。</small></div>
+    </div>
+    <div class="vc">
+      <div class="q">Q2 · 受 Python「假多线程」影响吗？</div>
+      <div class="a">纯 Python 的 CPU 计算<span class="warn">受 GIL 串行化</span>；但 <em>numpy / ctypes 调 C++ / 共享内存读写会释放 GIL</em>，这里才是真正并行。<small>本工程把重计算都放进了释放 GIL 的路径，靠架构绕开了假多线程。</small></div>
+    </div>
+    <div class="vc">
+      <div class="q">Q3 · 视频播放窗口是单独线程吗？</div>
+      <div class="a">实时画面：<em>不是</em>——<code>QOpenGLWidget</code> 活在 GUI 线程，靠 QTimer 轮询 + 零拷贝喂帧。<br>视频回放：<em>是</em>——<code>_DecodeThread(QThread)</code> 在后台解码。<small>Qt 的硬约束：所有控件必须活在 GUI 线程（Qt 控件非线程安全）。</small></div>
+    </div>
+    <div class="vc">
+      <div class="q">Q4 · 如何支持 1920×1440 @ 30fps？</div>
+      <div class="a">一帧 Y16 = 5.5 MB ≈ 166 MB/s ——靠 <em>全程零拷贝</em>（共享内存 numpy 视图 → <code>glTexSubImage2D</code> 直传）+ <em>QTimer 过采样快进</em>（丢中间帧）。<small>重计算在生产者线程，GUI 线程只做「读最新 + 上传 + 画」。</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ② 真线程 vs GIL ================= -->
+<section id="s2">
+  <h2><span class="num">2</span>基础：真正的线程，但 Python 有 GIL</h2>
+  <div class="intro">
+    <b>Qt/Qt 线程是货真价实的原生线程。</b> <code>QThread</code> 底层就是 <code>CreateThread</code> / <code>pthread_create</code>，一个线程一个内核调度实体。
+    但 PySide6 里跑的是 <em>Python 字节码</em>，而 CPython 解释器全局有一把 <b>GIL（全局解释器锁）</b>：
+    <em>同一时刻只有一个线程能执行 Python 字节码</em>——这就是「假多线程」的由来。
+  </div>
+  <div class="wrap"><div class="mermaid">
+flowchart LR
+    subgraph GIL["CPython GIL（全局解释器锁）"]
+        direction TB
+        Py1["GUI 线程<br/>Python 字节码"]:::py
+        Py2["生产者线程<br/>Python 字节码"]:::py
+    end
+    Py1 -. "抢同一把锁" .- Py2
+    Py1 -- "纯 Python CPU 计算" --> Lock["GIL 轮转<br/>串行执行，多核吃不满"]:::lock
+    Py2 -- "纯 Python CPU 计算" --> Lock
+    Py1 -- "numpy 大数组运算<br/>释放 GIL" --> NP["真正并行<br/>多核同时跑"]:::real
+    Py2 -- "ctypes 调 C++（hcs_core）<br/>释放 GIL" --> NP
+    Py1 -- "IO / 共享内存原子读<br/>释放 GIL" --> NP
+    classDef py fill:#26384A,stroke:#0078D7,color:#E2E8F0
+    classDef lock fill:#7A3E00,stroke:#F59E0B,color:#FDE68A
+    classDef real fill:#065F46,stroke:#00B050,color:#D1FAE5
+  </div></div>
+  <div class="cap">图 2-1 · GIL 只锁 Python 字节码；一进入 numpy / C++ ABI / 共享内存原子操作就放锁，真正并行。</div>
+
+  <table>
+    <tr><th>场景</th><th>是否真正并行</th><th>说明</th></tr>
+    <tr><td>两个线程同时跑纯 Python 循环（如字符串处理）</td><td class="k2">否</td><td>GIL 在 <code>sys.setswitchinterval</code>（默认 5ms）内轮转，等于分时，多核吃不满。</td></tr>
+    <tr><td>numpy 重数组运算</td><td class="k">是</td><td>numpy 底层是 C，进入 C 后释放 GIL，可以和其他线程并行。</td></tr>
+    <tr><td>ctypes 调 C/C++（本工程 <code>hcs_core</code> 的 C ABI）</td><td class="k">是</td><td>ctypes 调用期间释放 GIL（CLAUDE.md E4 明确要求耗时调用放锁，避免卡 GUI）。</td></tr>
+    <tr><td>共享内存原子头尾指针读写</td><td class="k">是</td><td>一次 u32 原子 load，微秒级，不碰 GIL。</td></tr>
+    <tr><td>Qt 信号跨线程投递</td><td class="k">是</td><td>队列连接（QueuedConnection）由事件循环投递，本身是原生线程间通信。</td></tr>
+  </table>
+
+  <div class="sub-h">「放 GIL 真并行」到底指什么</div>
+  <div class="intro">
+    GIL 的规则是：<b>同一时刻，整个进程只有一个线程在执行 Python 字节码</b>。所以两个线程都在跑<b>纯 Python</b> 时，
+    即使有两个核，也只有一个核在动——这是「假多线程」。但只要某个线程 <b>进入会释放 GIL 的代码</b>（numpy 运算、
+    ctypes 调 C/C++、I/O、Qt 事件循环），锁就暂时松开，另一个线程可以抢到 GIL 跑自己的字节码——这一刻两个线程在
+    <b>不同的核上真并行</b>。GIL 锁的是 Python 字节码，<b>不锁 C</b>。
+  </div>
+  <div class="tl-block">
+    <div class="tl-title"><span class="tag tag-fake">假并行</span>纯 Python：GIL 轮转，多核吃不满</div>
+    <div class="tl">
+      <div class="tl-row">
+        <div class="tl-core">核 1</div>
+        <div class="tl-track">
+          <div class="tl-seg seg-a" style="flex:1;">A</div>
+          <div class="tl-seg seg-b" style="flex:1;">B</div>
+          <div class="tl-seg seg-a" style="flex:1;">A</div>
+          <div class="tl-seg seg-b" style="flex:1;">B</div>
+          <div class="tl-seg seg-a" style="flex:1;">A</div>
+        </div>
+      </div>
+      <div class="tl-row">
+        <div class="tl-core">核 2</div>
+        <div class="tl-track"><div class="tl-seg seg-idle" style="flex:1;">闲置 · 多核吃不满</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="tl-block">
+    <div class="tl-title"><span class="tag tag-real">真并行</span>放 GIL：A 进 numpy/C，B 同时抢到锁跑字节码</div>
+    <div class="tl">
+      <div class="tl-row">
+        <div class="tl-core">线程 A</div>
+        <div class="tl-track">
+          <div class="tl-seg seg-a" style="flex:1.2;">字节码</div>
+          <div class="tl-seg seg-gil" style="flex:2.4;">进入 numpy / C ABI（放 GIL，真在跑）</div>
+          <div class="tl-seg seg-a" style="flex:1.2;">字节码</div>
+        </div>
+      </div>
+      <div class="tl-row">
+        <div class="tl-core">线程 B</div>
+        <div class="tl-track">
+          <div class="tl-seg seg-wait" style="flex:1.2;">等锁</div>
+          <div class="tl-seg seg-b" style="flex:2.4;">抢到 GIL，跑自己的 Python 字节码</div>
+          <div class="tl-seg seg-wait" style="flex:1.2;">等锁</div>
+        </div>
+      </div>
+    </div>
+    <div class="tl-legend">
+      <span><span class="sw" style="background:#F59E0B;"></span>GIL 释放窗口（C 代码，真并行）</span>
+      <span><span class="sw" style="background:#3B82F6;"></span>线程 A</span>
+      <span><span class="sw" style="background:#00B050;"></span>线程 B</span>
+      <span><span class="sw" style="background:#334155;"></span>等锁</span>
+    </div>
+  </div>
+  <div class="box"><span class="t">一句话</span>GIL 锁的是 Python 字节码，不锁 C。把重计算塞进 numpy / C / GL 这类「会放 GIL」的代码，锁就管不着，多线程就真并行了——这也是本工程生产者线程合成帧、GUI 线程渲染能同时进行的原因。</div>
+</section>
+
+<!-- ================= ③ 线程层次 ================= -->
+<section id="s3">
+  <h2><span class="num">3</span>本项目线程层次结构</h2>
+  <div class="intro">
+    核心卖点 <b>零拷贝</b>：C++ 采集 → <code>FrameChannel</code> 共享内存 → Python numpy 视图 → GPU 纹理上传，全程无 memcpy。
+    重计算（帧合成）在独立生产者线程，GUI 线程只消费最新帧。
+  </div>
+  <div class="wrap"><div class="mermaid">
+flowchart TB
+    subgraph Cpp["C++ 核心层（newosp / hcs_core，编译期分发，无 Qt）"]
+        Sim["SimDevice 模拟后端"]:::c
+        UVC["RS500 UVC 后端（libiruvc）"]:::c
+        FC["FrameChannel<br/>共享内存环形缓冲 · 原子头尾指针"]:::shm
+    end
+    subgraph Py["Python 层（PySide6）"]
+        Prod["sim-fc-producer<br/>生产者线程（真实 OS 线程）"]:::prod
+        Acq["AcquisitionService<br/>QTimer 过采样轮询（GUI 线程）"]:::gui
+        Live["LiveThermalWidget<br/>QOpenGLWidget（GUI 线程）"]:::gui
+        Dec["_DecodeThread<br/>QThread（仅视频回放）"]:::dec
+        Play["VideoPlayerWidget<br/>QOpenGLWidget（GUI 线程）"]:::gui
+    end
+    Sim --> FC
+    UVC --> FC
+    Prod -- "合成 Y16 帧并原子发布" --> FC
+    FC -- "read_latest() 零拷贝视图" --> Acq
+    Acq -- "frame_ready 信号" --> Live
+    Dec -- "frame_available 信号（跨线程）" --> Play
+    classDef c fill:#0E2A47,stroke:#3B82F6,color:#DBEAFE
+    classDef shm fill:#0C4A6E,stroke:#0078D7,color:#E0F2FE
+    classDef prod fill:#065F46,stroke:#00B050,color:#D1FAE5
+    classDef gui fill:#26384A,stroke:#009999,color:#E2E8F0
+    classDef dec fill:#4C1D95,stroke:#A78BFA,color:#EDE9FE
+  </div></div>
+  <div class="cap">图 3-1 · 线程层次：绿色=生产者线程，青灰=GUI 线程，紫色=仅回放的解码 QThread，蓝=共享内存。</div>
+
+  <table>
+    <tr><th>线程</th><th>类型</th><th>职责</th><th>GIL 影响</th></tr>
+    <tr><td><code>sim-fc-producer</code></td><td class="k">Python threading.Thread（真实 OS 线程）</td><td>合成 16bit 辐射帧、写入 FrameChannel 共享内存</td><td>合成用 numpy → 释放 GIL，与 GUI 并行</td></tr>
+    <tr><td>GUI / 主线程</td><td class="k">Qt 事件循环线程</td><td>QTimer 轮询消费、QOpenGLWidget 渲染、所有面板/控件</td><td>Qt 事件分派本身放锁，渲染走 GL 驱动</td></tr>
+    <tr><td><code>_DecodeThread</code>（回放）</td><td class="k">QThread</td><td>PyAV 解码视频文件、按 PTS 节拍</td><td>解码在 C/FFmpeg → 释放 GIL</td></tr>
+  </table>
+
+  <div class="sub-h">3.2 控制面与数据面分离：两类 QoS 队列</div>
+  <div class="intro">
+    线程只分「谁产数据」还不够，还要分<b>两类业务</b>：<b>数据面</b>（帧：大、快、可丢）与<b>控制面</b>（命令：小、稳、强顺序）。
+    混合共用一条队列，大帧会堵住小命令，高频命令会挤掉帧——所以两面对立路由。
+  </div>
+  <table>
+    <tr><th>业务面</th><th>队列</th><th>QoS</th><th>行为</th></tr>
+    <tr><td>数据面 · 显示</td><td>FrameChannel → DisplayPump</td><td class="k">latest-wins</td><td>新帧直接覆盖旧 token、丢中间帧不排队——GUI 永不积压</td></tr>
+    <tr><td>数据面 · 录制</td><td>RecorderQueue</td><td class="k">可靠有界</td><td>满载停止并显式告警，不静默覆盖</td></tr>
+    <tr><td>控制面 · 命令</td><td>CommandWorker（唯一 owner）</td><td class="k">HIGH / NORMAL / LOW</td><td>串行 + 优先级 + 按 (panel, key) 合并滑块事件，满载拒绝</td></tr>
+  </table>
+  <div class="box"><span class="t">一句话</span>数据面允许「丢最新的旧帧」保吞吐，控制面要求「每条命令都不丢、顺序执行」——两类队列必须分开。</div>
+</section>
+
+<!-- ================= ④ 实时帧交互（动画） ================= -->
+<section id="s4">
+  <h2><span class="num">4</span>实时帧交互全流程（动画演示）</h2>
+  <div class="intro">
+    这是一帧 Y16 数据从 <b>合成</b> 到 <b>上屏</b> 的完整旅程：生产者线程合成 → 写入共享内存 → GUI 线程 QTimer 快进取最新 → GPU 纹理上传 → 绘制到屏幕。
+    <em>唯一的真实拷贝是 CPU→GPU 的一次 DMA</em>，其余全是零拷贝视图。
+  </div>
+
+  <div class="stage-wrap">
+    <div class="legend">
+      <span><span class="dot" style="background:#4ADE80"></span>生产者线程</span>
+      <span><span class="dot" style="background:#38BDF8"></span>共享内存</span>
+      <span><span class="dot" style="background:#2DD4BF"></span>GUI 线程</span>
+      <span><span class="dot" style="background:#A78BFA"></span>GPU</span>
+      <span><span class="dot" style="background:#67E8F9"></span>屏幕</span>
+    </div>
+    <div class="stage" id="stageA">
+      <div class="rail"></div>
+      <div class="stat s1"><b>生产者线程</b><small>sim-fc-producer<br>numpy 合成 Y16</small></div>
+      <div class="stat s2"><b>FrameChannel</b><small>共享内存环形缓冲<br>原子头尾指针</small></div>
+      <div class="stat s3"><b>GUI 线程</b><small>QTimer 轮询 ~125Hz<br>read_latest() 快进</small></div>
+      <div class="stat s4"><b>GPU 纹理</b><small>glTexSubImage2D<br>RG8 双字节重组</small></div>
+      <div class="stat s5"><b>屏幕</b><small>GL 着色器伪彩<br>30fps 刷新</small></div>
+      <div class="pkt pk-green fa">Y16</div>
+      <div class="pkt pk-blue fa d1">…</div>
+      <div class="pkt pk-amber fa d2">取</div>
+      <div class="pkt pk-purple fa d1" style="top:56%;">GL</div>
+      <span class="fs g1"></span><span class="fs g2"></span><span class="fs g3"></span><span class="fs g4"></span>
+      <span class="tick"></span>
+    </div>
+    <div class="cap">动画 4-1 · 绿点流=生产者连续产帧；彩色圆点=单帧旅程（合成→入共享内存→GUI 取最新→GPU 上传→上屏）；GUI 站点的青色脉冲=QTimer 心跳（~125Hz 过采样）。</div>
+  </div>
+
+  <div class="wrap"><div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant P as 生产者线程 sim-fc-producer
+    participant FC as FrameChannel 共享内存
+    participant QT as AcquisitionService GUI线程
+    participant GL as LiveThermalWidget GUI线程
+    Note over P: numpy 合成 Y16 帧（释放 GIL）
+    loop 每帧（生产者节奏）
+        P->>FC: 写入最新槽位 + 原子推进 tail
+        QT->>FC: read_latest()：原子读 head/tail，快进到最新
+        Note over QT: 无新帧 → 一次 u32 load 直接返回
+        alt 有新帧
+            QT->>GL: frame_ready(零拷贝 numpy 视图)
+            GL->>GL: set_frame() 暂存视图 + update()
+            GL->>GL: paintGL：glTexSubImage2D 上传 GPU
+            GL->>GL: 着色器查表伪彩 → 绘制到屏幕
+        end
+    end
+  </div></div>
+  <div class="cap">图 4-1 · 实时管线时序：生产者只管写，GUI 只管「取最新 + 上传 + 画」，中间帧被快进丢弃。</div>
+</section>
+
+<!-- ================= ⑤ 视频窗口是单独线程吗 ================= -->
+<section id="s5">
+  <h2><span class="num">5</span>视频窗口是单独线程吗？</h2>
+  <div class="intro">
+    <b>分两种窗口：</b>
+    ① <em>实时热像画面</em>（<code>LiveThermalWidget</code>）：<u>不是</u>单独线程——它就是 GUI 线程上的 <code>QOpenGLWidget</code>，帧由 QTimer 轮询喂进来；
+    ② <em>录像回放</em>（<code>VideoPlayerWidget</code>）：<u>是</u>——解码放在后台 <code>_DecodeThread(QThread)</code>。
+  </div>
+  <div class="wrap"><div class="mermaid">
+flowchart LR
+    subgraph L["实时（Live）画面"]
+        A["QTimer 轮询<br/>(GUI线程)"]:::gui
+        B["LiveThermalWidget<br/>QOpenGLWidget<br/>(GUI线程)"]:::gui
+        A -- "frame_ready" --> B
+    end
+    subgraph P["录像回放（Replay）"]
+        F["视频文件 MP4/AVI"]:::c
+        D["_DecodeThread<br/>QThread（后台线程）"]:::dec
+        G["VideoPlayerWidget<br/>QOpenGLWidget<br/>(GUI线程)"]:::gui
+        F -- "PyAV 解码（释放GIL）" --> D
+        D -- "frame_available 跨线程信号<br/>队列投递" --> G
+        G -- "take_latest() 取最新帧" --> G
+    end
+    classDef gui fill:#26384A,stroke:#009999,color:#E2E8F0
+    classDef dec fill:#4C1D95,stroke:#A78BFA,color:#EDE9FE
+    classDef c fill:#0E2A47,stroke:#3B82F6,color:#DBEAFE
+  </div></div>
+  <div class="cap">图 5-1 · 两类视频窗口：实时画面全在 GUI 线程；回放把解码推到后台 QThread，渲染仍在 GUI 线程。</div>
+
+  <div class="stage-wrap" style="margin-top:14px;">
+    <div class="st-label">回放管线动画（文件 → 解码线程 → GUI → 上屏）</div>
+    <div class="legend">
+      <span><span class="dot" style="background:#3B82F6"></span>视频文件</span>
+      <span><span class="dot" style="background:#A78BFA"></span>_DecodeThread (QThread)</span>
+      <span><span class="dot" style="background:#2DD4BF"></span>GUI 线程</span>
+      <span><span class="dot" style="background:#67E8F9"></span>屏幕</span>
+    </div>
+    <div class="stage" id="stageB">
+      <div class="rail"></div>
+      <div class="stat s1" style="border-color:#3B82F6;"><b>视频文件</b><small>MP4 / AVI<br>H.264 编码</small></div>
+      <div class="stat s2" style="left:32%; border-color:#A78BFA;"><b>_DecodeThread</b><small>QThread 后台线程<br>PyAV 解码（放GIL）</small></div>
+      <div class="stat s3" style="left:60%; border-color:#009999;"><b>GUI 线程</b><small>take_latest() 取帧<br>set_frame + update()</small></div>
+      <div class="stat s4" style="left:88%; width:11%; border-color:#67E8F9;"><b>屏幕</b><small>GL 绘制</small></div>
+      <div class="pkt pk-blue fb">帧</div>
+      <div class="pkt pk-purple fb d1" style="top:56%;">G</div>
+      <span class="sig"></span>
+    </div>
+    <div class="cap">动画 5-1 · 解码线程解出帧后，通过 <code>frame_available</code> 信号（琥珀色虚线）投递给 GUI 线程；GUI 线程 <code>take_latest()</code> 只取最新一帧，跳过多余的中间帧。</div>
+  </div>
+
+  <ul class="tips">
+    <li><span class="k">Qt 硬约束：控件必须活在 GUI 线程。</span> Qt 控件不是线程安全的——任何线程直接操作控件都是未定义行为。所以无论解码/合成在哪，<code>QOpenGLWidget</code> 本身永远在 GUI 线程。</li>
+    <li><span class="k">跨线程靠信号队列投递。</span> <code>_DecodeThread</code> 发 <code>frame_available</code>，Qt 自动用 QueuedConnection 把调用投到 GUI 线程的事件循环，不跨线程碰控件。</li>
+    <li><span class="k2">注意：</span>信号传递的是「有帧」这个通知，帧数据本身走 <code>take_latest()</code> 从解码线程的缓冲里拿最新一份——通知与数据分离，避免大对象跨线程拷贝。</li>
+  </ul>
+</section>
+
+<!-- ================= ⑥ 1920×1440 @ 30fps ================= -->
+<section id="s6">
+  <h2><span class="num">6</span>1920×1440 @ 30fps 是怎么做到的</h2>
+  <div class="intro">
+    <b>先算账：</b>一帧 Y16 = <code>1920 × 1440 × 2B</code> ≈ <b>5.5 MB</b>；30fps 就是持续 <em>≈ 166 MB/s</em> 的数据流。
+    为什么一个小应用扛得住？不是靠「快」，而是靠 <em>几乎不拷贝</em>。
+  </div>
+
+  <table>
+    <tr><th>环节</th><th>是否拷贝</th><th>方式</th></tr>
+    <tr><td>生产者合成帧 → 共享内存</td><td class="k">写入一次</td><td>生产者把帧写进 FrameChannel 槽位，只有这一次实际写内存</td></tr>
+    <tr><td>共享内存 → Python</td><td class="k">零拷贝</td><td><code>np.frombuffer(memoryview)</code> 直接包住共享段，<b>不 memcpy</b></td></tr>
+    <tr><td>Python → GUI 消费者</td><td class="k">零拷贝</td><td>传 numpy 视图引用（保持 base 引用，避免悬垂）</td></tr>
+    <tr><td>CPU → GPU 纹理</td><td class="k2">唯一一次</td><td><code>glTexSubImage2D</code> 把 numpy buffer 指针直传 GPU（CPU→GPU DMA）</td></tr>
+    <tr><td>16bit 上色</td><td class="k">零拷贝</td><td>GL_RG8 双字节（低字节→R，高字节→G）上传，着色器在 GPU 端重组 + 伪彩 LUT</td></tr>
+  </table>
+
+  <div class="intro" style="margin-top:16px;"><b>三个关键设计：</b></div>
+  <ul class="tips">
+    <li><span class="k">QTimer 过采样 + 快进。</span> 消费轮询按 <code>帧周期 ÷ 4</code>（30fps → ~125Hz）过采样，<code>read_latest()</code> 有「无新帧」快速路径（一次 u32 load）；有新帧就直接跳到最新，<u>丢中间帧不排队</u>——GUI 线程永远没有积压。</li>
+    <li><span class="k">重计算全在生产者线程。</span> 帧合成（numpy）不在 GUI 线程；GUI 线程每帧只做「原子读 + 上传 + 画」，每步都是微秒级。</li>
+    <li><span class="k">GPU 分担上色。</span> 伪彩映射放在片段着色器（GPU），CPU 不做任何逐像素转换——把最贵的像素活交给显卡。</li>
+  </ul>
+
+  <div class="wrap"><div class="mermaid">
+flowchart LR
+    subgraph CPU["CPU 侧"]
+        P["生产者线程<br/>numpy 合成帧"]:::prod
+        FC["FrameChannel<br/>共享内存"]:::shm
+        GUI["GUI 线程<br/>QTimer 快进取最新"]:::gui
+    end
+    subgraph GPU["GPU 侧"]
+        TEX["GL_RG8 纹理<br/>低字节→R 高字节→G"]:::gpu
+        SH["片段着色器<br/>重组 uint16 + 伪彩 LUT"]:::gpu
+        SCR["屏幕 30fps"]:::gpu
+    end
+    P --> FC
+    FC -- "np.frombuffer 零拷贝视图" --> GUI
+    GUI -- "glTexSubImage2D（唯一一次 DMA）" --> TEX
+    TEX --> SH --> SCR
+    classDef prod fill:#065F46,stroke:#00B050,color:#D1FAE5
+    classDef shm fill:#0C4A6E,stroke:#0078D7,color:#E0F2FE
+    classDef gui fill:#26384A,stroke:#009999,color:#E2E8F0
+    classDef gpu fill:#4C1D95,stroke:#A78BFA,color:#EDE9FE
+  </div></div>
+  <div class="cap">图 6-1 · 零拷贝链路：只有「CPU→GPU DMA」是一次真正的数据搬运。</div>
+
+  <table style="margin-top:14px;">
+    <tr><th>指标</th><th>数值</th></tr>
+    <tr><td>单帧大小（Y16，1920×1440）</td><td>5.53 MB</td></tr>
+    <tr><td>30fps 数据带宽</td><td>≈ 166 MB/s</td></tr>
+    <tr><td>实际 memcpy 次数</td><td class="k">0 次（Python 侧全程零拷贝）</td></tr>
+    <tr><td>CPU→GPU DMA</td><td class="k2">每帧 1 次（5.5MB，现代 GPU 微秒~百微秒级）</td></tr>
+    <tr><td>GUI 线程每帧成本</td><td>1 次 u32 原子读 + 1 次纹理上传 + 1 次 draw</td></tr>
+    <tr><td>消费轮询频率</td><td>≈ 125Hz（帧周期 ÷ 4 过采样，防走样丢帧）</td></tr>
+  </table>
+
+  <div class="sub-h">6.1 复合帧：图像与信息行必须共享 frame_id</div>
+  <div class="intro">
+    本工程的一帧是<b>复合帧</b>：<code>1920×1440 图像</code> + <b>信息行</b>（温度、状态、checksum）。
+    最常见的 bug 是「GUI 拉一帧、统计延迟两秒、结果贴错帧」——所以图像和温度必须用<b>同一个 frame_id</b> 对齐。
+  </div>
+  <ul class="tips">
+    <li><span class="k">同 token 对齐。</span> image / infoline / metadata 放在同一个 token（frame_id + generation）上，消费者按 frame_id 校验代际。</li>
+    <li><span class="k">旧结果不覆盖新帧。</span> 迟到的旧 frame_id 结果直接拒绝，不能覆盖新帧的温度显示。</li>
+    <li><span class="k">解析失败不猜。</span> 信息行校验失败只标记 <code>metadata_error</code>，图像仍可显示——但绝不「猜温度」。</li>
+  </ul>
+
+  <div class="sub-h">6.2 为什么上色用 RG8 而不是 R16</div>
+  <div class="intro">
+    <code>GL_R16 / GL_R16UI</code> 是 16-bit 单通道纹理最干净的接口，但实测在<b>多个 Intel 驱动下上传后屏幕全黑</b>。
+    所以改为 <code>GL_RG8 + GL_UNSIGNED_BYTE</code>：把 little-endian Y16 的低字节 → R、高字节 → G，片段着色器内重建 16-bit 再查伪彩 LUT——这条路在 Intel / NVIDIA / AMD 都能跑。
+  </div>
+  <ul class="tips">
+    <li><span class="k">PBO 不是可选项。</span> PySide6 6.x 的 <code>glTexSubImage2D</code> 绑定层对 <code>pixels</code> 参数只接受 buffer 对象；<code>None</code> / <code>0</code> / <code>c_void_p(0)</code> 会被拒绝或崩溃。出货路径就是 <b>glTexSubImage2D 直传</b>，首次使用即永久回落。</li>
+    <li><span class="k">CPU fallback 不能当性能验收路径。</span> 必须单独记录帧率与 P95/P99，不能用它证明 GPU 路径预算达标。</li>
+  </ul>
+</section>
+
+<!-- ================= ⑦ 零拷贝底层 ================= -->
+<section id="s7">
+  <h2><span class="num">7</span>零拷贝的底层：共享内存 + C 内存布局契约</h2>
+  <div class="intro">
+    <b>零拷贝不是「两种语言的数据结构互相兼容」</b>，而是：<em>双方都不传对象，改共享同一块内存、按同一份字节布局去解释它</em>。
+    §6 那张「唯一一次 DMA」表的根因就在这里。
+  </div>
+
+  <div class="sub-h">7.1 跨语言边界只认「裸内存 + 布局契约」</div>
+  <div class="intro">
+    Python 的 <code>dict</code>、C++ 的 <code>std::vector</code> 互不兼容——但零拷贝路径上<b>根本不传这些对象</b>。
+    传的是一段共享内存的地址（Windows 命名 section <code>osp_fc_sim</code>），两边各自按<b>同一份二进制布局</b>读写。
+    这份布局契约就是 C ABI（<code>frame_channel.hpp</code> ↔ <code>frame_channel.py</code>）。
+  </div>
+  <div class="pre-row">
+    <div>
+      <pre><code>// frame_channel.hpp —— 结构体就长在共享内存里
+struct FrameSlotHeader {
+    uint32_t magic;      // 0x48534C54 'HSLT'
+    uint32_t frame_no;
+    uint32_t width, height;
+    uint32_t dtype;      // 0=u8 1=u16 2=f32 3=f64
+    uint32_t payload_size, crc32, committed;
+};  // 到 64 字节，布局与 Python 契约一致</code></pre>
+      <div class="pre-cap">C++ 侧：struct 定义就是内存布局，直接写。</div>
+    </div>
+    <div>
+      <pre><code># frame_channel.py —— 同一份字节布局
+SLOT_HEADER_FORMAT = "&lt;16I"   # 小端 16×u32
+hdr = struct.unpack_from(
+    SLOT_HEADER_FORMAT, buf, slot_off)
+magic, fno, w, h, dtype_code, payload, \
+    crc, committed = hdr[:8]
+array = np.frombuffer(
+    buf, dtype=np_dtype, count=w * h,
+    offset=data_off).reshape(h, w)  # 零拷贝视图</code></pre>
+      <div class="pre-cap">Python 侧：struct 按偏移解释 64B 头 + numpy 直包共享内存。</div>
+    </div>
+  </div>
+  <div class="cap">代码 7-1 · 两端各自按同一份布局读写同一段字节，靠 magic + version + CRC32 在运行时验证「说的是同一种布局」。</div>
+
+  <div class="sub-h">7.2 兼容什么、不兼容什么</div>
+  <div class="intro">
+    「数据结构兼容」实际指的是：<b>numpy 数组 ↔ C 连续数组天生同构</b>。numpy 默认内存排布就是 C-contiguous 行主序，
+    和 C/C++ 的 <code>uint16_t frame[w*h]</code> 逐字节一致；再加上小端序 = x86/x64 原生字节序（同机直接读）。
+  </div>
+  <table>
+    <tr><th>类型</th><th>能否走零拷贝</th><th>说明</th></tr>
+    <tr><td>numpy 数组 ↔ C 连续数组（定长）</td><td class="k">兼容</td><td>C-contiguous、行主序、固定宽度类型，直接 <code>np.frombuffer</code> 共享。</td></tr>
+    <tr><td>POD 结构体（全部固定宽度字段）</td><td class="k">兼容</td><td>无虚表、无字符串、无内嵌指针，用 <code>struct</code> 按偏移读写。</td></tr>
+    <tr><td>Python 对象（dict / list / int）</td><td class="k2">不兼容</td><td>含对象头/引用，必须序列化再传输。</td></tr>
+    <tr><td>C++ <code>std::vector</code> / <code>std::string</code></td><td class="k2">不兼容</td><td>栈上只有指针，数据在堆上，跨语言无法直接读。</td></tr>
+    <tr><td>C++ class（含 vtable / 内部布局）</td><td class="k2">不兼容</td><td>布局未定义，不能跨语言解释。</td></tr>
+  </table>
+
+  <div class="sub-h">7.3 「Python 和 C++ 都是读写 C 内存结构？」—— 是，但方式不同</div>
+  <div class="intro">
+    跨语言边界上，<b>C++ 直接写 C 结构体进共享内存</b>（它的 struct 定义就是内存布局本身，无中间层）；
+    <b>Python 用 <code>struct</code> + numpy 按偏移解释同一段字节</b>——等价于逐字段读 C 结构体，只是没有「C 结构体」这种语言原生结构。
+  </div>
+  <div class="wrap"><div class="mermaid">
+flowchart LR
+    CPP["C++ 生产者<br/>struct FrameSlotHeader 直接写"]:::cpp
+    PY["Python 消费者<br/>struct + numpy 按偏移解释"]:::py
+    SEG["同一段物理内存<br/>osp_fc_sim"]:::shm
+    HDR["段头 64B<br/>magic / 写指针 / 读指针"]:::c
+    S0["槽0 · 头64B + payload"]:::c
+    S1["槽1 · 头64B + payload"]:::c
+    CPP -- "写" --> SEG
+    PY -- "读" --> SEG
+    SEG --- HDR
+    SEG --- S0
+    SEG --- S1
+    classDef cpp fill:#0E2A47,stroke:#3B82F6,color:#DBEAFE
+    classDef py fill:#065F46,stroke:#00B050,color:#D1FAE5
+    classDef shm fill:#4C1D95,stroke:#A78BFA,color:#EDE9FE
+    classDef c fill:#26384A,stroke:#009999,color:#E2E8F0
+  </div></div>
+  <div class="cap">图 7-1 · C++ 把 struct 写进共享段，Python 按同一份偏移契约读同一段字节——两端操作的是同一个「C 内存结构」。</div>
+
+  <div class="box">
+    <span class="t">前提：布局必须钉死</span>
+    「Python 读到的是 C 结构体」成立，前提是 C++ 结构体的真实内存布局（含编译器对齐填充）和 Python 的 <code>"&lt;16I"</code> 完全一致。
+    所以 CLAUDE.md E2 强制<b>显式对齐（pack 或手写 layout）+ 魔数单点</b>，运行时再用 magic + CRC32 兜底验证没解错位。
+  </div>
+
+  <div class="sub-h">7.4 跨语言硬约束 E1–E5</div>
+  <div class="intro">整套零拷贝能否成立，取决于五条跨语言硬约束不被破坏——任何一条被打破，前面所有优化立刻失效。</div>
+  <table>
+    <tr><th>约束</th><th>内容</th><th>违背后果</th></tr>
+    <tr><td class="k">E1</td><td>numpy 视图生命周期不得超过 C++ 共享段 + slot lease</td><td>悬垂访问 / UAF / 撕裂</td></tr>
+    <tr><td class="k">E2</td><td>ctypes 结构体宽度 / packing / 常量集中定义，配 ABI 测试</td><td>跨语言布局错位</td></tr>
+    <tr><td class="k">E3</td><td>C++ 内存只走 C ABI 原子 / FrameChannel 头尾，<b>Python Lock 不能保护 C++ SHM</b></td><td>锁语义错配，跨语言不成立</td></tr>
+    <tr><td class="k">E4</td><td>昂贵 native 调用必须释放 GIL，且不能从 Qt GUI 线程调用</td><td>GUI 线程卡顿</td></tr>
+    <tr><td class="k">E5</td><td>中断 / 半初始化 / 拔插 / 重复 close 是正常输入，清理必须幂等</td><td>句柄 / SHM / 视图残留</td></tr>
+  </table>
+  <div class="box"><span class="t">一句话</span>E1 / E3 是零拷贝契约的底线，E4 是线程拓扑成立的前提，E5 是拔插、崩溃下仍然稳定的根因。</div>
+</section>
+
+<div style="color:var(--dim); font-size:12px; text-align:center; margin-top:6px;">
+  本文档基于 hcs_client 实际代码（sim.py / acquisition_service.py / frame_channel.py / widgets/video）。Mermaid 图离线时需联网加载渲染。
+</div>
+
+<script>
+  // ---- 动画速度控制 ----
+  const spd = document.getElementById('spd');
+  const spdv = document.getElementById('spdv');
+  spd.addEventListener('input', () => {
+    document.documentElement.style.setProperty('--speed', spd.value);
+    spdv.textContent = Number(spd.value).toFixed(1) + '×';
+  });
+
+  // ---- Mermaid（静态彩色图）----
+  function loadMermaid(){
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js';
+    s.onload = () => {
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: 'base',
+        securityLevel: 'loose',
+        themeVariables: {
+          fontFamily: '"PingFang SC","Microsoft YaHei",sans-serif',
+          fontSize: '14px',
+          primaryColor: '#26384A',
+          primaryTextColor: '#E2E8F0',
+          primaryBorderColor: '#0078D7',
+          lineColor: '#94A3B8',
+          secondaryColor: '#00B050',
+          tertiaryColor: '#1E293B',
+          sequenceNumberColor: '#FACC15',
+          actorBkg: '#26384A',
+          actorBorder: '#0078D7',
+          actorTextColor: '#FFFFFF',
+          signalColor: '#7DD3FC',
+          signalTextColor: '#E2E8F0',
+          labelBoxBkgColor: '#0F172A',
+          labelBoxBorderColor: '#334155',
+          labelTextColor: '#E2E8F0',
+          loopTextColor: '#FACC15',
+          noteBkgColor: '#0F172A',
+          noteTextColor: '#E2E8F0',
+          activationBkgColor: '#1D4ED8',
+          activationBorderColor: '#60A5FA',
+          sequenceActorBox: true,
+        }
+      });
+    };
+    s.onerror = () => {
+      document.querySelectorAll('.mermaid').forEach(el => {
+        el.innerHTML = '<div style="color:#F87171;font-size:13px;">Mermaid CDN 加载失败（离线？）。请联网后刷新，或直接查看上方 CSS 动画演示与表格。</div>';
+      });
+    };
+    document.head.appendChild(s);
+  }
+  loadMermaid();
+</script>
+
+</body>
+</html>
