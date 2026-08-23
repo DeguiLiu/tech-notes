@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>嵌入式技术演示合集</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --line:#334155;
+    --text:#e2e8f0; --dim:#94a3b8; --cyan:#22d3ee;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif; padding:40px 24px; line-height:1.6;}
+  .wrap{max-width:900px; margin:0 auto;}
+  h1{font-size:24px; margin-bottom:6px;}
+  .tagline{color:var(--dim); font-size:14px; margin-bottom:28px;}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+  @media (max-width:700px){.grid{grid-template-columns:1fr;}}
+  .card{display:block; text-decoration:none; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px; transition:border-color .2s, transform .2s;}
+  .card:hover{border-color:var(--cyan); transform:translateY(-2px);}
+  .tag{display:inline-block; font-size:11px; padding:2px 10px; border-radius:99px; margin-bottom:10px; font-weight:700;}
+  .tag-demo{background:linear-gradient(90deg,#0891b2,#2563eb); color:#fff;}
+  .tag-article{background:linear-gradient(90deg,#ea580c,#7c3aed); color:#fff;}
+  .card h2{font-size:16px; margin-bottom:6px;}
+  .card p{font-size:13px; color:var(--dim); line-height:1.65;}
+  .card .url{font-size:11px; color:var(--cyan); margin-top:10px; word-break:break-all; font-family:Consolas,monospace;}
+  footer{color:var(--dim); font-size:12px; margin-top:30px; text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>嵌入式技术演示合集</h1>
+  <p class="tagline">交互式动画演示与技术文章，覆盖命令传输、GUI 线程模型、MCU 内存架构等工程实践。</p>
+
+  <div class="grid">
+    <a class="card" href="vdcmd-cci-uci-demo.html">
+      <span class="tag tag-demo">动画演示</span>
+      <h2>VDCMD 命令传输原理</h2>
+      <p>CCI（I2C 硬件信箱 · 主机轮询）vs UCI（UART 软件拆帧 · 固件回推）：命令解析核心相同，差别在硬件/软件分工与结果回传。</p>
+      <div class="url">vdcmd-cci-uci-demo.html</div>
+    </a>
+
+    <a class="card" href="pyside6-thread-model-video-pipeline.html">
+      <span class="tag tag-demo">动画演示</span>
+      <h2>PySide6 线程模型与视频管线</h2>
+      <p>GIL 真/假多线程、控制面与数据面分离、零拷贝帧链、复合帧 frame_id 对齐，以及 1920×1440 @ 30fps 的原理。</p>
+      <div class="url">pyside6-thread-model-video-pipeline.html</div>
+    </a>
+
+    <a class="card" href="stm32f407-sram-ccm-memory-architecture.md">
+      <span class="tag tag-article">技术文章</span>
+      <h2>STM32F407 内存架构</h2>
+      <p>SRAM1 / SRAM2 / RAM1 / CCM 的拓扑、层次与工程取舍：DMA 可见区与 CPU 独占零等待区的选型决策。</p>
+      <div class="url">stm32f407-sram-ccm-memory-architecture.md</div>
+    </a>
+
+    <a class="card" href="tech_blog_pyside6_lessons.md">
+      <span class="tag tag-article">技术文章</span>
+      <h2>PySide6 工业上位机实战经验</h2>
+      <p>线程与背压、零拷贝的真实定义、OpenGL 上传坑、NumPy LUT 归一化，以及跨语言硬约束 E1–E5。</p>
+      <div class="url">tech_blog_pyside6_lessons.md</div>
+    </a>
+  </div>
+
+  <footer>一份给嵌入式工程师的交互式技术笔记。</footer>
+</div>
+</body>
+</html>
