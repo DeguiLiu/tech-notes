@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>STM32F407 SRAM/CCM 内存寻路演示</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#1e293b; --line:#334155;
+    --cyan:#22d3ee; --blue:#3b82f6; --orange:#fb923c; --purple:#a78bfa;
+    --green:#22c55e; --red:#ef4444; --yellow:#facc15; --gold:#fbbf24;
+    --text:#e2e8f0; --dim:#94a3b8;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{background:var(--bg); color:var(--text); font-family:"PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif; padding:24px; line-height:1.6;}
+  h1{font-size:22px; margin-bottom:4px;}
+  h1 .s{color:var(--dim); font-size:14px; font-weight:normal;}
+  .tagline{color:var(--dim); font-size:14px; margin-bottom:14px;}
+  .tagline b{color:var(--cyan);} .tagline i{color:var(--orange);} .tagline u{color:var(--gold); text-decoration:none;}
+
+  .speedbar{display:flex; align-items:center; gap:14px; margin-bottom:20px; padding:10px 16px; background:var(--panel); border:1px solid var(--line); border-radius:10px; font-size:13px; color:var(--dim); flex-wrap:wrap;}
+  .speedbar b{color:var(--text);}
+  .speedbar input{width:240px; accent-color:#38bdf8; cursor:pointer;}
+  .spdv{font-weight:700; color:var(--cyan); min-width:48px; font-size:15px;}
+
+  section{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 20px 20px; margin-bottom:26px;}
+  section h2{font-size:18px; margin-bottom:2px; display:flex; align-items:center; gap:10px;}
+  .chip-tag{font-size:12px; padding:2px 10px; border-radius:99px; color:#fff; flex:none;}
+  .tag-sram{background:linear-gradient(90deg,#16a34a,#0d9488);}
+  .tag-ccm{background:linear-gradient(90deg,#d97706,#7c3aed);}
+  .tag-cpu{background:linear-gradient(90deg,#0891b2,#2563eb);}
+  .intro{color:var(--dim); font-size:13px; margin:6px 0 12px;}
+  .intro b{color:var(--text);}
+
+  /* 结论速览 */
+  .verdict{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
+  .vc{border:1px solid var(--line); border-radius:10px; padding:12px 14px; background:#101828;}
+  .vc .q{font-size:13px; color:var(--dim); margin-bottom:6px; font-weight:700;}
+  .vc .a{font-size:13.5px; color:var(--text);}
+  .vc .a em{color:var(--gold); font-style:normal; font-weight:700;}
+  .vc .a .warn{color:var(--red); font-weight:700;}
+  .vc .a small{display:block; color:var(--dim); font-size:12px; margin-top:4px;}
+
+  /* 拓扑图 */
+  .topo{display:flex; flex-direction:column; gap:10px; margin-top:10px;}
+  .topo-row{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .tnode{border:1px solid var(--line); border-radius:10px; padding:8px 12px; font-size:12.5px; background:#141f38; text-align:center; min-width:96px;}
+  .tnode b{display:block; font-size:13px;}
+  .tnode small{color:var(--dim); font-size:11px; display:block; margin-top:2px;}
+  .t-cpu{border-color:var(--cyan);} .t-cpu b{color:var(--cyan);}
+  .t-sram{border-color:var(--green);} .t-sram b{color:var(--green);}
+  .t-ccm{border-color:var(--gold);} .t-ccm b{color:var(--gold);}
+  .t-dma{border-color:var(--blue);} .t-dma b{color:var(--blue);}
+  .t-periph{border-color:var(--orange);} .t-periph b{color:var(--orange);}
+  .t-flash{border-color:var(--purple);} .t-flash b{color:var(--purple);}
+  .t-matrix{border-color:var(--dim);} .t-matrix b{color:var(--text);}
+  .arrow{color:var(--dim); font-size:13px; font-weight:700;}
+  .arrow.ok{color:var(--green);} .arrow.bad{color:var(--red);} .arrow.fast{color:var(--gold);}
+  .arc-tag{font-size:11px; color:var(--dim);}
+
+  /* 动画舞台 */
+  .stage{position:relative; height:250px; border:1px dashed var(--line); border-radius:10px; background:linear-gradient(180deg,#0b1220,#101a2e); overflow:hidden; margin-top:12px;}
+  .box{position:absolute; border-radius:8px; padding:8px 10px; font-size:12.5px; text-align:center; border:1px solid var(--line); background:#17223b; color:var(--text); transition:border-color .3s, box-shadow .3s, transform .3s; min-width:96px;}
+  .box small{display:block; color:var(--dim); font-size:11px; margin-top:2px;}
+  .pulse{animation:pulse 1s ease-in-out infinite;}
+  .glowg{box-shadow:0 0 14px rgba(34,197,94,.6); border-color:var(--green)!important;}
+  .glowr{box-shadow:0 0 14px rgba(239,68,68,.6); border-color:var(--red)!important;}
+  .glowc{box-shadow:0 0 14px rgba(251,191,36,.6); border-color:var(--gold)!important;}
+
+  .rail{position:absolute; top:150px; left:2%; right:2%; height:3px; border-radius:3px; background:var(--line);}
+  .rail-ccm{position:absolute; top:52px; left:2%; right:2%; height:3px; border-radius:3px; background:var(--line); opacity:.6;}
+
+  .pkt{position:absolute; top:138px; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:800; color:#fff; opacity:0; box-shadow:0 2px 8px rgba(0,0,0,.45);}
+  .pk-green{background:radial-gradient(circle at 32% 30%, #4ADE80, var(--green)); border:2px solid #15803d;}
+  .pk-red{background:radial-gradient(circle at 32% 30%, #F87171, var(--red)); border:2px solid #991b1b;}
+  .pk-gold{background:radial-gradient(circle at 32% 30%, #FCD34D, #d97706); border:2px solid #92400e;}
+  .pkt-ccm{top:40px;}
+  @keyframes flyL2R{0%{left:-40px; opacity:0} 8%{opacity:1} 92%{opacity:1} 100%{left:calc(100% - 40px); opacity:0}}
+  @keyframes flyR2L{0%{left:calc(100% - 40px); opacity:0} 8%{opacity:1} 92%{opacity:1} 100%{left:-40px; opacity:0}}
+  .fly-l2r{animation:flyL2R linear forwards;}
+  .fly-r2l{animation:flyR2L linear forwards;}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(34,211,238,0)} 50%{box-shadow:0 0 0 6px rgba(34,211,238,.25); border-color:var(--cyan)}}
+
+  .ccm-miss{position:absolute; left:50%; top:196px; transform:translateX(-50%); font-size:12px; color:var(--red); background:#2a1117; border:1px solid var(--red); border-radius:8px; padding:6px 12px; opacity:0; transition:opacity .3s;}
+  .ccm-miss b{color:var(--red);}
+
+  .capwrap{position:absolute; left:0; right:0; bottom:8px; text-align:center;}
+  .cap{display:inline-block; font-size:13px; color:var(--text); background:#0b1426; border:1px solid var(--line); padding:4px 14px; border-radius:99px; min-height:24px;}
+
+  .controls{display:flex; align-items:center; gap:12px; margin-top:12px; flex-wrap:wrap;}
+  button{cursor:pointer; border:none; border-radius:8px; padding:8px 16px; font-size:14px; font-weight:700; color:#fff; transition:transform .1s;}
+  button:active{transform:scale(.96);}
+  .btn-a{background:linear-gradient(90deg,#16a34a,#0d9488);}
+  .btn-b{background:linear-gradient(90deg,#d97706,#7c3aed);}
+  .btn-step{background:#334155;}
+  .stepno{font-size:12px; color:var(--dim);}
+  .stepno b{color:var(--text); font-size:15px;}
+  .hint{font-size:11px; color:var(--dim);}
+
+  /* 干货 */
+  .knowbox{margin-top:14px; padding:14px 16px; background:#0b1426; border:1px solid var(--line); border-radius:10px; font-size:13px;}
+  .knowbox h3{font-size:14px; margin-bottom:8px; color:var(--text);}
+  .knowbox p{color:var(--text); margin-bottom:8px; line-height:1.7;}
+  .knowbox ol,.knowbox ul{margin:0 0 6px 20px;}
+  .knowbox li{margin-bottom:7px; line-height:1.65; color:var(--text);}
+  .knowbox li b{color:var(--cyan);}
+  .knowbox code{font-family:Consolas,monospace; font-size:12px; background:#141f38; border:1px solid var(--line); padding:0 4px; border-radius:4px; color:var(--yellow);}
+  .knowbox table{width:100%; border-collapse:collapse; margin-top:4px;}
+  .knowbox table th,.knowbox table td{border:1px solid var(--line); padding:7px 10px; text-align:left;}
+  .knowbox table th{background:#141f38; color:var(--cyan); font-weight:600;}
+  .knowbox table td{color:var(--text);}
+
+  ul.tips{list-style:none; margin-top:10px;}
+  ul.tips li{padding:8px 12px 8px 30px; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; background:#101828; font-size:13px; position:relative;}
+  ul.tips li::before{content:"✗"; position:absolute; left:12px; color:var(--red); font-weight:900;}
+</style>
+</head>
+<body>
+
+<h1>STM32F407 内存寻路演示 <span class="s">SRAM / RAM1 / CCM —— 一块数据该放哪</span></h1>
+<div class="tagline">核心结论：CCM 的<b>CPU 独占</b>与<b>零等待</b>，是"只挂在 D-Bus 私有直连上"这一件事的两面。<u>DMA / 外设只能到 SRAM</u>，<i>到不了 CCM</i>。选内存只问一句：谁要访问这块数据？</div>
+
+<div class="speedbar">
+  <span><b>自动播放速度</b></span>
+  <input type="range" id="spd" min="10" max="100" value="50">
+  <span class="spdv" id="spdv">0.5x</span>
+  <span class="hint">仅影响"▶ 播放"自动循环；手动单步由你控制节奏。</span>
+</div>
+
+<!-- ================= ① 结论速览 ================= -->
+<section>
+  <h2><span class="chip-tag tag-cpu">结论</span> 四问先答</h2>
+  <div class="intro">先给结论，后面逐条用动画展开。</div>
+  <div class="verdict">
+    <div class="vc">
+      <div class="q">Q1 · CCM 为什么是 CPU 独占？</div>
+      <div class="a">只有 CPU 的 D-Bus 有到 CCM 的<b>私有直连</b>。DMA、外设都没接这条线 —— 别人进不来。<small>所以 UART/USB/ADC 的缓冲放 CCM，数据根本送不进去。</small></div>
+    </div>
+    <div class="vc">
+      <div class="q">Q2 · CCM 为什么"零等待"？</div>
+      <div class="a">专线<b>绕过总线矩阵</b>，不用和 DMA/外设排队竞争仲裁。<small>SRAM 要走矩阵，与 DMA 并发时会插等待周期 —— 差距就在这里。</small></div>
+    </div>
+    <div class="vc">
+      <div class="q">Q3 · CCM 能执行代码吗？</div>
+      <div class="a"><span class="warn">不能。</span>取指靠 I-Bus，CCM 只挂了数据总线（D-Bus），没挂 I-Bus。代码放 CCM 会 HardFault。<small>CCM 只放数据。</small></div>
+    </div>
+    <div class="vc">
+      <div class="q">Q4 · RAM1 就是一块 128KB 内存吗？</div>
+      <div class="a"><span class="warn">不是。</span>RAM1 是 SRAM1(112KB) + SRAM2(16KB) 的<b>链接合并别名</b>。物理上是两块 SRAM，地址连续后链接器合成一个区。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ② 总线拓扑 ================= -->
+<section>
+  <h2><span class="chip-tag tag-cpu">拓扑</span> Cortex-M4 的三条通路与一堵"看不见的墙"</h2>
+  <div class="intro">Cortex-M4 有两条总线：<b>I-Bus</b>（取指，连 Flash/SRAM，<em>不连 CCM</em>）和 <b>D-Bus</b>（数据，既经总线矩阵到 SRAM、又有一条<b>私有直连</b>到 CCM）。<b>DMA 与外设只能走总线矩阵</b> —— 那条路到不了 CCM。</div>
+  <div class="topo">
+    <div class="topo-row">
+      <div class="tnode t-cpu"><b>Cortex-M4 CPU</b><small>I-Bus + D-Bus</small></div>
+      <span class="arrow fast">└─ D-Bus 私有直连 →</span>
+      <div class="tnode t-ccm"><b>CCM 64KB</b><small>0x1000_0000 · 零等待</small></div>
+      <span class="arc-tag">✓ 只有 CPU 能到</span>
+    </div>
+    <div class="topo-row">
+      <div class="tnode t-cpu" style="opacity:.5"><b>CPU</b></div>
+      <span class="arrow">└─ I-Bus / D-Bus →</span>
+      <div class="tnode t-matrix"><b>总线矩阵</b><small>AHB · 仲裁</small></div>
+      <span class="arrow ok">→</span>
+      <div class="tnode t-sram"><b>SRAM1 112KB</b><small>0x2000_0000</small></div>
+      <div class="tnode t-sram"><b>SRAM2 16KB</b><small>0x2001_C000</small></div>
+    </div>
+    <div class="topo-row">
+      <div class="tnode t-periph"><b>外设</b><small>UART/USB/ADC</small></div>
+      <span class="arrow">→</span>
+      <div class="tnode t-dma"><b>DMA1/2</b></div>
+      <span class="arrow bad">→ 总线矩阵 →</span>
+      <div class="tnode t-sram"><b>RAM1（SRAM1+SRAM2）</b><small>DMA 可见 · 128KB</small></div>
+      <span class="arc-tag">✗ DMA 到不了 CCM</span>
+    </div>
+    <div class="topo-row">
+      <div class="tnode t-cpu" style="opacity:.5"><b>CPU</b></div>
+      <span class="arrow">└─ I-Bus 取指 →</span>
+      <div class="tnode t-flash"><b>Flash 1MB</b><small>0x0800_0000</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ③ 动画 A：DMA 数据 → SRAM ================= -->
+<section>
+  <h2><span class="chip-tag tag-sram">动画 A</span> DMA 可见数据：UART 缓冲只能去 SRAM</h2>
+  <div class="intro">一块<b>会被外设/DMA 写</b>的数据（串口 RX 缓冲），寻路永远停在 <b>SRAM</b> —— 因为 DMA 走总线矩阵，那条路到不了 CCM。</div>
+
+  <div class="stage" id="stageA">
+    <div class="rail"></div>
+    <div class="box" style="left:1.5%; top:118px;" id="a-uart"><b>UART</b><small>收到数据</small></div>
+    <div class="box" style="left:20%; top:118px;" id="a-dma"><b>DMA</b><small>目标 0x2000_0000</small></div>
+    <div class="box" style="left:39%; top:118px;" id="a-matrix"><b>总线矩阵</b><small>仲裁</small></div>
+    <div class="box" style="left:58%; top:118px;" id="a-sram"><b>SRAM1</b><small>0x2000_0000</small></div>
+    <div class="box" style="left:78%; top:118px;" id="a-cpu"><b>CPU</b><small>处理缓冲</small></div>
+    <div class="box" style="left:39%; top:196px;" id="a-ccm" class="glowr"><b>✗ CCM 0x1000_0000</b><small>DMA 无路径</small></div>
+    <div class="pkt pk-green" id="a-data">D</div>
+    <div class="pkt pk-red" id="a-bad">✗</div>
+    <div class="capwrap"><span class="cap" id="a-cap">初始：UART 等待数据，DMA 待命。</span></div>
+  </div>
+
+  <div class="controls">
+    <button class="btn-a" id="a-play">▶ 播放</button>
+    <button class="btn-step" id="a-prev">⟵ 上一步</button>
+    <button class="btn-step" id="a-next">下一步 ⟶</button>
+    <span class="stepno">步骤 <b id="a-step">0</b> / <span id="a-stepmax">6</span></span>
+    <span class="hint">最后一步演示"放 CCM"会怎样：DMA 访问 0x1000_0000 无总线路径。</span>
+  </div>
+</section>
+
+<!-- ================= ④ 动画 B：CPU 热数据 → CCM ================= -->
+<section>
+  <h2><span class="chip-tag tag-ccm">动画 B</span> CPU 热数据：私有直连直达 CCM</h2>
+  <div class="intro">一块<b>只有 CPU 碰、又小又热</b>的数据（事件池、热线程栈），走 D-Bus <b>私有直连</b>进 CCM，绕过总线矩阵 —— 零等待。对比：若放 SRAM，走矩阵会与 DMA 竞争仲裁。</div>
+
+  <div class="stage" id="stageB">
+    <div class="rail" style="top:150px;"></div>
+    <div class="rail-ccm" style="top:52px;"></div>
+    <div class="box" style="left:2%; top:118px;" id="b-cpu"><b>CPU</b><small>热循环读写</small></div>
+    <div class="box" style="left:24%; top:40px;" id="b-ccm" class=""><b>CCM 64KB</b><small>0x1000_0000 · 零等待</small></div>
+    <div class="box" style="left:38%; top:118px;" id="b-matrix"><b>总线矩阵</b><small>与 DMA 仲裁</small></div>
+    <div class="box" style="left:60%; top:118px;" id="b-sram"><b>SRAM1</b><small>0x2000_0000</small></div>
+    <div class="pkt pk-gold pkt-ccm" id="b-fast">Z</div>
+    <div class="pkt pk-gold" id="b-slow">Z</div>
+    <div class="capwrap"><span class="cap" id="b-cap">初始：CPU 热循环准备读写热对象。</span></div>
+  </div>
+
+  <div class="controls">
+    <button class="btn-b" id="b-play">▶ 播放</button>
+    <button class="btn-step" id="b-prev">⟵ 上一步</button>
+    <button class="btn-step" id="b-next">下一步 ⟶</button>
+    <span class="stepno">步骤 <b id="b-step">0</b> / <span id="b-stepmax">6</span></span>
+    <span class="hint">顶部金色轨道 = 私有直连（零等待）；中部轨道 = 总线矩阵（有仲裁）。</span>
+  </div>
+</section>
+
+<!-- ================= ⑤ 三问三不放 ================= -->
+<section>
+  <h2><span class="chip-tag tag-ccm">决策</span> 数据放哪：三问三不放</h2>
+  <div class="knowbox">
+    <table>
+      <thead><tr><th>问题</th><th>回答</th><th>放置</th></tr></thead>
+      <tbody>
+        <tr><td>会被 DMA / 外设读写吗？</td><td>是（串口缓冲、USB FIFO、ADC 数组）</td><td><b>SRAM / RAM1</b>（必经 DMA 可见区）</td></tr>
+        <tr><td>会被 CPU 取指执行吗？</td><td>是（bootloader、RAM 常驻 ISR）</td><td><b>SRAM</b></td></tr>
+        <tr><td>纯 CPU 数据、访问极频繁？</td><td>是（事件池、热线程栈）</td><td><b>CCM</b>（零等待）</td></tr>
+        <tr><td>低频、容量大、凑热闹？</td><td>是（日志缓冲、冷配置）</td><td><b>SRAM</b>（别浪费 CCM）</td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:8px;">三个<b>绝不放</b>：① DMA/外设缓冲绝不放 CCM（数据到不了）；② 可执行代码/ISR 绝不放 CCM（取指走 I-Bus，没接）；③ 又大又冷的对象别放 CCM（占坑挤掉真热数据）。</p>
+  </div>
+</section>
+
+<!-- ================= ⑥ 分工 + 踩坑 ================= -->
+<section>
+  <h2><span class="chip-tag tag-sram">分工</span> 四块内存作用 + 踩坑清单</h2>
+  <div class="knowbox">
+    <table>
+      <thead><tr><th>内存块</th><th>大小</th><th>作用</th><th>典型对象</th></tr></thead>
+      <tbody>
+        <tr><td>SRAM1</td><td>112 KB</td><td>主数据区</td><td>全局/静态变量、栈、堆、RT-Thread 内核对象</td></tr>
+        <tr><td>SRAM2</td><td>16 KB</td><td>辅助数据区</td><td>第二路 DMA 缓冲，与 SRAM1 错峰</td></tr>
+        <tr><td>RAM1（合并）</td><td>128 KB</td><td>DMA 可见数据域</td><td>UART/USB/SPI/ADC 收发缓冲</td></tr>
+        <tr><td>CCM</td><td>64 KB</td><td>CPU 专用热区</td><td>线程栈、事件池、中断频繁读写结构体</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul class="tips">
+    <li><b>CCM 不能 DMA</b> —— 串口/USB DMA 缓冲放 CCM，数据永远不到达（DMA 走总线矩阵，无路径）。</li>
+    <li><b>CCM 不能执行代码</b> —— 取指走 I-Bus，CCM 只挂了数据总线，函数/ISR 放进去会 HardFault。</li>
+    <li><b>CCM 不在位带映射区</b> —— 位带变量放 CCM 段，"链接通过、运行出错"：位操作退化成整字读改写，丢原子性。</li>
+    <li><b>RAM1=128KB 是合并区</b> —— 它含 SRAM2 的 16KB，写 SRAM 时别以为只剩 SRAM1。</li>
+    <li><b>链接脚本是最终裁决</b> —— 宏（如 <code>section(".ccm_bss")</code>）只是把对象放进 section，真正落位由 link.lds 的 MEMORY/SECTIONS 决定。</li>
+  </ul>
+</section>
+
+<script>
+"use strict";
+/* ---------- global speed ---------- */
+let SPEED = 0.8;
+function sleep(ms){ return new Promise(r => setTimeout(r, Math.round(ms / SPEED))); }
+const spdEl = document.getElementById("spd");
+const spdVal = document.getElementById("spdv");
+spdEl.addEventListener("input", () => {
+  SPEED = spdEl.value / 100;
+  spdVal.textContent = SPEED.toFixed(1) + "x";
+});
+
+let QUICK = false;
+function fly(el, dir, dur){
+  el.classList.remove("fly-l2r","fly-r2l");
+  void el.offsetWidth;
+  el.style.animationDuration = (QUICK ? 20 : dur) + "ms";
+  el.classList.add(dir);
+}
+
+function makePlayer(cfg){
+  const P = {
+    els: cfg.els(),
+    btn: document.getElementById(cfg.btnId),
+    prevBtn: document.getElementById(cfg.prevId),
+    nextBtn: document.getElementById(cfg.nextId),
+    stepEl: document.getElementById(cfg.stepId),
+    cap: document.getElementById(cfg.capId),
+    maxEl: document.getElementById(cfg.maxId),
+    steps: cfg.steps,
+    running: false, cur: -1,
+  };
+  P.maxEl.textContent = P.steps.length;
+  P.reset = function(){ cfg.clear(P.els); P.cur = -1; P.stepEl.textContent = 0; P.cap.textContent = cfg.initCap; };
+  P.apply = function(i){ cfg.apply(P.els, i); };
+  P.goto = function(i){ P.cur = i; P.stepEl.textContent = i + 1; P.cap.textContent = P.steps[i].cap; P.apply(i); };
+  P.stop = function(){ P.running = false; P.btn.textContent = "▶ 播放"; };
+  P.next = function(){ if (P.running) P.stop(); if (P.cur < P.steps.length - 1) P.goto(P.cur + 1); };
+  P.prev = function(){
+    if (P.running) P.stop();
+    if (P.cur < 0) return;
+    if (P.cur === 0) { P.reset(); return; }
+    const target = P.cur - 1;
+    P.reset(); QUICK = true;
+    for (let i = 0; i <= target; i++) P.apply(i);
+    QUICK = false;
+    P.cur = target; P.stepEl.textContent = target + 1; P.cap.textContent = P.steps[target].cap;
+  };
+  P.play = async function(){
+    if (P.running) { P.stop(); return; }
+    P.running = true; P.btn.textContent = "■ 暂停";
+    P.reset();
+    for (let i = 0; i < P.steps.length; i++){
+      if (!P.running) break;
+      P.goto(i); await sleep(P.steps[i].dur);
+    }
+    if (P.running){ P.cap.textContent = cfg.doneCap; P.btn.textContent = "▶ 重播"; }
+    P.running = false;
+  };
+  P.btn.addEventListener("click", () => P.play());
+  P.prevBtn.addEventListener("click", () => P.prev());
+  P.nextBtn.addEventListener("click", () => P.next());
+  return P;
+}
+function id(s){ return document.getElementById(s); }
+
+/* ==================== 动画 A：DMA → SRAM ==================== */
+const A = makePlayer({
+  btnId:"a-play", prevId:"a-prev", nextId:"a-next", stepId:"a-step", capId:"a-cap", maxId:"a-stepmax",
+  initCap:"初始：UART 等待数据，DMA 待命。",
+  doneCap:"✓ 完成：DMA 缓冲正确落在 SRAM；放 CCM 是必错路径。",
+  els:()=>({
+    uart:id("a-uart"), dma:id("a-dma"), matrix:id("a-matrix"), sram:id("a-sram"), cpu:id("a-cpu"),
+    ccm:id("a-ccm"), data:id("a-data"), bad:id("a-bad"),
+  }),
+  clear(E){
+    ["data","bad"].forEach(n=>{const e=document.getElementById("a-"+n); e.classList.remove("fly-l2r","fly-r2l"); e.style.opacity=0;});
+    ["uart","dma","matrix","sram","cpu","ccm"].forEach(k=>{const e=E[k]; e.classList.remove("glowg","glowr","pulse");});
+  },
+  apply(E,i){
+    switch(i){
+      case 0:{ E.uart.classList.add("glowg"); break; }
+      case 1:{ E.uart.classList.remove("glowg"); E.dma.classList.add("pulse");
+               fly(E.data,"fly-l2r",700); break; }
+      case 2:{ E.dma.classList.remove("pulse"); E.matrix.classList.add("pulse"); break; }
+      case 3:{ E.matrix.classList.remove("pulse"); E.sram.classList.add("glowg"); break; }
+      case 4:{ E.sram.classList.remove("glowg"); E.cpu.classList.add("pulse");
+               fly(E.data,"fly-r2l",900); break; }
+      case 5:{ E.cpu.classList.remove("pulse"); E.dma.classList.add("glowr"); E.matrix.classList.add("glowr");
+               fly(E.bad,"fly-l2r",1200); E.ccm.classList.add("glowr"); break; }
+    }
+  },
+  steps:[
+    {cap:"① UART 收到一包数据，置起 DMA 请求", dur:1000},
+    {cap:"② DMA 通道启动，目标地址 0x2000_0000（SRAM1）", dur:1100},
+    {cap:"③ 数据经总线矩阵仲裁，写入 SRAM1", dur:1100},
+    {cap:"④ 数据到达 SRAM1 缓冲（DMA 可见区）", dur:1000},
+    {cap:"⑤ CPU 从 SRAM 读缓冲处理（数据回读）", dur:1100},
+    {cap:"⑥ 对比：若把目标改 0x1000_0000（CCM）→ DMA 在总线矩阵无路径 → 数据到不了 / 总线错误", dur:1800},
+  ],
+});
+
+/* ==================== 动画 B：CPU → CCM ==================== */
+const B = makePlayer({
+  btnId:"b-play", prevId:"b-prev", nextId:"b-next", stepId:"b-step", capId:"b-cap", maxId:"b-stepmax",
+  initCap:"初始：CPU 热循环准备读写热对象。",
+  doneCap:"✓ 完成：热数据走私有直连进 CCM，零等待；放 SRAM 要跟 DMA 竞争仲裁。",
+  els:()=>({
+    cpu:id("b-cpu"), ccm:id("b-ccm"), matrix:id("b-matrix"), sram:id("b-sram"), fast:id("b-fast"), slow:id("b-slow"),
+  }),
+  clear(E){
+    ["fast","slow"].forEach(n=>{const e=document.getElementById("b-"+n); e.classList.remove("fly-l2r","fly-r2l"); e.style.opacity=0;});
+    ["cpu","ccm","matrix","sram"].forEach(k=>{const e=E[k]; e.classList.remove("glowg","glowr","glowc","pulse");});
+  },
+  apply(E,i){
+    switch(i){
+      case 0:{ E.cpu.classList.add("glowc"); break; }
+      case 1:{ E.cpu.classList.remove("glowc"); E.ccm.classList.add("glowc"); fly(E.fast,"fly-l2r",1100); break; }
+      case 2:{ E.ccm.classList.add("pulse"); break; }
+      case 3:{ E.ccm.classList.remove("pulse"); E.matrix.classList.add("pulse"); fly(E.slow,"fly-l2r",900); break; }
+      case 4:{ E.matrix.classList.remove("pulse"); E.matrix.classList.add("glowr"); break; }
+      case 5:{ E.matrix.classList.remove("glowr"); E.sram.classList.add("glowg"); break; }
+    }
+  },
+  steps:[
+    {cap:"① CPU 线程频繁读写热对象（事件池 / 热线程栈）", dur:1000},
+    {cap:"② D-Bus 发出访问 0x1000_0000 → 私有直连直达（顶部轨道）", dur:1300},
+    {cap:"③ 绕过总线矩阵，零等待到达 CCM（无仲裁）", dur:1100},
+    {cap:"④ 对比：若对象放 SRAM → 走总线矩阵（中部轨道）", dur:1100},
+    {cap:"⑤ 与 DMA 并发 → 仲裁插入等待周期", dur:1100},
+    {cap:"⑥ 最终到 SRAM1，但多付仲裁延迟 —— 热数据放 CCM 的意义", dur:1400},
+  ],
+});
+
+/* 打开自动播一遍；用户手动则取消 */
+let autoTimer = setTimeout(() => { A.play(); B.play(); }, 600);
+document.querySelectorAll("button").forEach(b => b.addEventListener("click", () => clearTimeout(autoTimer)));
+</script>
+</body>
+</html>
