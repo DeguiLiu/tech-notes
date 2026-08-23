@@ -66,6 +66,16 @@ svg{display:block;width:100%;min-width:900px;height:auto}
 .dprogress{display:flex;gap:4px;margin-left:auto}
 .dprogress i{width:8px;height:8px;border-radius:50%;background:#cbd5e1}
 .dprogress i.on{background:var(--blue)}
+/* 分步图解 */
+.stepfigs{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+.stepfigs>h4{color:var(--teal);font-size:14px;margin-bottom:10px}
+.stepfig{margin:12px 0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.fighead{padding:8px 12px;background:var(--panel2);font-size:13px;font-weight:700;color:var(--text);border-bottom:1px solid var(--line)}
+.fighead small{color:var(--muted);font-weight:400;margin-left:6px}
+.figcanvas{overflow-x:auto;padding:8px;background:#fbfcfe}
+.stepfig svg{min-width:900px}
+.figexp{padding:9px 12px;font-size:13px;color:var(--muted);line-height:1.7;border-top:1px solid var(--line)}
+.figexp b{color:var(--gold)}
 .summary{margin-top:34px;padding:16px 18px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--green);border-radius:12px}
 .summary b{color:var(--green);display:block;margin-bottom:6px;font-size:14px}
 .summary p{margin:0;color:var(--text);font-size:14px}
@@ -129,6 +139,15 @@ svg{display:block;width:100%;min-width:900px;height:auto}
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 建立最小上下文</div>
+      <div class="figcanvas"><svg id="sfs1_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">复位后寄存器不是 C 运行时状态，启动汇编先清通用寄存器，再建立 gp、异常向量、中断向量表与中断栈，之后才能安全执行段复制与 C 函数。<b>CPU 进入机器模式，向量表与栈地址被装载。</b>边界在于此时外部内存尚未由本固件初始化，任何跳转与数据访问的目的地址必须是复位后可访问的片上资源——这是"先有可访问内存，再谈搬移与调用"的第一条约束。</div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ 2 ============ -->
@@ -160,13 +179,22 @@ svg{display:block;width:100%;min-width:900px;height:auto}
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 段复制与清零</div>
+      <div class="figcanvas"><svg id="sfs2_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">链接脚本为每个段定义两个地址：<b>LMA 是镜像保存位置，VMA 是运行访问位置</b>。有初值段（data 类）从 LMA 复制到 VMA；无初值段（bss 类）没有镜像初值，只需清零。<b>SRAM 承载代码、有初值对象、无初值对象与栈</b>，复位入口按链接符号先片上段后外部内存段执行——LMA 与 VMA 的区分解释了同一份数据为何要在镜像与运行区各占一处。</div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ 3 ============ -->
 <section id="s3">
   <h2><span class="n">3</span>硬件初始化：时钟、内存与中断</h2>
   <p>复位入口调 <b>SystemInit</b> 建立芯片基础设施：先配<b>时钟</b>与<b>地址属性</b>，再按构建变体初始化<b>外部内存</b>（DDR 或片内高速内存），最后使能<b>中断控制器与 Cache</b>。</p>
-  <p>外部内存就绪后，普通外存变体才会把<b>外部内存段与各业务模块段</b>从 LMA 复制 / 清零到位——顺序上必须先有内存，再写其 VMA。</p>
+  <p>外部内存就绪后，普通外存变体才会把<b>外部内存段与各业务静态段</b>从 LMA 复制 / 清零到位——顺序上必须先有内存，再写其 VMA。</p>
   <div class="keybox"><b>坑：</b>"外部内存段在内存初始化前复制"是错误做法；"所有变体都执行同一组段复制"同样错误——DDR 与片内高速内存是构建变体，不应同时标为已执行。</div>
   <div class="demo" id="d3">
     <h3>本节演示 <small>SystemInit → 外部内存段就位</small></h3>
@@ -184,6 +212,20 @@ svg{display:block;width:100%;min-width:900px;height:auto}
         <span class="speed">速度<input type="range" id="s3spd" min="8" max="100" value="40"><span class="spdv" id="s3v">0.4x</span></span>
         <div class="dprogress" id="s3pbar"></div>
       </div>
+    </div>
+  </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · SystemInit</div>
+      <div class="figcanvas"><svg id="sfs3_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">复位入口调 SystemInit 建立芯片基础设施：主核先配时钟与地址属性，再按构建变体调外部内存初始化，最后使能中断控制器与 Cache。<b>SystemInit 是启动软件与芯片硬件的主边界</b>，外部内存可访问、中断与 Cache 生效都发生在此。边界在于 DDR 与片内高速内存是构建变体，<b>不同时执行</b>——不能把所有变体都标为已初始化。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 2 · 外部内存段就位</div>
+      <div class="figcanvas"><svg id="sfs3_1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">SystemInit 返回后，复位入口才执行外部内存段复制/清零——<b>必须先有内存，再写其 VMA</b>。外部内存 VMA 获得正确初值，业务静态区清零。顺序颠倒即错误：外部内存段在内存初始化前复制是错误做法，且 DDR 与片内高速内存两个构建变体不应同时标为已执行。</div>
     </div>
   </div>
 </section>
@@ -216,6 +258,15 @@ svg{display:block;width:100%;min-width:900px;height:auto}
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 进入实时操作系统</div>
+      <div class="figcanvas"><svg id="sfs4_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">复位入口跳入 entry，进入<b>实时操作系统</b>主启动：entry → 内核启动 → 板级初始化 → 创建内核对象。板级初始化完成设备与堆，UART、console、SysTick 与 heap 可用，随后创建 timer、scheduler、main 与 idle，最后启动调度器。<b>main 线程在调度器启动前只是 ready，不会提前执行</b>——组件初始化必须等到调度开始之后。</div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ 5 ============ -->
@@ -239,6 +290,15 @@ svg{display:block;width:100%;min-width:900px;height:auto}
         <span class="speed">速度<input type="range" id="s5spd" min="8" max="100" value="40"><span class="spdv" id="s5v">0.4x</span></span>
         <div class="dprogress" id="s5pbar"></div>
       </div>
+    </div>
+  </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 分级自动初始化</div>
+      <div class="figcanvas"><svg id="sfs5_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">调度器启动后，<b>main 线程执行组件自动初始化</b>：按板级、设备、组件、环境、应用的优先级遍历自动注册表。板级组件在调度前的板级阶段已执行，等级 2~6 在 main 线程入口执行，最后才调用应用 main。<b>设备/驱动注册完成后，组件才能安全使用对应硬件</b>——不能把所有自动注册都算在板级初始化中一次完成。</div>
     </div>
   </div>
 </section>
@@ -266,6 +326,20 @@ svg{display:block;width:100%;min-width:900px;height:auto}
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 门控检查</div>
+      <div class="figcanvas"><svg id="sfs6_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">main 是组件初始化后的业务入口，<b>不是第一帧入口</b>。自动预览启动先经过门控：检查升级/回滚状态、加载配置、读取参数。<b>任一失败或未启用即结束，不投递</b>——门控未通过或自动预览关闭，直接结束。此刻 <b>main 调用预览启动 ≠ 预览请求已投递</b>，这是第一个独立观察点。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 2 · 预览投递</div>
+      <div class="figcanvas"><svg id="sfs6_1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">只有成功构造预览参数后，才经 <b>RTE 信号</b>把预览启动请求投递给后续业务上下文，订阅者处理请求后才逐层建立硬件链路。<b>信号投递时硬件链路可能尚未建立</b>——投递本身不启动首帧。<b>请求已投递 ≠ 视频链已启动 ≠ 看到第一帧</b>，四个独立观察点依次发生，不能混为一谈。</div>
+    </div>
+  </div>
 </section>
 
 <div class="summary"><b>一句话总结</b><p>启动链从复位向量建立最小上下文开始，依次完成段复制 / 清零、硬件初始化、实时操作系统调度、组件自动初始化，最后经业务门控把预览请求异步投递出去——每一步的软件责任与硬件结果都明确可验证。</p></div>
@@ -275,11 +349,11 @@ svg{display:block;width:100%;min-width:900px;height:auto}
 <script>
 "use strict";
 const lanes={external:{title:'启动软件 / 业务',sub:'镜像入口、应用 main、第一帧边界',x:20,w:285},app:{title:'实时操作系统 / 组件',sub:'内核启动、自动注册、线程',x:330,w:300},driver:{title:'BSP / driver / HAL',sub:'SystemInit、板级初始化',x:655,w:300},hardware:{title:'芯片硬件',sub:'CPU、SRAM、DDR、中断控制器',x:980,w:320}};
-const nodes={boot:['Boot 入口','镜像头 / 复位向量','external'],reset:['复位入口','启动汇编','external'],appmain:['应用入口','main → 业务门控','external'],gate:['业务门控','状态 + 配置检查','external'],first:['第一帧业务','Sensor/ISP/Video','external'],entry:['entry','GNU 入口','app'],startup:['内核启动','实时操作系统主启动','app'],mainthread:['main 线程','组件初始化 → main','app'],exports:['自动注册','等级 2~6','app'],rte:['RTE 信号','预览启动信号','app'],system:['SystemInit','时钟 / 内存 / 中断','driver'],board:['板级初始化','UART / SysTick / Heap','driver'],ddr:['外部内存初始化','DDR / 片内高速内存','driver'],cpu:['CPU 核','机器模式 / CSR','hardware'],sram:['片上 SRAM','代码 / 数据 / 栈','hardware','memory'],memory:['外部内存','运行段与模块段','hardware','memory'],clic:['中断控制器 + Cache','向量 / 地址属性','hardware'],scheduler:['调度器','timer / main / idle','hardware']};
+const nodes={boot:['Boot 入口','镜像头 / 复位向量','external'],reset:['复位入口','启动汇编','external'],appmain:['应用入口','main → 业务门控','external'],gate:['业务门控','状态 + 配置检查','external'],first:['第一帧业务','Sensor/ISP/Video','external'],entry:['entry','GNU 入口','app'],startup:['内核启动','实时操作系统主启动','app'],mainthread:['main 线程','组件初始化 → main','app'],exports:['自动注册','等级 2~6','app'],rte:['RTE 信号','预览启动信号','app'],system:['SystemInit','时钟 / 内存 / 中断','driver'],board:['板级初始化','UART / SysTick / Heap','driver'],ddr:['外部内存初始化','DDR / 片内高速内存','driver'],cpu:['CPU 核','机器模式 / CSR','hardware'],sram:['片上 SRAM','代码 / 数据 / 栈','hardware','memory'],memory:['外部内存','运行段与业务段','hardware','memory'],clic:['中断控制器 + Cache','向量 / 地址属性','hardware'],scheduler:['调度器','timer / main / idle','hardware']};
 const laneOrder=['external','app','driver','hardware'];
 function layout(item){const group={external:[],app:[],driver:[],hardware:[]},out={};item.nodes.forEach(id=>group[nodes[id][2]].push(id));laneOrder.forEach(k=>{const lane=lanes[k],arr=group[k],gap=480/Math.max(arr.length,1);arr.forEach((id,i)=>out[id]={x:lane.x+lane.w/2,y:105+gap*(i+.5)});});return out}
 function geom(a,b,pos){const p=pos[a],q=pos[b],same=nodes[a][2]===nodes[b][2];if(same){const d=q.y>=p.y?1:-1;return{d:`M${p.x+90} ${p.y+25*d} C${p.x+145} ${p.y+55*d},${q.x+145} ${q.y-55*d},${q.x+90} ${q.y-25*d}`,x:p.x+142,y:(p.y+q.y)/2}}const d=q.x>p.x?1:-1;return{d:`M${p.x+90*d} ${p.y} C${p.x+155*d} ${p.y},${q.x-155*d} ${q.y},${q.x-90*d} ${q.y}`,x:(p.x+q.x)/2,y:(p.y+q.y)/2}}
-function draw(svgEl,item){const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="m${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';laneOrder.forEach(k=>{const l=lanes[k];s+=`<rect x="${l.x}" y="20" width="${l.w}" height="610" rx="13" style="stroke:#cbd5e1;stroke-dasharray:5 5;fill:#eef2f7"/><text x="${l.x+15}" y="46" style="fill:#334155;font-size:13px;font-weight:800">${l.title}</text><text x="${l.x+15}" y="63" style="fill:#64748b;font-size:9px">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path d="${g.d}" marker-end="url(#m${k})" style="fill:none;stroke-width:3;stroke:var(--${k})"/><rect x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10" style="fill:#fff;stroke:var(--${k})"/><text x="${g.x}" y="${g.y+1}" text-anchor="middle" style="fill:#334155;font-size:8.5px;font-weight:700">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],style=n[3]||n[2],role=n[3]==='memory'?'内存区':{external:'SW·应用',app:'SW·模块',driver:'SW·驱动',hardware:'HW·硬件'}[n[2]],tw=role.length*7+12;s+=`<g><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9" style="fill:#ffffff;stroke-width:2;stroke:${style==='memory'?'#d97706':'#94a3b8'}"/><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5" style="fill:${style==='memory'?'#d97706':'#64748b'}"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle" style="fill:#fff;font-size:8.5px;font-weight:700">${role}</text><text x="${p.x}" y="${p.y-5}" text-anchor="middle" style="fill:#0f172a;font-size:11px;font-weight:800">${n[0]}</text><text x="${p.x}" y="${p.y+13}" text-anchor="middle" style="fill:#475569;font-size:8.5px">${n[1]}</text></g>`});svgEl.innerHTML=s}
+function draw(svgEl,item,pfx,focus){pfx=pfx||'';const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="${pfx}m${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';const act={};item.nodes.forEach(function(id){act[nodes[id][2]]=1});laneOrder.forEach(k=>{if(focus&&!act[k])return;const l=lanes[k];s+=`<rect x="${l.x}" y="20" width="${l.w}" height="610" rx="13" style="stroke:#cbd5e1;stroke-dasharray:5 5;fill:#eef2f7"/><text x="${l.x+15}" y="46" style="fill:#334155;font-size:13px;font-weight:800">${l.title}</text><text x="${l.x+15}" y="63" style="fill:#64748b;font-size:9px">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path d="${g.d}" marker-end="url(#${pfx}m${k})" style="fill:none;stroke-width:3;stroke:var(--${k})"/><rect x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10" style="fill:#fff;stroke:var(--${k})"/><text x="${g.x}" y="${g.y+1}" text-anchor="middle" style="fill:#334155;font-size:8.5px;font-weight:700">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],style=n[3]||n[2],role=n[3]==='memory'?'内存区':{external:'SW·应用',app:'SW·组件',driver:'SW·驱动',hardware:'HW·硬件'}[n[2]],tw=role.length*7+12;s+=`<g><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9" style="fill:#ffffff;stroke-width:2;stroke:${style==='memory'?'#d97706':'#94a3b8'}"/><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5" style="fill:${style==='memory'?'#d97706':'#64748b'}"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle" style="fill:#fff;font-size:8.5px;font-weight:700">${role}</text><text x="${p.x}" y="${p.y-5}" text-anchor="middle" style="fill:#0f172a;font-size:11px;font-weight:800">${n[0]}</text><text x="${p.x}" y="${p.y+13}" text-anchor="middle" style="fill:#475569;font-size:8.5px">${n[1]}</text></g>`});svgEl.innerHTML=s}
 function makePlayer(p,steps){
   const $=id=>document.getElementById(p+id);
   let idx=0,timer=null,SPEED=0.4;
@@ -300,7 +374,7 @@ const S2=[
 ];
 const S3=[
  {title:'SystemInit',action:'配置时钟、内存与中断控制器',level:'代码事实',software:'主核先配时钟与地址属性，再按宏调外部内存初始化。',hardware:'外部内存可访问；中断控制器与 Cache 生效。',description:'SystemInit 是启动软件与芯片硬件的主边界。',note:'DDR 与片内高速内存是构建变体，不同时执行。',nodes:['reset','system','ddr','memory','clic'],edges:[['reset','system','command','调用 SystemInit'],['system','ddr','command','初始化'],['ddr','memory','event','可访问'],['system','clic','command','中断/Cache']]},
- {title:'外部内存段就位',action:'内存就绪后复制外部内存段与模块段',level:'代码事实',software:'SystemInit 返回后，复位入口执行外部内存段复制/清零。',hardware:'外部内存 VMA 获得正确初值，模块静态区清零。',description:'先有内存，再写其 VMA；顺序颠倒即错误。',note:'各业务模块各有 init/uninit 段对。',nodes:['system','reset','memory'],edges:[['system','reset','event','返回'],['reset','memory','data','段复制'],['reset','memory','event','清零']]}
+ {title:'外部内存段就位',action:'内存就绪后复制外部内存段与业务段',level:'代码事实',software:'SystemInit 返回后，复位入口执行外部内存段复制/清零。',hardware:'外部内存 VMA 获得正确初值，业务静态区清零。',description:'先有内存，再写其 VMA；顺序颠倒即错误。',note:'各业务段各有 init/uninit 段对。',nodes:['system','reset','memory'],edges:[['system','reset','event','返回'],['reset','memory','data','段复制'],['reset','memory','event','清零']]}
 ];
 const S4=[
  {title:'进入实时操作系统',action:'entry 启动内核，板级初始化后调度器接管',level:'代码事实',software:'entry → 内核启动 → 板级初始化 → 创建内核对象。',hardware:'UART、console、SysTick 与 heap 可用。',description:'板级初始化完成设备与堆，随后创建调度器与线程。',note:'main 线程在调度器启动前只是 ready。',nodes:['reset','entry','startup','board','scheduler'],edges:[['reset','entry','command','跳转 entry'],['entry','startup','command','调用'],['startup','board','command','板级初始化'],['startup','scheduler','event','创建并启动调度']]}
@@ -318,6 +392,14 @@ makePlayer('s3',S3);
 makePlayer('s4',S4);
 makePlayer('s5',S5);
 makePlayer('s6',S6);
+/* 静态分步图解：按顺序渲染每步图（复用 draw，前缀防 marker 冲突） */
+[['s1',S1],['s2',S2],['s3',S3],['s4',S4],['s5',S5],['s6',S6]].forEach(function(gp){
+  var p=gp[0],steps=gp[1];
+  steps.forEach(function(st,si){
+    var el=document.getElementById('sf'+p+'_'+si+'g');
+    if(el){draw(el,st,'sf'+p+'_'+si+'_',true);}
+  });
+});
 </script>
 </body>
 </html>

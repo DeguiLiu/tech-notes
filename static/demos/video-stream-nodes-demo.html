@@ -66,6 +66,16 @@ svg{display:block;width:100%;min-width:900px;height:auto}
 .dprogress{display:flex;gap:4px;margin-left:auto}
 .dprogress i{width:8px;height:8px;border-radius:50%;background:#cbd5e1}
 .dprogress i.on{background:var(--blue)}
+/* 分步图解 */
+.stepfigs{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+.stepfigs>h4{color:var(--teal);font-size:14px;margin-bottom:10px}
+.stepfig{margin:12px 0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.fighead{padding:8px 12px;background:var(--panel2);font-size:13px;font-weight:700;color:var(--text);border-bottom:1px solid var(--line)}
+.fighead small{color:var(--muted);font-weight:400;margin-left:6px}
+.figcanvas{overflow-x:auto;padding:8px;background:#fbfcfe}
+.stepfig svg{min-width:900px}
+.figexp{padding:9px 12px;font-size:13px;color:var(--muted);line-height:1.7;border-top:1px solid var(--line)}
+.figexp b{color:var(--gold)}
 .summary{margin-top:34px;padding:16px 18px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--green);border-radius:12px}
 .summary b{color:var(--green);display:block;margin-bottom:6px;font-size:14px}
 .summary p{margin:0;color:var(--text);font-size:14px}
@@ -130,6 +140,20 @@ svg{display:block;width:100%;min-width:900px;height:auto}
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 四层分工</div>
+      <div class="figcanvas"><svg id="sfs1_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">四层按职责切分：业务 / 上位机只下配置与消费帧，固件服务管生命周期与节点序列，驱动写寄存器，硬件 IP 做实时处理与搬运。<b>每一层的边界是职责，不是代码位置</b>，一次调用从上往下层层委托。数据在硬件链路中流动，CPU 不逐节点复制像素。上层不能假设硬件事件自动变成帧就绪回调，状态机始终由显式命令驱动。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 2 · 数据通路</div>
+      <div class="figcanvas"><svg id="sfs1_1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">数据通路把像素从一级 ISP 流 DMA 送入 Video IP 实时处理，经 SOUT 重组位宽后交给 MUX/SEL 路由。<b>CPU 只做配置，不逐节点复制像素</b>，帧沿硬件链路流动。USB 分支封装成 UVC payload 进 Windows，MIPI 分支按 CSI-2 包给外部接收端。<b>MIPI 进 Windows 必须经外部桥片或主控转 USB/UVC，不能画成直连</b>。</div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ 2 ============ -->
@@ -159,6 +183,25 @@ svg{display:block;width:100%;min-width:900px;height:auto}
         <span class="speed">速度<input type="range" id="s2spd" min="8" max="100" value="40"><span class="spdv" id="s2v">0.4x</span></span>
         <div class="dprogress" id="s2pbar"></div>
       </div>
+    </div>
+  </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · PIC 观察流</div>
+      <div class="figcanvas"><svg id="sfs2_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">PIC 是完整观察图流，处理序列为<b>两级 Cut/Zoom → PSD → OSD×2 → SOUT → OUT</b>，面向显示场景，可叠加 OSD 与伪彩。软件侧由流服务选择 PIC 并装配节点序列，Video P 做实时处理，SOUT 做平面 / 半平面重组。<b>ISP Zoom 与 Video Zoom 共享物理资源，当前不能同时使能</b>，属于硬件共享约束。OSD 叠加发生在硬件节点层，不增加 CPU 负担。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 2 · TEMP 测温流</div>
+      <div class="figcanvas"><svg id="sfs2_1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">TEMP 是测温面阵流，处理序列为<b>两级 Cut/Zoom → PSD → OUT</b>，默认不经过 OSD 与 SOUT，路径比 PIC 精简。Video T 处理单分量面阵并直接输出测温语义。<b>Y16 只是数据容器，不是摄氏温度</b>，语义换算在业务侧完成。TEMP 序列含 PSD 是结构事实，不代表必然转为显示伪彩。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 3 · VS 转接流</div>
+      <div class="figcanvas"><svg id="sfs2_2g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">VS 是轻量视频转接流，VS1/2/3 序列为<b>两级 Cut/Zoom → OUT</b>，可接 VIDEO_IN、MIPI RX 等输入，是最精简的数据路径。它不默认走 OSD 与 SOUT，转接语义由 Video VS 硬件完成。fixed-pattern 只是可选测试源，不是正常输入。<b>PIP 是 PIC 的子流语义，不是与 PIC/TEMP/VS 同级的独立流</b>。</div>
     </div>
   </div>
 </section>
@@ -197,6 +240,25 @@ svg{display:block;width:100%;min-width:900px;height:auto}
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 静态装配</div>
+      <div class="figcanvas"><svg id="sfs3_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">装配按<b>流初始化 → 节点初始化 → 驱动初始化</b>正序执行，硬件侧先配 ISP/Video 再配处理节点，最后配 MUX/SEL 路由。节点从静态池分配，流基类按生成序列建立节点序列。<b>任一步失败即逆序回滚</b>，已初始化的资源全部解除，保证失败后回到一致状态。UVC 流在此只完成初始化，真正发送由主机 Commit 触发，装配并不等于送帧。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 2 · 启动与停止</div>
+      <div class="figcanvas"><svg id="sfs3_1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">启动由<b>START 把 READY 切到 RUNNING</b>，只对对应 ISP 流下发使能，硬件本步只开该流的 DMA 数据门。STOP 关对应流回到 READY，DEINIT 才停止并解绑输出接口。<b>READY、RUNNING、物理接口 Ready、接收端看到完整帧是四个独立成功边界</b>，不能混为一谈。UVC 的 Commit 与业务 START 是两个独立门槛。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 3 · 事件反馈</div>
+      <div class="figcanvas"><svg id="sfs3_2g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">硬件 DONE、错误与 FIFO 状态进入设备事件路径，ISR 清标志并映射掩码，接收回调记日志后发送设备事件。<b>事件只表状态变化，不直接驱动状态机</b>，也不会自动写错误记录——状态表没有 READY/RUNNING 到 ERROR 的自动转移。整帧像素仍走 DMA 通路，事件通道不承载帧数据。实时状态反馈与业务状态机由此解耦，避免中断隐式改状态造成竞态。</div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ 4 ============ -->
@@ -232,6 +294,20 @@ MIPI 分支 → 外部 CSI-2 RX（VC + data type）
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 输出绑定</div>
+      <div class="figcanvas"><svg id="sfs4_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">输出绑定由输出接口管理承担，负责一条流到一个或多个接口的<b>绑定、共享、启动、停止与回滚</b>。软件输出接口不是硬件 MUX/SEL，两者分层解耦：接口层管资源与生命周期，硬件层管源流路由。接口类型需配置时钟、协议参数与底层设备。<b>失败时按逆序回滚已启用的接口</b>，保证多接口绑定的原子性。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 2 · 路由与共享</div>
+      <div class="figcanvas"><svg id="sfs4_1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">MUX/SEL 按源流写有效像素数，把处理结果路由到 USB、MIPI 或 CVBS 物理接口。输出接口管理检查共享时的<b>宽度、帧率、模式是否一致</b>，并维护消费方与激活状态；不一致则拒绝或切换。<b>USB 与 MIPI 两个接收端不能合成同一个 PC 接收端</b>。VOC、VOSPI、MJPEG 属可选接口类型，是否支持取决于具体实现。</div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ 5 ============ -->
@@ -262,6 +338,20 @@ MIPI 分支 → 外部 CSI-2 RX（VC + data type）
         <span class="speed">速度<input type="range" id="s5spd" min="8" max="100" value="40"><span class="spdv" id="s5v">0.4x</span></span>
         <div class="dprogress" id="s5pbar"></div>
       </div>
+    </div>
+  </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · OSD 能力边界</div>
+      <div class="figcanvas"><svg id="sfs5_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">OSD 能力上，路由表已先行覆盖 Type2 / Type1 / Time / Rec 全部类型，但<b>实际可执行仅 Type2 与 Rec</b>——能力逐项补齐，不能把设计目标描述成已实现。Type2/Rec 驱动硬件 OSD 叠加，Rec 输入固定 YUV422。<b>占位类型应返回明确的不支持状态而非静默</b>。格式切换绕过统一状态时，PSD 与 OSD 共享 FORMAT 资源有竞争风险。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 2 · 格式与长度</div>
+      <div class="figcanvas"><svg id="sfs5_1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">DMA 长度按边界分两级：<b>一级 length 按 ISP→Video 帧计算，二级按 SOUT 后平面、采样与有效高度计算</b>。SOUT 可做 NV12/NV21、NV16/NV61、平面格式及位宽转换。二级是否启用决定是否发生重组与再搬运，两条边界职责不同。<b>不能把最终 USB payload 长度反推为所有 DMA 长度</b>——每级长度都对应各自的搬运边界。</div>
     </div>
   </div>
 </section>
@@ -295,7 +385,7 @@ const nodes={
 const laneOrder=['external','app','driver','hardware'];
 function layout(item){const group={external:[],app:[],driver:[],hardware:[]},out={};item.nodes.forEach(id=>group[nodes[id][2]].push(id));laneOrder.forEach(k=>{const lane=lanes[k],arr=group[k],gap=480/Math.max(arr.length,1);arr.forEach((id,i)=>out[id]={x:lane.x+lane.w/2,y:105+gap*(i+.5)});});return out}
 function geom(a,b,pos){const p=pos[a],q=pos[b],same=nodes[a][2]===nodes[b][2];if(same){const d=q.y>=p.y?1:-1;return{d:`M${p.x+90} ${p.y+25*d} C${p.x+145} ${p.y+55*d},${q.x+145} ${q.y-55*d},${q.x+90} ${q.y-25*d}`,x:p.x+142,y:(p.y+q.y)/2}}const d=q.x>p.x?1:-1;return{d:`M${p.x+90*d} ${p.y} C${p.x+155*d} ${p.y},${q.x-155*d} ${q.y},${q.x-90*d} ${q.y}`,x:(p.x+q.x)/2,y:(p.y+q.y)/2}}
-function draw(svgEl,item){const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="m${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';laneOrder.forEach(k=>{const l=lanes[k];s+=`<rect x="${l.x}" y="20" width="${l.w}" height="610" rx="13" style="stroke:#cbd5e1;stroke-dasharray:5 5;fill:#eef2f7"/><text x="${l.x+15}" y="46" style="fill:#334155;font-size:13px;font-weight:800">${l.title}</text><text x="${l.x+15}" y="63" style="fill:#64748b;font-size:9px">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path d="${g.d}" marker-end="url(#m${k})" style="fill:none;stroke-width:3;stroke:var(--${k})"/><rect x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10" style="fill:#fff;stroke:var(--${k})"/><text x="${g.x}" y="${g.y+1}" text-anchor="middle" style="fill:#334155;font-size:8.5px;font-weight:700">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],style=n[3]||n[2],role=n[3]==='memory'?'内存区':{external:'SW·应用',app:'SW·模块',driver:'SW·驱动',hardware:'HW·硬件'}[n[2]],tw=role.length*7+12;s+=`<g><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9" style="fill:#ffffff;stroke-width:2;stroke:${style==='memory'?'#d97706':'#94a3b8'}"/><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5" style="fill:${style==='memory'?'#d97706':'#64748b'}"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle" style="fill:#fff;font-size:8.5px;font-weight:700">${role}</text><text x="${p.x}" y="${p.y-5}" text-anchor="middle" style="fill:#0f172a;font-size:11px;font-weight:800">${n[0]}</text><text x="${p.x}" y="${p.y+13}" text-anchor="middle" style="fill:#475569;font-size:8.5px">${n[1]}</text></g>`});svgEl.innerHTML=s}
+function draw(svgEl,item,pfx,focus){pfx=pfx||'';const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="${pfx}m${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';const act={};item.nodes.forEach(function(id){act[nodes[id][2]]=1});laneOrder.forEach(k=>{if(focus&&!act[k])return;const l=lanes[k];s+=`<rect x="${l.x}" y="20" width="${l.w}" height="610" rx="13" style="stroke:#cbd5e1;stroke-dasharray:5 5;fill:#eef2f7"/><text x="${l.x+15}" y="46" style="fill:#334155;font-size:13px;font-weight:800">${l.title}</text><text x="${l.x+15}" y="63" style="fill:#64748b;font-size:9px">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path d="${g.d}" marker-end="url(#${pfx}m${k})" style="fill:none;stroke-width:3;stroke:var(--${k})"/><rect x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10" style="fill:#fff;stroke:var(--${k})"/><text x="${g.x}" y="${g.y+1}" text-anchor="middle" style="fill:#334155;font-size:8.5px;font-weight:700">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],style=n[3]||n[2],role=n[3]==='memory'?'内存区':{external:'SW·应用',app:'SW·模块',driver:'SW·驱动',hardware:'HW·硬件'}[n[2]],tw=role.length*7+12;s+=`<g><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9" style="fill:#ffffff;stroke-width:2;stroke:${style==='memory'?'#d97706':'#94a3b8'}"/><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5" style="fill:${style==='memory'?'#d97706':'#64748b'}"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle" style="fill:#fff;font-size:8.5px;font-weight:700">${role}</text><text x="${p.x}" y="${p.y-5}" text-anchor="middle" style="fill:#0f172a;font-size:11px;font-weight:800">${n[0]}</text><text x="${p.x}" y="${p.y+13}" text-anchor="middle" style="fill:#475569;font-size:8.5px">${n[1]}</text></g>`});svgEl.innerHTML=s}
 function makePlayer(p,steps){
   const $=id=>document.getElementById(p+id);
   let idx=0,timer=null,SPEED=0.4;
@@ -335,6 +425,14 @@ makePlayer('s2',S2);
 makePlayer('s3',S3);
 makePlayer('s4',S4);
 makePlayer('s5',S5);
+/* 静态分步图解：按顺序渲染每步图（复用 draw，前缀防 marker 冲突） */
+[['s1',S1],['s2',S2],['s3',S3],['s4',S4],['s5',S5]].forEach(function(gp){
+  var p=gp[0],steps=gp[1];
+  steps.forEach(function(st,si){
+    var el=document.getElementById('sf'+p+'_'+si+'g');
+    if(el){draw(el,st,'sf'+p+'_'+si+'_',true);}
+  });
+});
 </script>
 </body>
 </html>

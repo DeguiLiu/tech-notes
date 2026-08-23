@@ -66,6 +66,16 @@ svg{display:block;width:100%;min-width:900px;height:auto}
 .dprogress{display:flex;gap:4px;margin-left:auto}
 .dprogress i{width:8px;height:8px;border-radius:50%;background:#cbd5e1}
 .dprogress i.on{background:var(--blue)}
+/* 分步图解 */
+.stepfigs{margin-top:16px;border-top:1px solid var(--line);padding-top:12px}
+.stepfigs>h4{color:var(--teal);font-size:14px;margin-bottom:10px}
+.stepfig{margin:12px 0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:var(--panel)}
+.fighead{padding:8px 12px;background:var(--panel2);font-size:13px;font-weight:700;color:var(--text);border-bottom:1px solid var(--line)}
+.fighead small{color:var(--muted);font-weight:400;margin-left:6px}
+.figcanvas{overflow-x:auto;padding:8px;background:#fbfcfe}
+.stepfig svg{min-width:900px}
+.figexp{padding:9px 12px;font-size:13px;color:var(--muted);line-height:1.7;border-top:1px solid var(--line)}
+.figexp b{color:var(--gold)}
 .summary{margin-top:34px;padding:16px 18px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--green);border-radius:12px}
 .summary b{color:var(--green);display:block;margin-bottom:6px;font-size:14px}
 .summary p{margin:0;color:var(--text);font-size:14px}
@@ -126,6 +136,15 @@ svg{display:block;width:100%;min-width:900px;height:auto}
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 控制面与数据面分工</div>
+      <div class="figcanvas"><svg id="sfs1_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">一条 UVC 链路同时跑两条面：<b>控制面</b>从 PC 触发，经固件协商、驱动配置，把硬件置于出图状态；<b>数据面</b>由硬件单向搬运像素，两面的方向与载荷完全不同。控制面只做"提前配置"，数据面负责"持续搬运"。判断链路是否可用，必须同时确认控制面配置成功、数据面完整出帧——只看到"开流成功"并不算数。</div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ 2 ============ -->
@@ -158,6 +177,25 @@ svg{display:block;width:100%;min-width:900px;height:auto}
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · Windows 触发与预置</div>
+      <div class="figcanvas"><svg id="sfs2_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">控制面有两个并列入口：<b>Windows UVC 栈经 EP0 发起 Probe/Commit 协商</b>，厂商工具另行下发业务预置模式。此阶段视频端点尚未启用，EP0 控制事务只承载协商参数。预置模式与 Probe/Commit 是并列的控制面路径而非同一调用链——前者写业务配置，后者走标准 UVC 协商。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 2 · 固件服务处理</div>
+      <div class="figcanvas"><svg id="sfs2_1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">Commit 参数沿 <b>业务配置 → UVC Class → 流管理 → 输出接口</b> 逐级下传：UVC Class 解析协商参数，流管理按流类型（PIC / TEMP / VS）分支，输出接口组织 SINGLE / COMPOSE 等物理目标。此段纯属固件消息链，无寄存器操作。流管理器、节点、输出接口属于服务层而非驱动层——它们只组装配置，不触碰硬件。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 3 · 驱动与硬件落地</div>
+      <div class="figcanvas"><svg id="sfs2_2g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">输出接口把组装好的配置交给驱动，驱动对打包器与传输层下发 <b>INIT/START 与帧控参数</b>。硬件侧打包器开始加 UVC 头，源流路由选源，端点 FIFO 就绪。控制面的终点只是让硬件处于"可持续出图"状态——配置成功只代表控制面就绪，不代表像素已在传输，两个时刻必须分开判断。</div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ 3 ============ -->
@@ -186,6 +224,25 @@ svg{display:block;width:100%;min-width:900px;height:auto}
         <span class="speed">速度<input type="range" id="s3spd" min="8" max="100" value="40"><span class="spdv" id="s3v">0.4x</span></span>
         <div class="dprogress" id="s3pbar"></div>
       </div>
+    </div>
+  </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 帧生成</div>
+      <div class="figcanvas"><svg id="sfs3_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">数据面第一段是帧生成：<b>IR 探测器 → IRSC/ISP → DMA 写 → DDR 帧缓冲</b>。IRSC/ISP 对原始红外帧做校正处理，DMA 把结果写入 DDR。帧缓冲采用 buf0/1/2 乒乓结构，写与读各用独立缓冲，解耦流水节奏，避免读写互踩。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 2 · 出图到端点</div>
+      <div class="figcanvas"><svg id="sfs3_1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">数据面第二段是出图：<b>DDR → DMA 读 → 打包器 → EP FIFO → Windows</b>。DMA 从帧缓冲读帧，打包器零拷贝加 UVC 头与 PTS 后直写端点 FIFO，经 USB 传输到上位机。固件只配置地址与长度，不逐帧复制 payload——全程无 CPU 逐像素参与，这是数据面能持续满带宽的关键。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 3 · MIPI 分支</div>
+      <div class="figcanvas"><svg id="sfs3_2g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">同一帧还可走 <b>DDR → MIPI TX0 → 外部 MIPI 接收端</b> 的 CSI-2 分支。MIPI 输出与 USB 输出并行运行，共用同一帧缓冲，两条物理路径互不干扰。这说明 USB 与 MIPI 是两种可同时存在的物理输出，数据面出图能力天然具备多路复用。</div>
     </div>
   </div>
 </section>
@@ -221,6 +278,15 @@ svg{display:block;width:100%;min-width:900px;height:auto}
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 带宽账本</div>
+      <div class="figcanvas"><svg id="sfs4_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">带宽账本 = <b>分辨率 × 像素位深 × 帧率</b>：X1 为 640×512×16 位，即 655,360 B/帧；X2 恒等直通后源流有效计数升至 1,310,720。缩放改变输出分辨率时，每帧字节数与有效计数都要重新核算。端点吞吐必须覆盖新峰值，超预算会导致丢帧或提前封帧——只验证"开流成功"不足以证明带宽充足。</div>
+    </div>
+  </div>
 </section>
 
 <!-- ============ 5 ============ -->
@@ -253,6 +319,20 @@ svg{display:block;width:100%;min-width:900px;height:auto}
       </div>
     </div>
   </div>
+
+  <div class="stepfigs">
+    <h4>分步图解</h4>
+    <div class="stepfig">
+      <div class="fighead">步骤 1 · 提前封帧</div>
+      <div class="figcanvas"><svg id="sfs5_0g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">真实故障：X1→X2 切换时，打包器仍在 <b>X1 的 655,360 B 字节边界</b>提前结束 X2 帧。USB 抓包确认设备在该处发送 ERR+EOF，Windows 提前结束该帧，只显示左上约四分之一画面。根源是打包器未感知新帧边界——655,360 B 是 X1 的 16 位帧字节数，并非 X2 完整帧边界。</div>
+    </div>
+    <div class="stepfig">
+      <div class="fighead">步骤 2 · Identity Zoom 规避</div>
+      <div class="figcanvas"><svg id="sfs5_1g" viewBox="0 0 1320 650"></svg></div>
+      <div class="figexp">规避方案是 <b>Identity Zoom</b>：缩放步长取 256，X1 用 2× 放大到 1280×1024，X2 以 1:1 恒等直通，下游固定 1280×1024。Video Zoom 始终激活、不因切换被复位，源流有效计数 1,310,720 稳定输出完整帧。这是工程规避而非硬件修复，验证须同时核对流配置、源流有效计数、USB 抓包与 Windows 图像四路证据。</div>
+    </div>
+  </div>
 </section>
 
 <div class="summary"><b>一句话总结</b><p>UVC 链路按控制面与数据面分工：控制面用 Probe/Commit 把参数落地为封帧配置，数据面由硬件一路把像素搬运到端点；带宽账本与提前封帧是两类最容易翻车的边界，需要多路证据闭环验证。</p></div>
@@ -282,7 +362,7 @@ mipiTX:['MIPI TX0','CSI-2 输出','hardware']};
 const laneOrder=['external','app','driver','hardware'];
 function layout(item){const group={external:[],app:[],driver:[],hardware:[]},out={};item.nodes.forEach(id=>group[nodes[id][2]].push(id));laneOrder.forEach(k=>{const lane=lanes[k],arr=group[k],gap=480/Math.max(arr.length,1);arr.forEach((id,i)=>out[id]={x:lane.x+lane.w/2,y:105+gap*(i+.5)});});return out}
 function geom(a,b,pos){const p=pos[a],q=pos[b],same=nodes[a][2]===nodes[b][2];if(same){const d=q.y>=p.y?1:-1;return{d:`M${p.x+90} ${p.y+25*d} C${p.x+145} ${p.y+55*d},${q.x+145} ${q.y-55*d},${q.x+90} ${q.y-25*d}`,x:p.x+142,y:(p.y+q.y)/2}}const d=q.x>p.x?1:-1;return{d:`M${p.x+90*d} ${p.y} C${p.x+155*d} ${p.y},${q.x-155*d} ${q.y},${q.x-90*d} ${q.y}`,x:(p.x+q.x)/2,y:(p.y+q.y)/2}}
-function draw(svgEl,item){const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="m${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';laneOrder.forEach(k=>{const l=lanes[k];s+=`<rect x="${l.x}" y="20" width="${l.w}" height="610" rx="13" style="stroke:#cbd5e1;stroke-dasharray:5 5;fill:#eef2f7"/><text x="${l.x+15}" y="46" style="fill:#334155;font-size:13px;font-weight:800">${l.title}</text><text x="${l.x+15}" y="63" style="fill:#64748b;font-size:9px">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path d="${g.d}" marker-end="url(#m${k})" style="fill:none;stroke-width:3;stroke:var(--${k})"/><rect x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10" style="fill:#fff;stroke:var(--${k})"/><text x="${g.x}" y="${g.y+1}" text-anchor="middle" style="fill:#334155;font-size:8.5px;font-weight:700">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],style=n[3]||n[2],role=n[3]==='memory'?'内存区':{external:'PC',app:'固件',driver:'驱动',hardware:'硬件'}[n[2]],tw=role.length*7+12;s+=`<g><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9" style="fill:#ffffff;stroke-width:2;stroke:${style==='memory'?'#d97706':'#94a3b8'}"/><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5" style="fill:${style==='memory'?'#d97706':'#64748b'}"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle" style="fill:#fff;font-size:8.5px;font-weight:700">${role}</text><text x="${p.x}" y="${p.y-5}" text-anchor="middle" style="fill:#0f172a;font-size:11px;font-weight:800">${n[0]}</text><text x="${p.x}" y="${p.y+13}" text-anchor="middle" style="fill:#475569;font-size:8.5px">${n[1]}</text></g>`});svgEl.innerHTML=s}
+function draw(svgEl,item,pfx,focus){pfx=pfx||'';const pos=layout(item);let s='<defs>'+['command','data','event','error'].map(k=>`<marker id="${pfx}m${k}" markerWidth="9" markerHeight="9" refX="8" refY="3.5" orient="auto"><path d="M0 0L9 3.5L0 7Z" fill="var(--${k})"/></marker>`).join('')+'</defs>';const act={};item.nodes.forEach(function(id){act[nodes[id][2]]=1});laneOrder.forEach(k=>{if(focus&&!act[k])return;const l=lanes[k];s+=`<rect x="${l.x}" y="20" width="${l.w}" height="610" rx="13" style="stroke:#cbd5e1;stroke-dasharray:5 5;fill:#eef2f7"/><text x="${l.x+15}" y="46" style="fill:#334155;font-size:13px;font-weight:800">${l.title}</text><text x="${l.x+15}" y="63" style="fill:#64748b;font-size:9px">${l.sub}</text>`});item.edges.forEach(([a,b,k,t])=>{const g=geom(a,b,pos),w=Math.max(58,t.length*8+16);s+=`<path d="${g.d}" marker-end="url(#${pfx}m${k})" style="fill:none;stroke-width:3;stroke:var(--${k})"/><rect x="${g.x-w/2}" y="${g.y-13}" width="${w}" height="20" rx="10" style="fill:#fff;stroke:var(--${k})"/><text x="${g.x}" y="${g.y+1}" text-anchor="middle" style="fill:#334155;font-size:8.5px;font-weight:700">${t}</text>`});item.nodes.forEach(id=>{const n=nodes[id],p=pos[id],style=n[3]||n[2],role=n[3]==='memory'?'内存区':{external:'PC',app:'固件',driver:'驱动',hardware:'硬件'}[n[2]],tw=role.length*7+12;s+=`<g><rect x="${p.x-90}" y="${p.y-29}" width="180" height="58" rx="9" style="fill:#ffffff;stroke-width:2;stroke:${style==='memory'?'#d97706':'#94a3b8'}"/><rect x="${p.x-84}" y="${p.y-23}" width="${tw}" height="15" rx="7.5" style="fill:${style==='memory'?'#d97706':'#64748b'}"/><text x="${p.x-84+tw/2}" y="${p.y-12}" text-anchor="middle" style="fill:#fff;font-size:8.5px;font-weight:700">${role}</text><text x="${p.x}" y="${p.y-5}" text-anchor="middle" style="fill:#0f172a;font-size:11px;font-weight:800">${n[0]}</text><text x="${p.x}" y="${p.y+13}" text-anchor="middle" style="fill:#475569;font-size:8.5px">${n[1]}</text></g>`});svgEl.innerHTML=s}
 function makePlayer(p,steps){
   const $=id=>document.getElementById(p+id);
   let idx=0,timer=null,SPEED=0.4;
@@ -320,6 +400,14 @@ makePlayer('s2',S2);
 makePlayer('s3',S3);
 makePlayer('s4',S4);
 makePlayer('s5',S5);
+/* 静态分步图解：按顺序渲染每步图（复用 draw，前缀防 marker 冲突） */
+[['s1',S1],['s2',S2],['s3',S3],['s4',S4],['s5',S5]].forEach(function(gp){
+  var p=gp[0],steps=gp[1];
+  steps.forEach(function(st,si){
+    var el=document.getElementById('sf'+p+'_'+si+'g');
+    if(el){draw(el,st,'sf'+p+'_'+si+'_',true);}
+  });
+});
 </script>
 </body>
 </html>
