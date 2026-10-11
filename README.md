@@ -5,37 +5,47 @@
 ## 目录结构
 
 ```
-architecture/       -- 架构设计 (10 篇)
-performance/        -- 性能优化 (29 篇)
-practice/           -- 工程实践 (19 篇)
+architecture/       -- 架构设计 (18 篇公开, 1 篇草稿)
+performance/        -- 性能优化 (30 篇)
+practice/           -- 工程实践 (26 篇)
 pattern/            -- 设计模式 (8 篇)
 interview/          -- 面试题 (2 篇)
-misc/               -- 杂项 (7 篇)
+misc/               -- 杂项 (8 篇)
 ```
 
-共 **75** 篇文章 (75 篇公开, 0 篇草稿)
+共 **93** 篇文章 (92 篇公开, 1 篇草稿)
 
 ## 文章索引
 
-### architecture/ -- 架构设计 (10 篇)
+### architecture/ -- 架构设计 (18 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [dma_devmem_and_fpga_ringbuffer.md](architecture/dma_devmem_and_fpga_ringbuffer.md) | DMA 物理内存映射与 FPGA 环形缓冲: 零拷贝通路与无锁读写 | 2026-10-06T08:00:00 |
+| [embedded_usb_dual_video_output.md](architecture/embedded_usb_dual_video_output.md) | 嵌入式双路 USB 视频输出: 一个设备、两个摄像头的同步原理 | 2026-09-20T08:00:00 |
+| [onchip_camera_rtsp_service.md](architecture/onchip_camera_rtsp_service.md) | 单芯片相机 RTSP 服务架构: 画面通路、时间安排与方案取舍 | 2026-09-20T08:00:00 |
+| [embedded_block_device_write_path.md](architecture/embedded_block_device_write_path.md) | 嵌入式块设备写入路径: 从文件系统到 SD 卡的四层地址翻译 | 2026-09-18T08:00:00 |
+| [event_loop_internals_and_rtthread_port.md](architecture/event_loop_internals_and_rtthread_port.md) | 单线程事件循环的内核设计: 机制、移植与适用边界 | 2026-09-08T08:00:00 |
+| [reactor_event_loop_fit_evaluation.md](architecture/reactor_event_loop_fit_evaluation.md) | Reactor 事件循环引入嵌入式模块: 适配性评估与冗余账 | 2026-09-08T08:00:00 |
+| [cortex_m_memory_topology_sram_ccm.md](architecture/cortex_m_memory_topology_sram_ccm.md) | Cortex-M4 内存寻路: SRAM 与 CCM 的拓扑、层次与工程取舍 | 2026-08-21T08:00:00 |
+| [embedded_over_engineering.md](architecture/embedded_over_engineering.md) | 嵌入式系统中的过度设计: 识别、量化与规避 | 2026-02-19T22:00:00 |
+| [osp_upgrade_engine_design.md](architecture/osp_upgrade_engine_design.md) | 工业固件 A/B 分区升级引擎: HSM 驱动 + 三层掉电保护设计 | 2026-02-17T10:30:00 |
 | [newosp_concurrency_io_architecture.md](architecture/newosp_concurrency_io_architecture.md) | 如何设计嵌入式并发架构: newosp 的事件驱动 + 固定线程池方案 | 2026-02-17T08:30:00 |
 | [lidar_pipeline_newosp.md](architecture/lidar_pipeline_newosp.md) | 激光雷达高吞吐数据处理 Pipeline: 模块化架构与 NEON 向量化 | 2026-02-17T08:20:00 |
 | [embedded_streaming_data_architecture.md](architecture/embedded_streaming_data_architecture.md) | 嵌入式流式数据处理架构: 传感器到网络输出的全链路设计 | 2026-02-17T08:10:00 |
 | [embedded_ab_firmware_upgrade_engine.md](architecture/embedded_ab_firmware_upgrade_engine.md) | 嵌入式 A/B 分区固件升级引擎: HSM 状态机 + 三层掉电保护 | 2026-02-17T08:00:00 |
-| [rtos_ao_cooperative_scheduling.md](architecture/rtos_ao_cooperative_scheduling.md) | RTOS + Active Object 协同调度优化: 从浅层适配到深度融合 | 2026-02-16T08:20:00 |
+| [rtos_ao_cooperative_scheduling.md](architecture/rtos_ao_cooperative_scheduling.md) | RTOS + Active Object 协同调度优化: 从浅层适配到深度融合 *(草稿)* | 2026-02-16T08:20:00 |
 | [newosp_event_driven_architecture.md](architecture/newosp_event_driven_architecture.md) | 如何设计传感器数据流水线: newosp 事件驱动 + 零堆分配方案 | 2026-02-16T08:10:00 |
 | [mcu_secondary_bootloader.md](architecture/mcu_secondary_bootloader.md) | MCU 二级 Bootloader 设计: 状态机驱动的 A/B 分区 OTA 与安全启动 | 2026-02-16T08:00:00 |
 | [rtos_vs_linux_heterogeneous_soc.md](architecture/rtos_vs_linux_heterogeneous_soc.md) | RTOS vs Linux 异构选型: 三核 SoC 上的双系统设计 | 2026-02-15T08:20:00 |
 | [fpga_arm_soc_lidar_feasibility.md](architecture/fpga_arm_soc_lidar_feasibility.md) | FPGA + ARM 双核 SoC 处理激光雷达点云的可行性分析 | 2026-02-15T08:10:00 |
 | [dual_core_arm_rtthread_smp.md](architecture/dual_core_arm_rtthread_smp.md) | 双核 ARM SoC 上跑 RT-Thread SMP: MMU、Cache 与调度实战 | 2026-02-15T08:00:00 |
 
-### performance/ -- 性能优化 (29 篇)
+### performance/ -- 性能优化 (30 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [linux_network_troubleshooting_guide.md](performance/linux_network_troubleshooting_guide.md) | Linux 网络编程排障与高性能传输: 从丢包诊断到零拷贝实战 | 2026-02-20T14:00:00 |
 | [object_pool_hidden_costs.md](performance/object_pool_hidden_costs.md) | 对象池在嵌入式热路径上的三个隐性成本 | 2026-02-17T09:30:00 |
 | [memory_barrier_hardware.md](performance/memory_barrier_hardware.md) | 内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB | 2026-02-17T09:20:00 |
 | [mccc_zero_heap_optimization_benchmark.md](performance/mccc_zero_heap_optimization_benchmark.md) | MCCC 消息总线零堆分配优化与性能实测 | 2026-02-17T09:10:00 |
@@ -66,13 +76,20 @@ misc/               -- 杂项 (7 篇)
 | [armv8_crc32_hardware_vs_neon_benchmark.md](performance/armv8_crc32_hardware_vs_neon_benchmark.md) | ARMv8 CRC 性能实测: 硬件指令快 8 倍, NEON 反而更慢 | 2026-02-15T08:50:00 |
 | [arm_linux_lock_contention_benchmark.md](performance/arm_linux_lock_contention_benchmark.md) | ARM-Linux 锁竞争性能实测: Spinlock/Mutex/ConcurrentQueue 对比 | 2026-02-15T08:40:00 |
 
-### practice/ -- 工程实践 (19 篇)
+### practice/ -- 工程实践 (26 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [mcu_periodic_service_concurrency.md](practice/mcu_periodic_service_concurrency.md) | MCU 周期服务的并发三件套: RMW、RTC 与 AOP | 2026-09-22T08:00:00 |
+| [usb_uvc_enumeration_and_negotiation.md](practice/usb_uvc_enumeration_and_negotiation.md) | USB 视频设备枚举与能力协商: 描述符、Probe 与 Commit | 2026-09-18T08:00:00 |
+| [event_loop_as_bottom_half.md](practice/event_loop_as_bottom_half.md) | 事件循环库的定位: 中断下半部与事件管家 | 2026-09-08T08:00:00 |
+| [mcu_cpp_rt_thread_practice.md](practice/mcu_cpp_rt_thread_practice.md) | 在 RT-Thread/MCU 上安全使用 C++：从编译器基线到零开销抽象实践 | 2026-02-26T10:00:00 |
+| [ewss_embedded_websocket_server.md](practice/ewss_embedded_websocket_server.md) | EWSS: 面向嵌入式 Linux 的轻量级 WebSocket 服务器 | 2026-02-19T10:00:00 |
+| [fccu_cpp_software_fault_collector.md](practice/fccu_cpp_software_fault_collector.md) | fccu-cpp: C++17 Header-Only 软件故障收集器 | 2026-02-19T10:00:00 |
+| [newosp_spmc_shm_data_distribution.md](practice/newosp_spmc_shm_data_distribution.md) | 跨进程数据分发: newosp SPMC 共享内存实战 | 2026-02-17T16:00:00 |
+| [cyberrt_datavisitor_mccc_rewrite.md](practice/cyberrt_datavisitor_mccc_rewrite.md) | 基于无锁消息总线的观察者模式: 零堆分配、单线程消费 | 2026-02-17T14:00:00 |
 | [newosp_shell_multibackend.md](practice/newosp_shell_multibackend.md) | newosp 调试 Shell: 多后端架构与运行时控制命令设计 | 2026-02-17T10:20:00 |
 | [lmdb_embedded_linux_zero_copy.md](practice/lmdb_embedded_linux_zero_copy.md) | LMDB 在嵌入式 Linux 上的实践: 零拷贝读取与内存映射 I/O | 2026-02-17T10:10:00 |
-| [ewss_embedded_websocket_server.md](practice/ewss_embedded_websocket_server.md) | EWSS: 面向嵌入式 Linux 的轻量级 WebSocket 服务器 | 2026-02-19T10:00:00 |
 | [newosp_industrial_embedded_library.md](practice/newosp_industrial_embedded_library.md) | newosp: 面向工业嵌入式的 C++17 Header-Only 基础设施库 | 2026-02-17T10:00:00 |
 | [mccc_bus_cpp17_practice.md](practice/mccc_bus_cpp17_practice.md) | 从 C++14 到 C++17: mccc-bus 的四项零堆分配改造 | 2026-02-17T09:50:00 |
 | [cpp17_claims_in_newosp.md](practice/cpp17_claims_in_newosp.md) | newosp 源码中的 C++17 实践: 8 项能力的工程落地 | 2026-02-17T09:40:00 |
@@ -82,7 +99,7 @@ misc/               -- 杂项 (7 篇)
 | [qpc_active_object_hsm.md](practice/qpc_active_object_hsm.md) | QPC 框架深度解析: Active Object 与层次状态机的嵌入式实践 | 2026-02-16T11:40:00 |
 | [dbpp_cpp14_database_modernization.md](practice/dbpp_cpp14_database_modernization.md) | 数据库抽象层的 C++14 重写: 从手动内存管理到 RAII | 2026-02-16T11:30:00 |
 | [clang_tidy_embedded_cpp17.md](practice/clang_tidy_embedded_cpp17.md) | Clang-Tidy 嵌入式 C++17 实战: 从配置到 CI 集成的完整指南 | 2026-02-16T11:20:00 |
-| [behavior_tree_tick_mechanism.md](practice/behavior_tree_tick_mechanism.md) | 行为树 Tick 机制深度解析: 从原理到 bt-cpp 实践 | 2026-02-16T11:10:00 |
+| [behavior_tree_tick_mechanism.md](practice/behavior_tree_tick_mechanism.md) | 行为树在嵌入式系统中的工程实践: Tick 机制、异步节点与 newosp 集成 | 2026-02-16T11:10:00 |
 | [telnet_debug_shell_posix_refactoring.md](practice/telnet_debug_shell_posix_refactoring.md) | 嵌入式 Telnet 调试 Shell 重构: 纯 POSIX 轻量化实现 | 2026-02-15T11:30:00 |
 | [rtthread_msh_linux_multibackend.md](practice/rtthread_msh_linux_multibackend.md) | 将 RT-Thread MSH 移植到 Linux: 嵌入式调试 Shell 的多后端设计 | 2026-02-15T11:20:00 |
 | [cpp14_pluggable_log_library_design.md](practice/cpp14_pluggable_log_library_design.md) | 轻量级 C++14 日志库设计: 可插拔后端与零依赖架构 | 2026-02-15T11:10:00 |
@@ -110,10 +127,11 @@ misc/               -- 杂项 (7 篇)
 | [senior_embedded_c_language_interview_questions.md](interview/senior_embedded_c_language_interview_questions.md) | 嵌入式 C 语言深度面试题: 系统与架构 | 2025-01-02T08:00:00 |
 | [senior_embedded_software_engineer_interview_questions.md](interview/senior_embedded_software_engineer_interview_questions.md) | 高级嵌入式软件工程师面试题: 架构设计与工程深度 | 2025-01-01T08:00:00 |
 
-### misc/ -- 杂项 (7 篇)
+### misc/ -- 杂项 (8 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [agent_statusline_script.md](misc/agent_statusline_script.md) | CLI 状态栏脚本设计: 从 stdin JSON 到一行输出 | 2026-09-11T08:00:00 |
 | [linux_dev_commands_cheatsheet.md](misc/linux_dev_commands_cheatsheet.md) | Linux 开发常用命令与脚本速查手册 | 2026-02-17T11:30:00 |
 | [git_advanced_workflow_guide.md](misc/git_advanced_workflow_guide.md) | Git 高级工作流完全指南 | 2026-02-17T11:20:00+08:00 |
 | [vmware_sogou_focus_fix.md](misc/vmware_sogou_focus_fix.md) | VMware 虚拟机搜狗输入法焦点跳转问题分析与解决 | 2026-02-17T11:00:00 |
@@ -127,7 +145,6 @@ misc/               -- 杂项 (7 篇)
 | 项目 | 地址 | 说明 |
 |------|------|------|
 | newosp | [GitHub](https://github.com/DeguiLiu/newosp) | C++17 Header-Only 嵌入式基础设施库 |
-| ewss | [GitHub](https://github.com/DeguiLiu/ewss) | 嵌入式 WebSocket 服务器 (C++17, poll Reactor) |
 | mccc-bus | [Gitee](https://gitee.com/liudegui/mccc-bus) | 高性能无锁消息总线 |
 | eventpp (fork) | [Gitee](https://gitee.com/liudegui/eventpp) | eventpp ARM-Linux 优化分支 |
 | message_bus | [Gitee](https://gitee.com/liudegui/message_bus) | C++11 非阻塞消息总线 |
