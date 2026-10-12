@@ -21,6 +21,33 @@ summary: "图像芯片把画面送出去这件事，卡住的地方通常不在�
 | 驱动与 HAL | 校验 lane、虚拟通道、数据类型与帧尺寸，把行长度透传给硬件，配置核心与物理层 | 不解释上位机语义 |
 | 硬件 | 产生 CSI-2 包与差分信号，上报中断 | 不提供主机的设备协议 |
 
+```mermaid
+flowchart TB
+  classDef biz fill:#e2d9f3,stroke:#6f42c1,color:#3b2a6b
+  classDef itf fill:#dbeafe,stroke:#2563eb,color:#172554
+  classDef drv fill:#ffedd5,stroke:#f97316,color:#7c2d12
+  classDef hw fill:#dcfce7,stroke:#16a34a,color:#14532d
+
+  subgraph B2["业务与流：出哪一路、多大、多少帧"]
+    direction LR
+    B1["流配置"]:::biz --> B3["节点装配"]:::biz
+  end
+  subgraph I2["输出接口：组织数据源与生命周期"]
+    direction LR
+    I1["选择物理出口"]:::itf --> I3["行长度与格式换算"]:::itf
+  end
+  subgraph D2["驱动与 HAL：校验协议字段并配寄存器"]
+    direction LR
+    D1["lane / 通道号 / 数据类型校验"]:::drv --> D3["核心与物理层配置"]:::drv
+  end
+  subgraph H2["硬件：产生 CSI-2 包与差分信号"]
+    direction LR
+    H1["核心与包装层"]:::hw --> H3["物理层"]:::hw
+  end
+  B2 --> I2 --> D2 --> H2
+  H2 -.->|错误与空闲中断| I2
+```
+
 按这张表，协议字段对不上要往驱动和硬件层看，尺寸和资源冲突要往业务层看。把“接收端没出图”直接当成驱动问题，往往会跳过错配的那一个字段。
 
 与其他并行输出接口对照也有用：并行接口用行场同步信号划分一帧，没有通道号这类字段，所以它的排错清单里没有这一项；相关机制见已发的 [DVP 图像输出通路](/tech-notes/posts/architecture/dvp_image_output_principle/)。
@@ -48,6 +75,25 @@ sequenceDiagram
   P3->>P3: 配置中断
   P2->>P3: 启动这一路
   P4-->>P5: CSI-2 长包与短包
+```
+
+从数据源到接收端的物理拓扑如下。通道号、数据类型和行长度是发送核心里的字段，设备类型与位宽换算发生在包装层，两层可能不一致：
+
+```mermaid
+flowchart LR
+  classDef src fill:#dbeafe,stroke:#2563eb,color:#172554
+  classDef mux fill:#fef3c7,stroke:#d97706,color:#78350f
+  classDef core fill:#dcfce7,stroke:#16a34a,color:#14532d
+  classDef phy fill:#ffedd5,stroke:#f97316,color:#7c2d12
+  classDef rx fill:#e2d9f3,stroke:#6f42c1,color:#3b2a6b
+
+  S["图像处理输出"]:::src --> SEL["数据源选择<br/>MUX / SEL"]:::mux
+  SEL --> CORE["发送核心<br/>通道号 + 数据类型 + 行长度"]:::core
+  CORE --> WRAP["包装层<br/>设备类型与位宽换算"]:::core
+  WRAP --> PHY["物理层<br/>时钟 lane + 数据 lane"]:::phy
+  PHY -->|差分信号| RX["外部接收端<br/>FPGA / SoC / 桥片"]:::rx
+  CLK["工作时钟"]:::mux -.-> CORE
+  CLK -.-> PHY
 ```
 
 ## 3. 四项必须与接收端对齐的配置

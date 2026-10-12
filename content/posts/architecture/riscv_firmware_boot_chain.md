@@ -38,19 +38,29 @@ summary: "从复位到第一个线程执行，启动过程分成四段，每段�
 这个顺序里有两处不能交换。时钟必须早于任何依赖时序的外设；地址属性必须早于 Cache 使能，否则 Cache 会按默认属性去缓存本不该缓存的区间，之后即使改了属性，已经进 Cache 的内容也不会自动作废。
 
 ```mermaid
-flowchart TD
-  A["复位入口<br/>清寄存器、建栈、装向量表"] --> B["片上有初值段复制<br/>运行代码段与数据段"]
-  B --> C["清零无初值段"]
-  C --> D["时钟配置"]
-  D --> E["地址属性映射<br/>可缓存 / 强序"]
-  E --> F["外部内存初始化"]
-  F --> G["复制外部内存段<br/>有初值段 + 模块段"]
-  G --> H["清零模块未初始化段"]
-  H --> I["中断控制器分级与向量"]
-  I --> J["使能指令与数据 Cache"]
-  J --> K["板级初始化与组件注册"]
-  K --> L["创建 main 线程"]
-  L --> M["启动调度器"]
+flowchart TB
+  classDef seg1 fill:#e2d9f3,stroke:#6f42c1,color:#3b2a6b
+  classDef seg2 fill:#dbeafe,stroke:#2563eb,color:#172554
+  classDef seg3 fill:#fef3c7,stroke:#d97706,color:#78350f
+  classDef seg4 fill:#dcfce7,stroke:#16a34a,color:#14532d
+
+  subgraph S1["第一段 复位入口：建立最小 C 环境（只有片上内存可用）"]
+    direction LR
+    A1["清通用寄存器"]:::seg1 --> A2["装向量表与栈"]:::seg1 --> A3["复制片上代码段与数据段"]:::seg1 --> A4["清零无初值段"]:::seg1
+  end
+  subgraph S2["第二段 片上初始化：时钟、地址属性、中断"]
+    direction LR
+    B1["时钟配置"]:::seg2 --> B2["地址属性映射"]:::seg2 --> B3["中断控制器分级"]:::seg2 --> B4["使能 Cache"]:::seg2
+  end
+  subgraph S3["第三段 外部内存：先初始化，再复制段"]
+    direction LR
+    C1["初始化外部内存"]:::seg3 --> C2["复制有初值段与模块段"]:::seg3 --> C3["清零未初始化段"]:::seg3
+  end
+  subgraph S4["第四段 内核启动：板级初始化到调度器"]
+    direction LR
+    D1["板级初始化"]:::seg4 --> D2["组件注册"]:::seg4 --> D3["创建 main 线程"]:::seg4 --> D4["启动调度器"]:::seg4
+  end
+  S1 --> S2 --> S3 --> S4
 ```
 
 ## 4. 外部内存与内核启动
@@ -58,6 +68,24 @@ flowchart TD
 外部内存那一段的执行顺序是固定的：先初始化外部内存本身，等它返回之后，再复制放在外部内存里的代码段和数据段，然后是各模块自己的内存段，最后清零各模块中不需要初值的段。把这段顺序写反（先搬数据再初始化内存）是容易写错的一处结论。
 
 外部内存初始化完成后，启动进入内核阶段：板级初始化建立串口、控制台、系统节拍与堆，随后依次初始化定时器与调度器、创建主线程、创建定时器线程与空闲线程，最后启动调度器。这一段真正需要记住的是两条：**主线程在调度器启动之前只是就绪状态，一行都不执行**；**板级自动初始化和后面组件注册的自动初始化不在同一时刻**，前者在板级初始化里，后者要等主线程跑起来之后。
+
+内核对象之间的创建与依赖关系：
+
+```mermaid
+flowchart LR
+  classDef k fill:#dbeafe,stroke:#2563eb,color:#172554
+  classDef t fill:#dcfce7,stroke:#16a34a,color:#14532d
+  classDef app fill:#e2d9f3,stroke:#6f42c1,color:#3b2a6b
+
+  ST["启动入口"]:::k --> HW["板级初始化<br/>串口、控制台、节拍、堆"]:::k
+  HW --> REG["组件注册<br/>按等级依次执行"]:::k
+  REG --> RT["创建 main 线程"]:::app
+  RT --> TH["创建定时器线程"]:::t
+  RT --> IDLE["创建空闲线程"]:::t
+  TH --> SCH["启动调度器"]:::k
+  IDLE --> SCH
+  SCH -.->|此前 main 只是就绪态| RT
+```
 
 ## 5. 启动失败时的判断顺序
 
@@ -74,4 +102,4 @@ flowchart TD
 
 关于组件注册的等级与顺序，已发的 [嵌入式 SD 卡上电加载](/tech-notes/posts/architecture/embedded_sd_boot_load_flow/) 里有完整的等级表和两条容易弄反的顺序判据，这里不再重复；与 [MCU 二级 Bootloader 设计](/tech-notes/posts/architecture/mcu_secondary_bootloader/) 讲的 OTA 与安全启动也不是一回事，本文只讲应用核从复位到调度器这一段。
 
-这些段到底被放在哪些内存区间、为什么换一个构建参数地址就全变了，是下一篇的主题：[图像 SoC 的内存分区与缓冲布局](/tech-notes/posts/architecture/soc_memory_partition_and_buffer_layout/)。
+这些段到底被放在哪些内存区间、为什么换一个构建参数地址就全变了，是下一篇的主题（该篇按内部评审意见暂缓发布）。

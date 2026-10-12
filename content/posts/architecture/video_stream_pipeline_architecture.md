@@ -32,21 +32,65 @@ summary: "视频流不是一条固定流水线，而是按节点序列装配出�
 | 测温流 | 4 | 两级裁剪缩放、灰度与伪彩映射、输出接口 | 测温面阵与映射 |
 | 可见光流 | 3 | 两级裁剪缩放、输出接口 | 可见光或内部视频转接，多路各占一套资源 |
 
+三路流的节点拓扑如下：每一路内部按顺序串行，最后汇到同一个输出接口；主图流节点最多，可见光流最短。
+
+```mermaid
+flowchart LR
+  classDef pic fill:#dbeafe,stroke:#2563eb,color:#172554
+  classDef temp fill:#dcfce7,stroke:#16a34a,color:#14532d
+  classDef vs fill:#fef3c7,stroke:#d97706,color:#78350f
+  classDef out fill:#ffedd5,stroke:#f97316,color:#7c2d12
+
+  subgraph PICL["主图流：7 个节点"]
+    direction LR
+    P1["裁剪缩放"]:::pic --> P2["灰度与伪彩映射"]:::pic --> P3["两路叠加"]:::pic --> P4["输出重组"]:::pic
+  end
+  subgraph TEMPL["测温流：4 个节点"]
+    direction LR
+    T1["裁剪缩放"]:::temp --> T2["灰度与伪彩映射"]:::temp
+  end
+  subgraph VSL["可见光流：3 个节点"]
+    V1["裁剪缩放"]:::vs
+  end
+  P4 --> O1["输出接口<br/>MIPI / USB / CVBS"]:::out
+  T2 --> O1
+  V1 --> O1
+```
+
 节点多的那一路，能做的事多，代价是链路更长、单帧延迟更大。节点少的两路，能力被刻意收窄：测温流没有叠加和输出重组节点，可见光流的当前序列里也没有格式转换节点。这些能力本来就是按需装配的：不需要的不装配，也就不占资源。
 
 画中画容易被画成与主图流平级的独立通道，实际它是主图流的内部支路：没有独立节点序列，也不占独立资源。把它画错，后面的资源核算会跟着错。
 
 ```mermaid
-flowchart LR
-  S["业务意图<br/>哪几路、多大、多少帧"] --> A["服务和组件层<br/>装配 stream 与 node"]
-  A --> B["驱动与 HAL<br/>校验并写寄存器"]
-  B --> C["图像处理与输出接口"]
-  C --> D["接口输出<br/>USB / MIPI / CVBS"]
+flowchart TB
+  classDef app fill:#e2d9f3,stroke:#6f42c1,color:#3b2a6b
+  classDef svc fill:#dbeafe,stroke:#2563eb,color:#172554
+  classDef drv fill:#ffedd5,stroke:#f97316,color:#7c2d12
+  classDef hw fill:#dcfce7,stroke:#16a34a,color:#14532d
+
+  subgraph L1["业务应用层：决定出哪几路、多大、多少帧"]
+    direction LR
+    A1["业务配置"]:::app --> A2["启动与参数下发"]:::app
+  end
+  subgraph L2["服务与组件层：把业务意图装配成 stream 与 node"]
+    direction LR
+    B1["stream 序列"]:::svc --> B2["node 初始化与启停"]:::svc
+  end
+  subgraph L3["驱动与 HAL 层：校验参数并写寄存器"]
+    direction LR
+    C1["参数校验"]:::drv --> C2["寄存器配置"]:::drv
+  end
+  subgraph L4["硬件层：图像处理与输出接口"]
+    direction LR
+    D1["处理流水线"]:::hw --> D2["输出接口"]:::hw
+  end
+  L1 --> L2 --> L3 --> L4
+  L4 -.->|事件回流，不与数据同路| L2
 ```
 
 ## 3. 命令、数据、事件：三条链路各管一段
 
-命令流从业务下发一路走到寄存器：业务发起流的初始化，组件层按顺序调用各节点的初始化，驱动把参数写进硬件，输出接口节点最后才启动接口本身。运行期改参数也走同一条路。**参数修改成功只代表硬件接受了配置，不代表下一帧已经采用它。** 这种形态没有通用的“已生效”信号，只能依赖停稳与帧边界时序，具体见后面的 [运行期重配输出链路: 哪些状态要一起改、失败了怎么退](/tech-notes/posts/practice/display_pipeline_atomic_reconfigure/)。
+命令流从业务下发一路走到寄存器：业务发起流的初始化，组件层按顺序调用各节点的初始化，驱动把参数写进硬件，输出接口节点最后才启动接口本身。运行期改参数也走同一条路。**参数修改成功只代表硬件接受了配置，不代表下一帧已经采用它。** 这种形态没有通用的“已生效”信号，只能依赖停稳与帧边界时序：改完参数之后，要自己按帧边界确认新的几何、位宽和时钟是不是都换过来了。
 
 数据流是硬件自己的事：像素在片内由各处理模块按装配顺序处理，中间通过 DMA 在内存与处理模块之间往返。这一路上 CPU 不参与像素搬运，只在配置阶段出现。具体经过几次搬运取决于这路流装了哪些节点，装配时就能看出来。
 

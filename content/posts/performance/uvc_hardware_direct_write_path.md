@@ -16,6 +16,31 @@ USB 视频这类输出，最容易踩的坑是把“搬数据”当成软件的�
 
 ## 1. 通路怎么搭起来
 
+```mermaid
+flowchart TB
+  classDef cfg fill:#e2d9f3,stroke:#6f42c1,color:#3b2a6b
+  classDef hw fill:#dcfce7,stroke:#16a34a,color:#14532d
+  classDef link fill:#ffedd5,stroke:#f97316,color:#7c2d12
+  classDef host fill:#dbeafe,stroke:#2563eb,color:#172554
+
+  subgraph CFG["配置面：CPU 只写寄存器，不搬数据"]
+    direction LR
+    A1["帧格式与包长"]:::cfg --> A2["单次传输量与中断使能"]:::cfg
+  end
+  subgraph MOVE["片内搬运面：硬件把像素推进端点"]
+    direction LR
+    B1["封装硬件<br/>帧头 / 时间戳 / 帧结束"]:::hw --> B2["端点 FIFO"]:::hw
+  end
+  subgraph LINK["链路面：控制器把缓冲送上差分线"]
+    C1["USB 控制器"]:::link
+  end
+  subgraph HOSTL["主机面：取流节奏由主机决定"]
+    D1["主机取数<br/>不取就会溢出"]:::host
+  end
+  CFG -.->|只配置，不介入数据流| MOVE
+  MOVE --> LINK --> HOSTL
+```
+
 这条通路的关键只有一个动作：初始化时把封装模块的输出目标设成 USB 端点的缓冲地址，之后硬件按自己的节奏推进，软件不再介入。需要 CPU 做的配置如下：
 
 | 动作 | 谁做 | 说明 |
@@ -29,12 +54,19 @@ USB 视频这类输出，最容易踩的坑是把“搬数据”当成软件的�
 
 ```mermaid
 flowchart LR
-  N1["图像处理输出"] --> N2["封装硬件<br/>帧头、时间戳、帧结束"]
-  N2 --> N3["端点 FIFO<br/>写入目标在初始化时固定"]
-  N3 --> N4["USB 控制器"]
-  N4 --> N5["主机取流"]
-  N6["CPU：只写格式、包长、传输量"] -.-> N2
+  classDef src fill:#dbeafe,stroke:#2563eb,color:#172554
+  classDef wrap fill:#dcfce7,stroke:#16a34a,color:#14532d
+  classDef fifo fill:#fef3c7,stroke:#d97706,color:#78350f
+  classDef ctrl fill:#ffedd5,stroke:#f97316,color:#7c2d12
+  classDef host fill:#e2d9f3,stroke:#6f42c1,color:#3b2a6b
+
+  N1["图像处理输出"]:::src --> N2["封装硬件<br/>帧头、时间戳、帧结束"]:::wrap
+  N2 --> N3["端点 FIFO<br/>写入目标在初始化时固定"]:::fifo
+  N3 --> N4["USB 控制器"]:::ctrl
+  N4 -->|高速链路| N5["主机取流"]:::host
+  N6["CPU：只写格式、包长、传输量"]:::fifo -.-> N2
   N6 -.-> N4
+  N3 -.->|水位到阈值就计数告警| N6
 ```
 
 ## 2. 为什么必须硬件直写
