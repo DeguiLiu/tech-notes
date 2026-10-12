@@ -5,29 +5,34 @@
 ## 目录结构
 
 ```
-architecture/       -- 架构设计 (18 篇公开, 1 篇草稿)
-performance/        -- 性能优化 (30 篇)
-practice/           -- 工程实践 (26 篇)
-pattern/            -- 设计模式 (8 篇)
+architecture/       -- 架构设计 (23 篇公开, 1 篇草稿)
+performance/        -- 性能优化 (31 篇)
+practice/           -- 工程实践 (30 篇)
+pattern/            -- 设计模式 (11 篇)
 interview/          -- 面试题 (2 篇)
-misc/               -- 杂项 (8 篇)
+misc/               -- 杂项 (13 篇)
 ```
 
-共 **93** 篇文章 (92 篇公开, 1 篇草稿)
+共 **111** 篇文章 (110 篇公开, 1 篇草稿)
 
 ## 文章索引
 
-### architecture/ -- 架构设计 (18 篇)
+### architecture/ -- 架构设计 (23 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
 | [dma_devmem_and_fpga_ringbuffer.md](architecture/dma_devmem_and_fpga_ringbuffer.md) | DMA 物理内存映射与 FPGA 环形缓冲: 零拷贝通路与无锁读写 | 2026-10-06T08:00:00 |
+| [embedded_sd_boot_load_flow.md](architecture/embedded_sd_boot_load_flow.md) | 嵌入式 SD 卡上电加载: 从卡检测到文件系统挂载 | 2026-09-20T08:00:00 |
 | [embedded_usb_dual_video_output.md](architecture/embedded_usb_dual_video_output.md) | 嵌入式双路 USB 视频输出: 一个设备、两个摄像头的同步原理 | 2026-09-20T08:00:00 |
 | [onchip_camera_rtsp_service.md](architecture/onchip_camera_rtsp_service.md) | 单芯片相机 RTSP 服务架构: 画面通路、时间安排与方案取舍 | 2026-09-20T08:00:00 |
 | [embedded_block_device_write_path.md](architecture/embedded_block_device_write_path.md) | 嵌入式块设备写入路径: 从文件系统到 SD 卡的四层地址翻译 | 2026-09-18T08:00:00 |
+| [mcu_thread_heartbeat_liveness.md](architecture/mcu_thread_heartbeat_liveness.md) | MCU 任务活性监控: 心跳判定、链路进展与硬件看门狗 | 2026-09-14T08:00:00 |
 | [event_loop_internals_and_rtthread_port.md](architecture/event_loop_internals_and_rtthread_port.md) | 单线程事件循环的内核设计: 机制、移植与适用边界 | 2026-09-08T08:00:00 |
 | [reactor_event_loop_fit_evaluation.md](architecture/reactor_event_loop_fit_evaluation.md) | Reactor 事件循环引入嵌入式模块: 适配性评估与冗余账 | 2026-09-08T08:00:00 |
-| [cortex_m_memory_topology_sram_ccm.md](architecture/cortex_m_memory_topology_sram_ccm.md) | Cortex-M4 内存寻路: SRAM 与 CCM 的拓扑、层次与工程取舍 | 2026-08-21T08:00:00 |
+| [hardware_software_cache_coherence.md](architecture/hardware_software_cache_coherence.md) | 嵌入式软硬件缓存一致性: 从旁路写入到集中收敛 | 2026-08-27T08:00:00 |
+| [dvp_image_output_principle.md](architecture/dvp_image_output_principle.md) | DVP 图像输出通路: 像素时序、模块分工与实现边界 | 2026-08-25T08:00:00 |
+| [uvc_vs_csi2_output_paths.md](architecture/uvc_vs_csi2_output_paths.md) | UVC 与 CSI-2 图像输出通路: 封装、标识与带宽取舍 | 2026-08-23T08:00:00 |
+| [cortex_m_memory_topology_sram_ccm.md](architecture/cortex_m_memory_topology_sram_ccm.md) | Cortex-M 内存寻路: SRAM 与 CCM 的拓扑、层次与工程取舍 | 2026-08-21T08:00:00 |
 | [embedded_over_engineering.md](architecture/embedded_over_engineering.md) | 嵌入式系统中的过度设计: 识别、量化与规避 | 2026-02-19T22:00:00 |
 | [osp_upgrade_engine_design.md](architecture/osp_upgrade_engine_design.md) | 工业固件 A/B 分区升级引擎: HSM 驱动 + 三层掉电保护设计 | 2026-02-17T10:30:00 |
 | [newosp_concurrency_io_architecture.md](architecture/newosp_concurrency_io_architecture.md) | 如何设计嵌入式并发架构: newosp 的事件驱动 + 固定线程池方案 | 2026-02-17T08:30:00 |
@@ -41,10 +46,11 @@ misc/               -- 杂项 (8 篇)
 | [fpga_arm_soc_lidar_feasibility.md](architecture/fpga_arm_soc_lidar_feasibility.md) | FPGA + ARM 双核 SoC 处理激光雷达点云的可行性分析 | 2026-02-15T08:10:00 |
 | [dual_core_arm_rtthread_smp.md](architecture/dual_core_arm_rtthread_smp.md) | 双核 ARM SoC 上跑 RT-Thread SMP: MMU、Cache 与调度实战 | 2026-02-15T08:00:00 |
 
-### performance/ -- 性能优化 (30 篇)
+### performance/ -- 性能优化 (31 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [zero_heap_zero_copy_event_passing.md](performance/zero_heap_zero_copy_event_passing.md) | 零堆分配与零拷贝事件传递: 单次构造、指针流转与回收契约 | 2026-09-10T08:00:00 |
 | [linux_network_troubleshooting_guide.md](performance/linux_network_troubleshooting_guide.md) | Linux 网络编程排障与高性能传输: 从丢包诊断到零拷贝实战 | 2026-02-20T14:00:00 |
 | [object_pool_hidden_costs.md](performance/object_pool_hidden_costs.md) | 对象池在嵌入式热路径上的三个隐性成本 | 2026-02-17T09:30:00 |
 | [memory_barrier_hardware.md](performance/memory_barrier_hardware.md) | 内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB | 2026-02-17T09:20:00 |
@@ -76,13 +82,17 @@ misc/               -- 杂项 (8 篇)
 | [armv8_crc32_hardware_vs_neon_benchmark.md](performance/armv8_crc32_hardware_vs_neon_benchmark.md) | ARMv8 CRC 性能实测: 硬件指令快 8 倍, NEON 反而更慢 | 2026-02-15T08:50:00 |
 | [arm_linux_lock_contention_benchmark.md](performance/arm_linux_lock_contention_benchmark.md) | ARM-Linux 锁竞争性能实测: Spinlock/Mutex/ConcurrentQueue 对比 | 2026-02-15T08:40:00 |
 
-### practice/ -- 工程实践 (26 篇)
+### practice/ -- 工程实践 (30 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
 | [mcu_periodic_service_concurrency.md](practice/mcu_periodic_service_concurrency.md) | MCU 周期服务的并发三件套: RMW、RTC 与 AOP | 2026-09-22T08:00:00 |
 | [usb_uvc_enumeration_and_negotiation.md](practice/usb_uvc_enumeration_and_negotiation.md) | USB 视频设备枚举与能力协商: 描述符、Probe 与 Commit | 2026-09-18T08:00:00 |
+| [serial_dtr_rts_timing_pitfall.md](practice/serial_dtr_rts_timing_pitfall.md) | 串口控制线时序陷阱: DTR 与 RTS 导致的偶发复位 | 2026-09-12T08:00:00 |
+| [nginx_webrtc_low_latency.md](practice/nginx_webrtc_low_latency.md) | Nginx 内实现 RTMP 转 WebRTC: 亚秒级低延迟直播 | 2026-09-10T08:00:00 |
 | [event_loop_as_bottom_half.md](practice/event_loop_as_bottom_half.md) | 事件循环库的定位: 中断下半部与事件管家 | 2026-09-08T08:00:00 |
+| [pyside6_industrial_host_realtime_frame.md](practice/pyside6_industrial_host_realtime_frame.md) | PySide6 工业上位机: 实时帧链、零拷贝与原生核心 | 2026-08-23T08:00:00 |
+| [usb_mcu_firmware_flashing_tool.md](practice/usb_mcu_firmware_flashing_tool.md) | USB 固件烧写工具: Vendor 命令、分区与回读校验 | 2026-08-20T08:00:00 |
 | [mcu_cpp_rt_thread_practice.md](practice/mcu_cpp_rt_thread_practice.md) | 在 RT-Thread/MCU 上安全使用 C++：从编译器基线到零开销抽象实践 | 2026-02-26T10:00:00 |
 | [ewss_embedded_websocket_server.md](practice/ewss_embedded_websocket_server.md) | EWSS: 面向嵌入式 Linux 的轻量级 WebSocket 服务器 | 2026-02-19T10:00:00 |
 | [fccu_cpp_software_fault_collector.md](practice/fccu_cpp_software_fault_collector.md) | fccu-cpp: C++17 Header-Only 软件故障收集器 | 2026-02-19T10:00:00 |
@@ -107,10 +117,13 @@ misc/               -- 杂项 (8 篇)
 | [ztask_cpp_modernization.md](practice/ztask_cpp_modernization.md) | ztask 调度器的 C++14 重写: 类型安全、RAII 与模板化改造 | 2026-02-15T10:50:00 |
 | [mccc_bus_api_reference.md](practice/mccc_bus_api_reference.md) | MCCC 消息总线 API 全参考: 类型、接口与配置 | 2026-02-15T10:40:00 |
 
-### pattern/ -- 设计模式 (8 篇)
+### pattern/ -- 设计模式 (11 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [compile_time_aop_invariants.md](pattern/compile_time_aop_invariants.md) | 编译期 AOP: 把横切不变式收进循环骨架 | 2026-09-10T08:00:00 |
+| [compile_time_polymorphism.md](pattern/compile_time_polymorphism.md) | C++ 编译期多态: 用模板替代虚函数的机制与代价 | 2026-09-10T08:00:00 |
+| [crtp_principle.md](pattern/crtp_principle.md) | CRTP 原理: 基类如何在编译期知道子类 | 2026-09-10T08:00:00 |
 | [pimpl_modern_cpp_embedded.md](pattern/pimpl_modern_cpp_embedded.md) | PIMPL 的三种现代实现: 从堆分配到栈内联 | 2026-02-17T08:50:00 |
 | [cpp17_what_c_cannot_do.md](pattern/cpp17_what_c_cannot_do.md) | C11 做不到的事: 10 项 C++17 语言级不可替代能力 | 2026-02-17T08:40:00 |
 | [smart_pointer_pitfalls_embedded.md](pattern/smart_pointer_pitfalls_embedded.md) | 嵌入式 C++ 智能指针的五个陷阱与零堆分配替代方案 | 2026-02-16T09:10:00 |
@@ -127,11 +140,16 @@ misc/               -- 杂项 (8 篇)
 | [senior_embedded_c_language_interview_questions.md](interview/senior_embedded_c_language_interview_questions.md) | 嵌入式 C 语言深度面试题: 系统与架构 | 2025-01-02T08:00:00 |
 | [senior_embedded_software_engineer_interview_questions.md](interview/senior_embedded_software_engineer_interview_questions.md) | 高级嵌入式软件工程师面试题: 架构设计与工程深度 | 2025-01-01T08:00:00 |
 
-### misc/ -- 杂项 (8 篇)
+### misc/ -- 杂项 (13 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [codex_cli_statusline_config.md](misc/codex_cli_statusline_config.md) | Codex CLI 状态栏配置: 内置字段、试用与持久化 | 2026-09-16T08:00:00 |
+| [wezterm_config_tuning.md](misc/wezterm_config_tuning.md) | WezTerm 配置调优: TUI 渲染成本与实测取舍 | 2026-09-16T08:00:00 |
+| [windows_screenshot_bridge_tool.md](misc/windows_screenshot_bridge_tool.md) | Windows 截图桥接工具: 通过 SFTP 送达 Linux | 2026-09-15T08:00:00 |
+| [xcom_serial_debug_tool.md](misc/xcom_serial_debug_tool.md) | XCOM 串口调试工具: 固定内存与 Lua 热扩展 | 2026-09-14T08:00:00 |
 | [agent_statusline_script.md](misc/agent_statusline_script.md) | CLI 状态栏脚本设计: 从 stdin JSON 到一行输出 | 2026-09-11T08:00:00 |
+| [pyinstaller_onedir_anatomy.md](misc/pyinstaller_onedir_anatomy.md) | PyInstaller onedir 产物解剖: exe、字节码与解释器 | 2026-08-19T08:00:00 |
 | [linux_dev_commands_cheatsheet.md](misc/linux_dev_commands_cheatsheet.md) | Linux 开发常用命令与脚本速查手册 | 2026-02-17T11:30:00 |
 | [git_advanced_workflow_guide.md](misc/git_advanced_workflow_guide.md) | Git 高级工作流完全指南 | 2026-02-17T11:20:00+08:00 |
 | [vmware_sogou_focus_fix.md](misc/vmware_sogou_focus_fix.md) | VMware 虚拟机搜狗输入法焦点跳转问题分析与解决 | 2026-02-17T11:00:00 |
