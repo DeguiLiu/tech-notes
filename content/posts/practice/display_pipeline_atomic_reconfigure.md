@@ -1,7 +1,7 @@
 ---
 title: "运行期重配输出链路: 哪些状态要一起改、失败了怎么退"
 date: 2026-10-12T10:00:00
-draft: false
+draft: true
 ShowToc: true
 categories: ["practice"]
 tags: ["embedded", "video", "RTOS", "practice"]

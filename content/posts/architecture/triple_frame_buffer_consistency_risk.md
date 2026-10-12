@@ -1,7 +1,7 @@
 ---
 title: "三帧缓冲地址的三层责任: 声明区间、计算长度、逐帧校验"
 date: 2026-10-12T10:00:00
-draft: false
+draft: true
 ShowToc: true
 categories: ["architecture"]
 tags: ["DMA", "embedded", "RTOS", "memory"]

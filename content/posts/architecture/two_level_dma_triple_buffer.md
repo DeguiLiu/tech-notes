@@ -1,7 +1,7 @@
 ---
 title: "两级三帧缓冲: 一级按输入算尺寸、二级按输出算"
 date: 2026-10-12T10:00:00
-draft: false
+draft: true
 ShowToc: true
 categories: ["architecture"]
 tags: ["DMA", "embedded", "video", "memory"]

@@ -1,7 +1,7 @@
 ---
 title: "图像 SoC 的内存分区与缓冲布局: 链接脚本、Cache 属性与 DMA 对齐"
 date: 2026-10-12T09:00:00
-draft: false
+draft: true
 ShowToc: true
 categories: ["architecture"]
 tags: ["embedded", "DMA", "cache", "linker"]
