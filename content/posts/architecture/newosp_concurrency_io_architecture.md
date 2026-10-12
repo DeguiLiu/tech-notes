@@ -12,10 +12,10 @@ TocOpen: true
 > 配套代码: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp) -- header-only C++17 嵌入式基础设施库
 >
 > 相关文章:
-> - [工业传感器数据流水线: newosp C++17 零堆分配事件驱动架构实战](../newosp_event_driven_architecture/) -- AsyncBus/HSM/SPSC 核心实现 + 流水线案例
-> - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- WorkerPool 内部的 SPSC 队列
-> - [无锁编程核心原理: 从 CAS 到三种队列模式](../lockfree_programming_fundamentals/) -- CAS/MPSC/SPSC 原理
-> - [共享内存进程间通信](../shm_ipc_newosp/) -- ShmRingBuffer I/O 集成
+> - [工业传感器数据流水线: newosp C++17 零堆分配事件驱动架构实战](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- AsyncBus/HSM/SPSC 核心实现 + 流水线案例
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- WorkerPool 内部的 SPSC 队列
+> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- CAS/MPSC/SPSC 原理
+> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/) -- ShmRingBuffer I/O 集成
 >
 > CSDN 原文:
 > - [C++ 多线程与协程优化阻塞型任务](https://blog.csdn.net/stallion5632/article/details/143887766)

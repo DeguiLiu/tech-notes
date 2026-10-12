@@ -12,8 +12,8 @@ TocOpen: true
 > [newosp](https://github.com/DeguiLiu/newosp) 项目地址
 >
 > 相关文章:
-> - [嵌入式 Linux 调试 Shell 设计: 从 RT-Thread MSH 到自研 embsh](../embedded_cli_msh/) -- Shell 引擎选型与设计决策
-> - [telsh: 从 boost::asio 到纯 POSIX 的 Telnet Shell 重构](../telsh_refactoring/) -- Telnet 协议与会话管理实现
+> - [嵌入式 Linux 调试 Shell 设计: 从 RT-Thread MSH 到自研 embsh](/tech-notes/posts/practice/rtthread_msh_linux_multibackend/) -- Shell 引擎选型与设计决策
+> - [telsh: 从 boost::asio 到纯 POSIX 的 Telnet Shell 重构](/tech-notes/posts/practice/telnet_debug_shell_posix_refactoring/) -- Telnet 协议与会话管理实现
 
 ---
 

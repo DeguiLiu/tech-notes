@@ -10,11 +10,11 @@ TocOpen: true
 ---
 
 > 相关文章:
-> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](../memory_barrier_hardware/) -- ARM 内存序加固的硬件根因
-> - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- ShmRingBuffer 底层的 SPSC 设计详解
-> - [无锁编程核心原理](../lockfree_programming_fundamentals/) -- CAS 无锁设计的理论基础
-> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- newosp 框架全景
-> - [newosp ospgen: YAML 驱动的零堆消息代码生成](../newosp_ospgen_codegen/) -- ShmRingBuffer 传输的消息类型生成
+> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](/tech-notes/posts/performance/memory_barrier_hardware/) -- ARM 内存序加固的硬件根因
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- ShmRingBuffer 底层的 SPSC 设计详解
+> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- CAS 无锁设计的理论基础
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- newosp 框架全景
+> - [newosp ospgen: YAML 驱动的零堆消息代码生成](/tech-notes/posts/practice/newosp_ospgen_codegen/) -- ShmRingBuffer 传输的消息类型生成
 >
 > 参考: [C++编程：使用 cpp-ipc 实现基于共享内存的进程间发布订阅](https://blog.csdn.net/stallion5632/article/details/140881982)
 >
@@ -244,7 +244,7 @@ bool TryPush(const void* data, uint32_t size) noexcept {
 
 #### 3.2.2 ARM 内存序加固
 
-x86 是 TSO (Total Store Order) 架构，store-store 顺序天然保证。ARM 是弱序架构，必须显式插入内存屏障 (详见 [内存屏障的硬件原理](../memory_barrier_hardware/) 中 Store Buffer 和 Invalidation Queue 的分析)：
+x86 是 TSO (Total Store Order) 架构，store-store 顺序天然保证。ARM 是弱序架构，必须显式插入内存屏障 (详见 [内存屏障的硬件原理](/tech-notes/posts/performance/memory_barrier_hardware/) 中 Store Buffer 和 Invalidation Queue 的分析)：
 
 ```cpp
 // 生产者端:

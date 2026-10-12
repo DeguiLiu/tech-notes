@@ -9,11 +9,11 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 在[上一篇文章](/posts/practice/cyberrt_datavisitor_mccc_rewrite/)中，我们用无锁 MPSC 消息总线实现了进程内的观察者模式数据分发。但工业嵌入式系统中，数据源和消费者往往运行在不同进程甚至不同容器中。本文介绍 newosp 的 SPMC 共享内存通道，将数据分发从进程内扩展到跨进程，支持一写多读的零拷贝传输。
+> 在[上一篇文章](/tech-notes/posts/practice/cyberrt_datavisitor_mccc_rewrite/)中，我们用无锁 MPSC 消息总线实现了进程内的观察者模式数据分发。但工业嵌入式系统中，数据源和消费者往往运行在不同进程甚至不同容器中。本文介绍 newosp 的 SPMC 共享内存通道，将数据分发从进程内扩展到跨进程，支持一写多读的零拷贝传输。
 
 ## 1. 问题: 进程内分发不够用
 
-[基于无锁消息总线的观察者模式](/posts/practice/cyberrt_datavisitor_mccc_rewrite/)解决了进程内的数据分发:
+[基于无锁消息总线的观察者模式](/tech-notes/posts/practice/cyberrt_datavisitor_mccc_rewrite/)解决了进程内的数据分发:
 
 ```
 进程内 (MPSC Bus)
@@ -371,7 +371,7 @@ CAN 帧很小 (8-64 字节)，但频率高 (1000+ msg/s)。SPMC 的 futex 广播
 
 ## 7. 与进程内分发的对比
 
-回顾[基于无锁消息总线的观察者模式](/posts/practice/cyberrt_datavisitor_mccc_rewrite/)，两种方案的定位:
+回顾[基于无锁消息总线的观察者模式](/tech-notes/posts/practice/cyberrt_datavisitor_mccc_rewrite/)，两种方案的定位:
 
 | 维度 | AsyncBus (进程内) | ShmSpmcByteChannel (跨进程) |
 |------|-------------------|---------------------------|
@@ -493,6 +493,6 @@ disp.SubmitBlock(bid.value(), kFrameDataSize);
 
 - newosp 项目: [github.com/DeguiLiu/newosp](https://github.com/DeguiLiu/newosp) (Apache-2.0)
 - SPMC 示例: [data_visitor_dispatcher](https://github.com/DeguiLiu/newosp/tree/main/examples/data_visitor_dispatcher)
-- 进程内分发: [基于无锁消息总线的观察者模式](/posts/practice/cyberrt_datavisitor_mccc_rewrite/)
+- 进程内分发: [基于无锁消息总线的观察者模式](/tech-notes/posts/practice/cyberrt_datavisitor_mccc_rewrite/)
 - 参考项目: [data-visitor-dispatcher](https://gitee.com/liudegui/data-visitor-dispatcher) (mccc-bus 版)
 - 消息总线: [mccc-bus](https://gitee.com/liudegui/mccc-bus) -- C++17 header-only 无锁消息总线

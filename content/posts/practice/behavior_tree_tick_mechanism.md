@@ -16,8 +16,8 @@ aliases:
 本文以 [newosp](https://gitee.com/liudegui/newosp) 框架的 `osp::BehaviorTree`（C++17 header-only，`include/osp/bt.hpp`）为主线，结合 HSM+BT 组合模式和嵌入式视觉平台预览服务的真实重构案例，系统讲解 BT 在嵌入式系统中的工程落地。
 
 > 相关文章:
-> - [C 语言层次状态机框架: 从过程驱动到数据驱动](../c_hsm_data_driven_framework/) — HSM 与 BT 互补的架构基础
-> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) — newosp 中 HSM + BT 的实际集成
+> - [C 语言层次状态机框架: 从过程驱动到数据驱动](/tech-notes/posts/pattern/c_hsm_data_driven_framework/) — HSM 与 BT 互补的架构基础
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) — newosp 中 HSM + BT 的实际集成
 
 ## 1. 问题与解法
 

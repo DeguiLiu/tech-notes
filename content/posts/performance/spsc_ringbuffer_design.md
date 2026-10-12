@@ -12,11 +12,11 @@ TocOpen: true
 > 配套代码: [liudegui/ringbuffer](https://gitee.com/liudegui/ringbuffer) -- header-only C++14 SPSC 环形缓冲区，Catch2 测试，ASan/UBSan/TSan clean
 >
 > 相关文章:
-> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](../memory_barrier_hardware/) -- acquire/release 背后的硬件机制
-> - [无锁编程核心原理: 从 CAS 到三种队列模式](../lockfree_programming_fundamentals/) -- SPSC/MPSC/MPMC 的理论基础与对比
-> - [无锁异步日志设计: Per-Thread SPSC](../lockfree_async_log/) -- SPSC 在日志系统中的工程应用
-> - [共享内存进程间通信](../shm_ipc_newosp/) -- 跨进程场景的 SPSC Ring Buffer
-> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- SPSC 在 newosp 消息总线中的角色
+> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](/tech-notes/posts/performance/memory_barrier_hardware/) -- acquire/release 背后的硬件机制
+> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- SPSC/MPSC/MPMC 的理论基础与对比
+> - [无锁异步日志设计: Per-Thread SPSC](/tech-notes/posts/performance/lockfree_async_log/) -- SPSC 在日志系统中的工程应用
+> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/) -- 跨进程场景的 SPSC Ring Buffer
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- SPSC 在 newosp 消息总线中的角色
 >
 > 参考:
 > - 原始实现: [jnk0le/Ring-Buffer](https://github.com/jnk0le/Ring-Buffer) -- 本项目在其基础上修正了所有权违反、冗余屏障等问题
@@ -316,7 +316,7 @@ ARM 是 **弱序（weakly-ordered）** 架构。CPU 可能：
 2. 将**多个存储操作之间重排**
 3. 将**多个加载操作之间重排**
 
-x86 是 **TSO（Total Store Order）** 架构，仅允许 store-load 重排。因此 x86 上很多无锁代码「碰巧正确」，但移植到 ARM 后出 bug。重排序的硬件根因 (Store Buffer、Invalidation Queue、MESI 协议) 以及 ARM DMB/DSB/ISB 三条屏障指令的精确语义，详见 [内存屏障的硬件原理](../memory_barrier_hardware/)。
+x86 是 **TSO（Total Store Order）** 架构，仅允许 store-load 重排。因此 x86 上很多无锁代码「碰巧正确」，但移植到 ARM 后出 bug。重排序的硬件根因 (Store Buffer、Invalidation Queue、MESI 协议) 以及 ARM DMB/DSB/ISB 三条屏障指令的精确语义，详见 [内存屏障的硬件原理](/tech-notes/posts/performance/memory_barrier_hardware/)。
 
 不同内存序在 ARM 上的硬件指令：
 

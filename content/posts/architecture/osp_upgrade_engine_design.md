@@ -403,6 +403,6 @@ osp-upgrade-engine 用 ~3000 行 C++17 header-only 代码实现了工业级固�
 **三层掉电保护** (状态持久化 + U-Boot 冗余 env + bootcount 回滚) 确保了工业现场无人值守环境下的可靠性。**函数指针表 HAL** 和 **x86 仿真层** 使得完整升级流程可在开发机上验证，包括掉电场景。
 
 **相关设计参考**:
-- [C 语言层次状态机框架](../c_hsm_data_driven_framework/) -- HSM 转换表与 LCA 算法
-- [激光雷达高吞吐数据处理 Pipeline](../lidar_pipeline_newosp/) -- 零拷贝 + SpinOnce 驱动模式
-- [newosp 事件驱动架构深度解析](../newosp_event_driven_architecture/) -- AsyncBus 与 HSM 核心实现
+- [C 语言层次状态机框架](/tech-notes/posts/pattern/c_hsm_data_driven_framework/) -- HSM 转换表与 LCA 算法
+- [激光雷达高吞吐数据处理 Pipeline](/tech-notes/posts/architecture/lidar_pipeline_newosp/) -- 零拷贝 + SpinOnce 驱动模式
+- [newosp 事件驱动架构深度解析](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- AsyncBus 与 HSM 核心实现

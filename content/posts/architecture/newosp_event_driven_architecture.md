@@ -14,13 +14,13 @@ TocOpen: true
 > 本文基于 newosp v0.2.0，1114 test cases (26085 assertions)，ASan/TSan/UBSan 全部通过。
 >
 > 相关文章:
-> - [嵌入式并发的第四条路: 为什么多线程、协程和 epoll 都不够用](../newosp_concurrency_io_architecture/) -- 三条并发路径的局限与事件驱动方案
-> - [无锁编程核心原理: 从 CAS 到三种队列模式](../lockfree_programming_fundamentals/) -- AsyncBus 底层的无锁原理
-> - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- newosp SPSC 的逐行代码分析
-> - [共享内存进程间通信](../shm_ipc_newosp/) -- ShmRingBuffer 的工程实践
-> - [newosp ospgen: YAML 驱动的 C++17 零堆消息代码生成](../newosp_ospgen_codegen/) -- Bus/Node 消息类型的自动生成
-> - [C 语言层次状态机框架: 从过程驱动到数据驱动](../c_hsm_data_driven_framework/) -- C 语言 HSM 的演进路径
-> - [嵌入式线程间消息传递重构: MCCC 无锁消息总线](../mccc_message_passing/) -- newosp AsyncBus 的前身 MCCC
+> - [嵌入式并发的第四条路: 为什么多线程、协程和 epoll 都不够用](/tech-notes/posts/architecture/newosp_concurrency_io_architecture/) -- 三条并发路径的局限与事件驱动方案
+> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- AsyncBus 底层的无锁原理
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- newosp SPSC 的逐行代码分析
+> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/) -- ShmRingBuffer 的工程实践
+> - [newosp ospgen: YAML 驱动的 C++17 零堆消息代码生成](/tech-notes/posts/practice/newosp_ospgen_codegen/) -- Bus/Node 消息类型的自动生成
+> - [C 语言层次状态机框架: 从过程驱动到数据驱动](/tech-notes/posts/pattern/c_hsm_data_driven_framework/) -- C 语言 HSM 的演进路径
+> - [嵌入式线程间消息传递重构: MCCC 无锁消息总线](/tech-notes/posts/performance/mccc_message_passing/) -- newosp AsyncBus 的前身 MCCC
 >
 > CSDN 原文: [newosp 深度解析: C++17 事件驱动架构](https://blog.csdn.net/stallion5632)
 
@@ -407,7 +407,7 @@ bool PushFromCallback(Callable&& callback) {
 
 传感器采集场景: 如果下游消费者跟不上，`PushFromCallback` 直接跳过 ADC 读取，避免无意义的硬件操作。
 
-完整 SPSC 实现分析见 [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/)。
+完整 SPSC 实现分析见 [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)。
 
 ## 6. 生命周期与调度
 
@@ -440,7 +440,7 @@ LifecycleNode 继承自 Node，支持粗粒度 (4 状态) 和细粒度 (16 状�
 
 RealtimeExecutor 初始化序列: `mlockall()` → CPU affinity → SCHED_FIFO → 自定义栈 → 进入 ProcessBatch 循环。高精度休眠使用 `clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME)` 实现亚毫秒级精度。
 
-详细的线程模型、WorkerPool 二级排队、IoPoller I/O 集成见 [newosp 嵌入式并发与 I/O 架构](../newosp_concurrency_io_architecture/)。
+详细的线程模型、WorkerPool 二级排队、IoPoller I/O 集成见 [newosp 嵌入式并发与 I/O 架构](/tech-notes/posts/architecture/newosp_concurrency_io_architecture/)。
 
 ## 7. 跨模块集成
 
@@ -509,7 +509,7 @@ newosp 核心模块保持 POSIX API 边界清晰:
 | **类型安全** | `std::variant` + `expected<V,E>` + `static_assert` trivially_copyable |
 | **`-fno-exceptions -fno-rtti`** | 全代码库兼容，`Validate()` 返回 bool 而非抛异常 |
 
-**为什么不用对象池**。避免热路径 `malloc` 的另一种常见方案是对象池 (`mutex` + `queue<shared_ptr>`)。对象池确实比裸分配快约 60%，但在 newosp 的场景中仍有三个代价: mutex 在每次 acquire/release 上引入 futex 开销 (~20-40ns)，`shared_ptr` 原子引用计数在单向数据流中完全多余，`std::queue` 动态增长破坏编译期内存预算。newosp 用预分配环形缓冲 (slot 覆写，零 malloc) + variant 值语义 (无引用计数) + CAS/wait-free (无 mutex) 彻底消除了这三项开销。对象池适合生命周期不确定的共享对象 (连接池、线程池)，不适合单向流动的消息通道。详见 [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) 和 [对象池在嵌入式热路径上的三个隐性成本](../object_pool_hidden_costs/)。
+**为什么不用对象池**。避免热路径 `malloc` 的另一种常见方案是对象池 (`mutex` + `queue<shared_ptr>`)。对象池确实比裸分配快约 60%，但在 newosp 的场景中仍有三个代价: mutex 在每次 acquire/release 上引入 futex 开销 (~20-40ns)，`shared_ptr` 原子引用计数在单向数据流中完全多余，`std::queue` 动态增长破坏编译期内存预算。newosp 用预分配环形缓冲 (slot 覆写，零 malloc) + variant 值语义 (无引用计数) + CAS/wait-free (无 mutex) 彻底消除了这三项开销。对象池适合生命周期不确定的共享对象 (连接池、线程池)，不适合单向流动的消息通道。详见 [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) 和 [对象池在嵌入式热路径上的三个隐性成本](/tech-notes/posts/performance/object_pool_hidden_costs/)。
 
 这些原则贯穿整条传感器流水线: variant 保证消息类型安全，CAS 保证并发发布安全，HSM 保证状态转换安全，`static_assert` 保证跨平台 sizeof 一致。每个"安全"都是编译期或硬件级保证，不是运行时约定。
 

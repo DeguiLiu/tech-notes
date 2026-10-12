@@ -412,7 +412,7 @@ flowchart TB
 
 ## 7. 典型部署: 激光雷达数据处理
 
-> 本节展示架构在激光雷达场景的部署概览。完整的 Pipeline DAG 设计、Stage 融合优化、SoA 数据布局与 NEON 向量化详见 [激光雷达高吞吐数据处理 Pipeline](../lidar_pipeline_newosp/)。
+> 本节展示架构在激光雷达场景的部署概览。完整的 Pipeline DAG 设计、Stage 融合优化、SoA 数据布局与 NEON 向量化详见 [激光雷达高吞吐数据处理 Pipeline](/tech-notes/posts/architecture/lidar_pipeline_newosp/)。
 
 ### 7.1 系统架构
 
@@ -512,7 +512,7 @@ flowchart LR
 
 newosp 的 Header-only 设计、零运行时依赖、编译期可配置的特性，使其特别适合资源受限的嵌入式 ARM-Linux 平台。所有性能数据均可通过源码复现（1153 个测试，ASan/TSan clean）。
 
-> 详细的激光雷达 Pipeline 实现（DAG 设计、Stage 融合、SoA + NEON 向量化）参见 [激光雷达高吞吐数据处理 Pipeline](../lidar_pipeline_newosp/)。
+> 详细的激光雷达 Pipeline 实现（DAG 设计、Stage 融合、SoA + NEON 向量化）参见 [激光雷达高吞吐数据处理 Pipeline](/tech-notes/posts/architecture/lidar_pipeline_newosp/)。
 
 ---
 
@@ -521,8 +521,8 @@ newosp 的 Header-only 设计、零运行时依赖、编译期可配置的特性
 | 资源 | 说明 |
 |------|------|
 | [newosp](https://github.com/DeguiLiu/newosp) | 工业嵌入式 C++17 基础设施库 (v0.4.3) |
-| [newosp 设计文档](docs/design_zh.md) | 40 个模块详细设计 |
-| [newosp 性能报告](docs/benchmark_report_zh.md) | 完整基准测试数据 |
-| [newosp 激光雷达评估](docs/performance_analysis_lidar_zh.md) | 激光雷达场景性能分析 |
+| newosp 设计文档 | 40 个模块详细设计 |
+| newosp 性能报告 | 完整基准测试数据 |
+| newosp 激光雷达评估 | 激光雷达场景性能分析 |
 | [iceoryx](https://github.com/eclipse-iceoryx/iceoryx) | 零拷贝 IPC 参考 |
 | [ARM Memory Model](https://developer.arm.com/documentation/den0024/a/Memory-Ordering) | ARM 弱内存序 |

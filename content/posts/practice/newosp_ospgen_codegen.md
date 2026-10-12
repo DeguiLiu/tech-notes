@@ -14,9 +14,9 @@ TocOpen: true
 > 设计文档: [design_codegen_zh.md](https://github.com/DeguiLiu/newosp/blob/main/docs/design_codegen_zh.md)
 >
 > 相关文章:
-> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- AsyncBus/Node 如何使用 ospgen 生成的消息类型
-> - [共享内存进程间通信](../shm_ipc_newosp/) -- ShmRingBuffer 为什么需要 trivially_copyable 保证
-> - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- 消息队列对 trivially_copyable 的需求来源
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- AsyncBus/Node 如何使用 ospgen 生成的消息类型
+> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/) -- ShmRingBuffer 为什么需要 trivially_copyable 保证
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- 消息队列对 trivially_copyable 的需求来源
 >
 > CSDN 原文: [newosp ospgen: YAML 驱动的嵌入式 C++17 零堆消息代码生成](https://blog.csdn.net/stallion5632)
 

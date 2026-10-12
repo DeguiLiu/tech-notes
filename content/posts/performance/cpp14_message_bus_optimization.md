@@ -12,11 +12,11 @@ TocOpen: true
 >
 > 完整代码: [message_bus](https://gitee.com/liudegui/message_bus) (optimze 分支)
 >
-> 前篇: [用 C++11 从零实现一个线程安全消息总线](../cpp11_message_bus/)
+> 前篇: [用 C++11 从零实现一个线程安全消息总线](/tech-notes/posts/performance/cpp11_threadsafe_pubsub_bus/)
 
 ## 1. 背景: 从 C++11 版本到优化版本
 
-在 [前篇](../cpp11_message_bus/) 中，我们用 C++11 实现了一个基于 mutex 保护的消息总线。该版本功能可用，但存在几个工程缺陷：
+在 [前篇](/tech-notes/posts/performance/cpp11_threadsafe_pubsub_bus/) 中，我们用 C++11 实现了一个基于 mutex 保护的消息总线。该版本功能可用，但存在几个工程缺陷：
 
 - **回调内重入死锁**: `publishMessage()` 持锁调用回调，回调内再次 `publishMessage()` 会死锁
 - **回调参数固定**: `std::string` 参数不适合二进制协议数据
@@ -449,7 +449,7 @@ void MessageBus::checkAndHandleTimeouts() {
 
 **关键差距: 多线程场景下 MCCC 吞吐量是本文方案的 57 倍 (BARE) 到 86 倍 (BARE)。**
 
-更详细的对比数据和 6 个开源方案的横向评测，请参阅 [C++ 消息总线性能实测: 6 个开源方案的吞吐量、延迟与嵌入式适配性对比](../MCCC_Competitive_Analysis/)。
+更详细的对比数据和 6 个开源方案的横向评测，请参阅 [C++ 消息总线性能实测: 6 个开源方案的吞吐量、延迟与嵌入式适配性对比](/tech-notes/posts/performance/message_bus_competitive_benchmark/)。
 
 ## 7. 从 mutex 方案迁移到 MCCC
 
@@ -512,11 +512,11 @@ bus.Publish(SensorData{25.5f});
 
 | 主题 | 文章 |
 |------|------|
-| 设计决策与架构 | [Lock-free MPSC 消息总线的设计与实现](../MCCC_Design/) |
-| 性能对比评测 | [6 个开源方案的吞吐量、延迟与嵌入式适配性对比](../MCCC_Competitive_Analysis/) |
-| C++17 语言特性 | [mccc-bus 源码中的 C++17 实践](../mccc_bus_cpp17_practice/) |
-| API 参考文档 | [MCCC 消息总线 API 全参考](../mccc_bus_api_reference/) |
-| 实战重构案例 | [用 MCCC 无锁消息总线替代 mutex + priority_queue](/posts/blog/mccc_message_passing/) |
+| 设计决策与架构 | [Lock-free MPSC 消息总线的设计与实现](/tech-notes/posts/performance/mccc_lockfree_mpsc_design/) |
+| 性能对比评测 | [6 个开源方案的吞吐量、延迟与嵌入式适配性对比](/tech-notes/posts/performance/message_bus_competitive_benchmark/) |
+| C++17 语言特性 | [mccc-bus 源码中的 C++17 实践](/tech-notes/posts/practice/mccc_bus_cpp17_practice/) |
+| API 参考文档 | [MCCC 消息总线 API 全参考](/tech-notes/posts/practice/mccc_bus_api_reference/) |
+| 实战重构案例 | [用 MCCC 无锁消息总线替代 mutex + priority_queue](/tech-notes/posts/performance/mccc_message_passing/) |
 
 ## 8. 总结
 

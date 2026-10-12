@@ -11,13 +11,13 @@ TocOpen: true
 
 > 源码仓库: [mccc-bus](https://gitee.com/liudegui/mccc-bus) | 本文代码引用基于 mccc-bus v2.0.0
 >
-> 前篇: [C++14 消息总线的工程优化与性能瓶颈分析](../cpp14_message_bus_optimized/)
+> 前篇: [C++14 消息总线的工程优化与性能瓶颈分析](/tech-notes/posts/performance/cpp14_message_bus_optimization/)
 >
 > MCCC 的设计决策后来被 [newosp](https://github.com/DeguiLiu/newosp) 框架采纳并演化。
 
 ## 背景: C++14 版本留下的四个堆分配瓶颈
 
-在 [前篇](../cpp14_message_bus_optimized/) 中，我们用 C++14 实现了一个正确的消息总线 (锁外回调、单 mutex、joinable 线程)，但性能测试暴露了根本性瓶颈:
+在 [前篇](/tech-notes/posts/performance/cpp14_message_bus_optimization/) 中，我们用 C++14 实现了一个正确的消息总线 (锁外回调、单 mutex、joinable 线程)，但性能测试暴露了根本性瓶颈:
 
 | 瓶颈 | C++14 实现 | 问题 |
 |------|-----------|------|
@@ -440,8 +440,8 @@ bool Unsubscribe(const SubscriptionHandle& handle) noexcept {
 
 | 阶段 | 文章 | 核心方案 | 吞吐量 |
 |------|------|---------|:------:|
-| C++11 | [从零实现线程安全消息总线](../cpp11_message_bus/) | mutex + std::function + std::map | -- |
-| C++14 | [工程优化与性能瓶颈分析](../cpp14_message_bus_optimized/) | 锁外回调 + 单 mutex + joinable 线程 | 0.36 M/s (8T) |
+| C++11 | [从零实现线程安全消息总线](/tech-notes/posts/performance/cpp11_threadsafe_pubsub_bus/) | mutex + std::function + std::map | -- |
+| C++14 | [工程优化与性能瓶颈分析](/tech-notes/posts/performance/cpp14_message_bus_optimization/) | 锁外回调 + 单 mutex + joinable 线程 | 0.36 M/s (8T) |
 | C++17 | 本文 | FixedFunction + VariantIndex + Envelope 内嵌 | 31.1 M/s (8T) |
 
 每一步都有明确的问题驱动:
@@ -455,9 +455,9 @@ C++17 提供的 `std::variant`、`if constexpr`、`std::is_same_v` 等特性，�
 
 | 主题 | 文章 |
 |------|------|
-| 设计决策与架构 | [Lock-free MPSC 消息总线的设计与实现](../MCCC_Design/) |
-| 性能对比评测 | [6 个开源方案的吞吐量、延迟与嵌入式适配性对比](../MCCC_Competitive_Analysis/) |
-| API 参考文档 | [MCCC 消息总线 API 全参考](../mccc_bus_api_reference/) |
+| 设计决策与架构 | [Lock-free MPSC 消息总线的设计与实现](/tech-notes/posts/performance/mccc_lockfree_mpsc_design/) |
+| 性能对比评测 | [6 个开源方案的吞吐量、延迟与嵌入式适配性对比](/tech-notes/posts/performance/message_bus_competitive_benchmark/) |
+| API 参考文档 | [MCCC 消息总线 API 全参考](/tech-notes/posts/practice/mccc_bus_api_reference/) |
 
 ### 文件索引
 

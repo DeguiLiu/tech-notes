@@ -11,11 +11,11 @@ TocOpen: true
 
 > 本文是**实战篇**，通过可编译运行的代码示例复现死锁与优先级反转，并给出修复方案。
 >
-> **姊妹篇**: [嵌入式系统死锁防御: 从有序锁到无锁架构的工程实践](../deadlock_prevention/) -- 侧重 newosp 框架的架构级防御策略（无锁 MPSC 总线、SPSC 队列、Collect-Release-Execute 模式、LIFO 有序关停等），读者可先阅读本文理解问题场景，再阅读姊妹篇学习系统级解决方案。
+> **姊妹篇**: [嵌入式系统死锁防御: 从有序锁到无锁架构的工程实践](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/) -- 侧重 newosp 框架的架构级防御策略（无锁 MPSC 总线、SPSC 队列、Collect-Release-Execute 模式、LIFO 有序关停等），读者可先阅读本文理解问题场景，再阅读姊妹篇学习系统级解决方案。
 >
 > 相关文章:
-> - [perf lock 锁竞争诊断](../perf_lock_contention_diagnosis/) -- 生产环境的锁竞争量化定位
-> - [锁竞争基准测试](../lock_contention_benchmark/) -- Spinlock vs Mutex vs 无锁队列性能对比
+> - [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/) -- 生产环境的锁竞争量化定位
+> - [锁竞争基准测试](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/) -- Spinlock vs Mutex vs 无锁队列性能对比
 >
 > 参考:
 > - 原文: [C++ 线程优先级反转](https://blog.csdn.net/stallion5632/article/details/143610920)
@@ -656,7 +656,7 @@ std::lock_guard<PiMutex> lock(shared_resource);
 
 如果高优先级任务的数据通路可以设计为无锁，则从根本上消除优先级反转。这正是姊妹篇中 newosp `RealtimeExecutor` 的方案: **SCHED_FIFO 调度线程 + 无锁 CAS 消息总线**，整条实时路径不持有任何 mutex。
 
-详见: [嵌入式系统死锁防御 -- 第10节: 实时调度与优先级反转防御](../deadlock_prevention/#10-实时调度与优先级反转防御)
+详见: [嵌入式系统死锁防御 -- 第10节: 实时调度与优先级反转防御](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/)
 
 ### 4.5 修复方案三: 最小化持锁时间
 

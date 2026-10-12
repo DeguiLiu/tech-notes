@@ -10,10 +10,10 @@ TocOpen: true
 ---
 
 > 相关文章:
-> - [perf lock 锁竞争诊断](../perf_lock_contention_diagnosis/) -- perf lock contention 的深度使用
-> - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](../lock_contention_benchmark/) -- 有锁与无锁的性能实测
-> - [C/C++ 系统级性能优化](../system_level_performance_optimization/) -- 从编译器到架构的优化实践
-> - [无锁编程核心原理](../lockfree_programming_fundamentals/) -- perf 定位瓶颈后的无锁迁移方向
+> - [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/) -- perf lock contention 的深度使用
+> - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/) -- 有锁与无锁的性能实测
+> - [C/C++ 系统级性能优化](/tech-notes/posts/performance/high_performance_system_design_principles/) -- 从编译器到架构的优化实践
+> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- perf 定位瓶颈后的无锁迁移方向
 >
 > 参考:
 > - [Brendan Gregg: perf Examples](https://www.brendangregg.com/perf.html)
@@ -519,7 +519,7 @@ graph TD
 | `__GI___poll` 很宽 | I/O 等待 | 异步 I/O、epoll |
 | `_spin_lock` 很宽 | 自旋锁竞争 | 减少持锁时间 |
 
-> 锁竞争的深入分析方法见 [perf lock 锁竞争诊断](../perf_lock_contention_diagnosis/)。
+> 锁竞争的深入分析方法见 [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/)。
 
 ---
 

@@ -10,15 +10,15 @@ TocOpen: true
 ---
 
 > 相关文章:
-> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](../memory_barrier_hardware/) -- 内存序的硬件根因 (Store Buffer/Invalidation Queue/MESI)
-> - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- Wait-free SPSC 的逐行代码分析
-> - [无锁异步日志设计](../lockfree_async_log/) -- Per-Thread SPSC 在日志系统中的应用
-> - [嵌入式系统死锁防御: 从有序锁到无锁架构](../deadlock_prevention/) -- newosp 的无锁 MPSC 总线架构
-> - [嵌入式线程间消息传递重构: MCCC 无锁消息总线](../mccc_message_passing/) -- MPSC 消息总线的完整工程实现
-> - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](../lock_contention_benchmark/) -- 有锁与无锁的性能实测
-> - [perf lock 锁竞争诊断](../perf_lock_contention_diagnosis/) -- 何时需要从有锁迁移到无锁
-> - [共享内存进程间通信](../shm_ipc_newosp/) -- 跨进程场景的无锁 Ring Buffer
-> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- 无锁 MPSC 总线在完整框架中的集成
+> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](/tech-notes/posts/performance/memory_barrier_hardware/) -- 内存序的硬件根因 (Store Buffer/Invalidation Queue/MESI)
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- Wait-free SPSC 的逐行代码分析
+> - [无锁异步日志设计](/tech-notes/posts/performance/lockfree_async_log/) -- Per-Thread SPSC 在日志系统中的应用
+> - [嵌入式系统死锁防御: 从有序锁到无锁架构](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/) -- newosp 的无锁 MPSC 总线架构
+> - [嵌入式线程间消息传递重构: MCCC 无锁消息总线](/tech-notes/posts/performance/mccc_message_passing/) -- MPSC 消息总线的完整工程实现
+> - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/) -- 有锁与无锁的性能实测
+> - [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/) -- 何时需要从有锁迁移到无锁
+> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/) -- 跨进程场景的无锁 Ring Buffer
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- 无锁 MPSC 总线在完整框架中的集成
 >
 > 参考:
 > - [iceoryx Lock-Free Queue Design](https://github.com/eclipse-iceoryx/iceoryx/blob/main/doc/design/lockfree_queue.md)
@@ -34,7 +34,7 @@ TocOpen: true
 1. **系统调用**: Linux 的 `pthread_mutex_lock` 在竞争时进入内核 futex，两次用户态/内核态切换 + 上下文切换，延迟 1-100+ us
 2. **序列化**: 锁保护的临界区同一时刻只有一个线程执行，并行度为 1
 
-> 这两个开销可以用 `perf lock contention` 量化。详见 [perf lock 锁竞争诊断](../perf_lock_contention_diagnosis/)。
+> 这两个开销可以用 `perf lock contention` 量化。详见 [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/)。
 
 无锁编程的目标不是消灭所有同步，而是**用原子操作替代锁，让多个线程能同时推进**。但无锁不是银弹 -- 它增加了代码复杂度，且只在特定数据结构（队列、栈、计数器）上有成熟方案。
 
@@ -174,7 +174,7 @@ bool Push(T data) {
 
 **没有任何循环或重试**。每次调用恒定 5 步完成。无论消费者如何运行，生产者都能在有限步内返回。这就是 wait-free。
 
-> SPSC 的完整设计剖析见 [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/)。
+> SPSC 的完整设计剖析见 [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)。
 
 ### 3.3 MPMC CAS 队列是 Lock-Free
 
@@ -221,7 +221,7 @@ public:
 
 虽然没有使用 OS mutex，但自旋锁本质上是**互斥的** -- 同一时刻只有一个线程能进入临界区。持有锁的线程被调度走后，等待线程无限自旋，系统没有进展。这不满足 lock-free 的定义。
 
-> 自旋锁、互斥锁与无锁队列的性能对比，见 [锁竞争基准测试](../lock_contention_benchmark/)。结论: 无锁队列在 MPMC 场景下吞吐量领先 1-2 个数量级。
+> 自旋锁、互斥锁与无锁队列的性能对比，见 [锁竞争基准测试](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/)。结论: 无锁队列在 MPMC 场景下吞吐量领先 1-2 个数量级。
 
 ---
 
@@ -367,7 +367,7 @@ void consumer() {
 }
 ```
 
-在 x86（TSO 模型）上，这段代码碰巧正确 -- 硬件保证 store-store 有序。但在 ARM（弱序模型）上，CPU 可能将 `data = 42` 重排到 `ready = true` 之后，消费者看到 `ready == true` 但 `data` 还是 0。重排序的硬件根因是 Store Buffer 和 Invalidation Queue，详见 [内存屏障的硬件原理](../memory_barrier_hardware/)。
+在 x86（TSO 模型）上，这段代码碰巧正确 -- 硬件保证 store-store 有序。但在 ARM（弱序模型）上，CPU 可能将 `data = 42` 重排到 `ready = true` 之后，消费者看到 `ready == true` 但 `data` 还是 0。重排序的硬件根因是 Store Buffer 和 Invalidation Queue，详见 [内存屏障的硬件原理](/tech-notes/posts/performance/memory_barrier_hardware/)。
 
 ### 5.2 acquire-release 配对
 
@@ -416,7 +416,7 @@ x86 硬件天然保证了大多数排序，所以在 x86 上用 `relaxed` 的代
 | 写后让对方可见 | `release` | 保证之前的数据写入不会被重排到此之后 |
 | 不确定时 | `seq_cst` | 安全但代价高；确认正确后再降级优化 |
 
-> 每种内存序在 ARM 上的具体指令映射和代价分析，见 [SPSC 无锁环形缓冲区设计剖析 -- 第 6 节](../spsc_ringbuffer_design/)。四种屏障类型 (StoreStore/LoadLoad/LoadStore/StoreLoad) 和 ARM DMB/DSB/ISB 的精确语义，见 [内存屏障的硬件原理](../memory_barrier_hardware/)。
+> 每种内存序在 ARM 上的具体指令映射和代价分析，见 [SPSC 无锁环形缓冲区设计剖析 -- 第 6 节](/tech-notes/posts/performance/spsc_ringbuffer_design/)。四种屏障类型 (StoreStore/LoadLoad/LoadStore/StoreLoad) 和 ARM DMB/DSB/ISB 的精确语义，见 [内存屏障的硬件原理](/tech-notes/posts/performance/memory_barrier_hardware/)。
 
 ---
 
@@ -466,8 +466,8 @@ Producer Thread                    Consumer Thread
 | memcpy 批量操作 | 摊薄 acquire/release 屏障开销 |
 | FakeTSO 单核模式 | 单核 MCU 用 relaxed 替代硬件屏障 |
 
-> 完整的逐行分析见 [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/)。
-> 在异步日志中的实际应用见 [无锁异步日志设计](../lockfree_async_log/)。
+> 完整的逐行分析见 [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)。
+> 在异步日志中的实际应用见 [无锁异步日志设计](/tech-notes/posts/performance/lockfree_async_log/)。
 
 ### 6.3 MPSC: 单消费者简化
 
@@ -526,8 +526,8 @@ sequence == pos + 1 : 数据就绪，消费者可读取
 sequence == pos + N : 消费者已释放，下一轮可用
 ```
 
-> newosp 的 AsyncBus 就是这种模式。架构解析见 [嵌入式系统死锁防御](../deadlock_prevention/)。
-> 完整工程实现见 [MCCC 无锁消息总线](../mccc_message_passing/)。
+> newosp 的 AsyncBus 就是这种模式。架构解析见 [嵌入式系统死锁防御](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/)。
+> 完整工程实现见 [MCCC 无锁消息总线](/tech-notes/posts/performance/mccc_message_passing/)。
 
 ### 6.4 MPMC: 完全通用, 双端 CAS
 

@@ -10,9 +10,9 @@ TocOpen: true
 ---
 
 > 相关文章:
-> - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- 预分配环形缓冲的完整设计
-> - [无锁编程核心原理: 从 CAS 到三种队列模式](../lockfree_programming_fundamentals/) -- MPSC/SPSC 原理
-> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- 零堆分配流水线
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- 预分配环形缓冲的完整设计
+> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- MPSC/SPSC 原理
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- 零堆分配流水线
 >
 > CSDN 原文: [嵌入式 C++ 对象池优化串口数据解析性能](https://blog.csdn.net/stallion5632/article/details/140674036)
 
@@ -150,7 +150,7 @@ std::queue<std::shared_ptr<T>> pool_;  // 底层是 std::deque
 
 ## 参考资料
 
-1. [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- wait-free 环形缓冲的完整工程设计
-2. [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- variant 值语义 + 零堆分配流水线
+1. [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- wait-free 环形缓冲的完整工程设计
+2. [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- variant 值语义 + 零堆分配流水线
 3. [嵌入式 C++ 对象池优化串口数据解析性能](https://blog.csdn.net/stallion5632/article/details/140674036) -- 本文改进的原始方案
 4. [使用 perf 查看热点函数](https://blog.csdn.net/stallion5632/article/details/138562957) -- perf 火焰图分析方法

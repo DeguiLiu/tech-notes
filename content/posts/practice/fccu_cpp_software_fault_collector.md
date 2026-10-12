@@ -12,10 +12,10 @@ TocOpen: true
 > **仓库**: [fccu-cpp](https://github.com/DeguiLiu/fccu-cpp) |
 > **设计模式来源**: [newosp](https://github.com/DeguiLiu/newosp) fault_collector.hpp
 >
-> **相关文章**: [QPC 事件驱动与活动对象模式](../qpc_active_object_hsm/) |
-> [C 语言 HSM 数据驱动框架](../../pattern/c_hsm_data_driven_framework/) |
-> [mccc 无锁 MPSC 设计](../../performance/mccc_lockfree_mpsc_design/) |
-> [SPSC 环形缓冲设计](../../performance/spsc_ringbuffer_design/)
+> **相关文章**: [QPC 事件驱动与活动对象模式](/tech-notes/posts/practice/qpc_active_object_hsm/) |
+> [C 语言 HSM 数据驱动框架](/tech-notes/posts/pattern/c_hsm_data_driven_framework/) |
+> [mccc 无锁 MPSC 设计](/tech-notes/posts/performance/mccc_lockfree_mpsc_design/) |
+> [SPSC 环形缓冲设计](/tech-notes/posts/performance/spsc_ringbuffer_design/)
 
 ## 背景
 

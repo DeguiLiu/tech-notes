@@ -256,5 +256,5 @@ std::thread worker([&stop_worker, &combined]() noexcept {
 - 完整代码: [data-visitor-dispatcher](https://gitee.com/liudegui/data-visitor-dispatcher) (MIT License)
 - 消息总线: [mccc-bus](https://gitee.com/liudegui/mccc-bus) -- C++17 header-only 无锁消息总线
 - 基础设施库: [newosp](https://github.com/DeguiLiu/newosp) -- 工业级嵌入式 C++17 库 (基于 mccc-bus)
-- [无锁消息总线设计与实现](/posts/practice/mccc_bus_cpp17_practice/)
-- [嵌入式系统中的编译期分发](/posts/pattern/compile_time_dispatch_optimization/)
+- [无锁消息总线设计与实现](/tech-notes/posts/practice/mccc_bus_cpp17_practice/)
+- [嵌入式系统中的编译期分发](/tech-notes/posts/pattern/compile_time_dispatch_optimization/)

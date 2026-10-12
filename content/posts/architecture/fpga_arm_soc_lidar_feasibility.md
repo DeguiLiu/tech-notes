@@ -12,7 +12,7 @@ TocOpen: true
 >
 > 参考: [UG585 - Zynq-7000 SoC TRM](https://docs.amd.com/r/en-US/ug585-zynq-7000-SoC-TRM),
 > [newosp](https://github.com/DeguiLiu/newosp) v0.2.0,
-> [newosp 激光雷达性能评估](docs/performance_analysis_lidar_zh.md)
+> newosp 激光雷达性能评估
 >
 > 适用场景: 30 万点/秒激光雷达数据采集与处理
 

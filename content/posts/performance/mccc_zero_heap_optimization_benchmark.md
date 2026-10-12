@@ -357,7 +357,7 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 ## eventpp 优化前后对比
 
 > eventpp 优化分支实施了 8 项优化 (OPT-1~8)。
-> 详见 [eventpp_Optimization_Report.md](eventpp_Optimization_Report.md)。
+> 详见 [eventpp 在 ARM 平台上的优化报告](/tech-notes/posts/performance/eventpp_arm_optimization_report/)。
 
 ### eventpp 优化项
 

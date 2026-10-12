@@ -14,8 +14,8 @@ TocOpen: true
 > 依赖库: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp) -- header-only 嵌入式基础设施 (HSM, Bus, Watchdog, Process)
 >
 > 相关文章:
-> - [C 语言层次状态机框架: 从过程驱动到数据驱动的重构实践](../c_hsm_data_driven_framework/) -- HSM 转换表设计与 LCA 算法
-> - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- AsyncBus/HSM/SPSC 核心实现
+> - [C 语言层次状态机框架: 从过程驱动到数据驱动的重构实践](/tech-notes/posts/pattern/c_hsm_data_driven_framework/) -- HSM 转换表设计与 LCA 算法
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- AsyncBus/HSM/SPSC 核心实现
 
 ## 1. 问题与方案选择
 

@@ -57,7 +57,7 @@ TocOpen: true
 
 ## 2. 架构总览: 数据面与控制面分离
 
-本 Pipeline 采用 **数据面与控制面分离** 架构。控制面/数据面分离的通用设计原理、AsyncBus MPSC 消息总线、ShmChannel 零拷贝通道、RealtimeExecutor 实时调度等基础设施的详细介绍参见 [工业嵌入式流式数据处理架构设计](../Streaming_Architecture_Design/)。本节聚焦激光雷达 Pipeline 的具体拓扑设计。
+本 Pipeline 采用 **数据面与控制面分离** 架构。控制面/数据面分离的通用设计原理、AsyncBus MPSC 消息总线、ShmChannel 零拷贝通道、RealtimeExecutor 实时调度等基础设施的详细介绍参见 [工业嵌入式流式数据处理架构设计](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)。本节聚焦激光雷达 Pipeline 的具体拓扑设计。
 
 **核心原则**: Pipeline 每个 stage 的 producer/consumer 关系是 1:1，MPSC 的 CAS 竞争在此场景下是多余开销。数据面用 SPSC 直连 (~5 ns)，控制面用 AsyncBus 处理诊断和扇入/扇出场景。
 
@@ -260,7 +260,7 @@ SPSC vs MPSC Bus 性能对比 (Cortex-A53 @ 1.2 GHz, Handle 传递):
 
 ### 4.2 AsyncBus: 控制面与扇入/扇出
 
-AsyncBus 不用于线性 Pipeline 数据面，但在多传感器扇入和诊断命令注入场景不可替代。AsyncBus 的 Lock-free MPSC 设计、零堆分配机制、优先级准入控制的完整介绍参见 [工业嵌入式流式数据处理架构设计 -- AsyncBus](../Streaming_Architecture_Design/#3-控制面-asyncbus-消息总线)。
+AsyncBus 不用于线性 Pipeline 数据面，但在多传感器扇入和诊断命令注入场景不可替代。AsyncBus 的 Lock-free MPSC 设计、零堆分配机制、优先级准入控制的完整介绍参见 [工业嵌入式流式数据处理架构设计 -- AsyncBus](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)。
 
 在激光雷达 Pipeline 中，AsyncBus 的典型用法:
 
@@ -269,7 +269,7 @@ AsyncBus 不用于线性 Pipeline 数据面，但在多传感器扇入和诊断�
 
 ### 4.3 层次状态机: 有状态 Stage 的管理
 
-并非所有 stage 都是无状态的逐点处理。串扰去除需要维护校准状态，故障恢复需要重试逻辑。HSM 的通用设计 (LCA 转换、Guard 条件、Entry/Exit) 和 HSM + BT 组合模式参见 [工业嵌入式流式数据处理架构设计 -- 状态管理](../Streaming_Architecture_Design/#6-状态管理-层次状态机-hsm)。
+并非所有 stage 都是无状态的逐点处理。串扰去除需要维护校准状态，故障恢复需要重试逻辑。HSM 的通用设计 (LCA 转换、Guard 条件、Entry/Exit) 和 HSM + BT 组合模式参见 [工业嵌入式流式数据处理架构设计 -- 状态管理](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)。
 
 在激光雷达串扰去除 stage 中，HSM 的具体应用:
 
@@ -340,7 +340,7 @@ pool.Destroy(&pool[handle.pool_index]);  // O(1), placement delete
 
 ### 4.5 实时调度与看门狗
 
-RealtimeExecutor 的 SCHED_FIFO + isolcpus + mlockall 设计详见 [工业嵌入式流式数据处理架构设计 -- 调度层](../Streaming_Architecture_Design/#5-调度层-realtimeexecutor-与-workerpool)。以下是激光雷达 Pipeline 的具体线程分配:
+RealtimeExecutor 的 SCHED_FIFO + isolcpus + mlockall 设计详见 [工业嵌入式流式数据处理架构设计 -- 调度层](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)。以下是激光雷达 Pipeline 的具体线程分配:
 
 ```cpp
 // Stage 线程分配 (4 核 Cortex-A53)
@@ -594,7 +594,7 @@ int main() {
 
 ## 参考
 
-- [工业嵌入式流式数据处理架构设计](../Streaming_Architecture_Design/) -- 控制面/数据面分离、AsyncBus、ShmChannel、RealtimeExecutor、HSM+BT 通用架构设计
+- [工业嵌入式流式数据处理架构设计](/tech-notes/posts/architecture/embedded_streaming_data_architecture/) -- 控制面/数据面分离、AsyncBus、ShmChannel、RealtimeExecutor、HSM+BT 通用架构设计
 - [newosp GitHub](https://github.com/DeguiLiu/newosp) -- C++17 header-only 嵌入式基础设施库
 - [newosp 设计文档](https://github.com/DeguiLiu/newosp/blob/main/docs/design_zh.md) -- 完整架构设计
 - QP/C Framework -- 量子平台 C 事件驱动框架

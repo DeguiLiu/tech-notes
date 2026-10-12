@@ -12,7 +12,7 @@ TocOpen: true
 >
 > 前置阅读: [Linux编程：解析 EAGAIN 错误 Resource temporarily unavailable](https://blog.csdn.net/stallion5632/article/details/142407679)
 >
-> 相关: [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) | [ARM-Linux 网络性能优化](../arm_linux_network_optimization/)
+> 相关: [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) | [ARM-Linux 网络性能优化](/tech-notes/posts/performance/arm_linux_network_optimization/)
 
 ---
 
@@ -574,6 +574,6 @@ ARM (非 TSO 架构) 上:
 ## 参考
 
 - [newosp SpscRingbuffer](https://github.com/DeguiLiu/newosp) -- C++17 header-only SPSC 无锁环形缓冲
-- [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- 12 项设计决策详解
-- [ARM-Linux 网络性能优化](../arm_linux_network_optimization/) -- 内核协议栈调优
+- [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- 12 项设计决策详解
+- [ARM-Linux 网络性能优化](/tech-notes/posts/performance/arm_linux_network_optimization/) -- 内核协议栈调优
 - Linux man page: epoll(7), send(2)

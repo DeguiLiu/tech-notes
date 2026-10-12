@@ -15,9 +15,9 @@ TocOpen: true
 > - [Monitoring and Tuning the Linux Networking Stack](https://blog.packagecloud.io/monitoring-tuning-linux-networking-stack-receiving-data/)
 > - [陈硕: 谈一谈网络编程学习经验](https://blog.csdn.net/solstice/article/details/6527585)
 >
-> 相关: [ARM-Linux 网络性能优化实战](../arm_linux_network_optimization/) | [TCP Short Write 环形缓冲区方案](../tcp_ringbuffer_short_write/)
+> 相关: [ARM-Linux 网络性能优化实战](/tech-notes/posts/performance/arm_linux_network_optimization/) | [TCP Short Write 环形缓冲区方案](/tech-notes/posts/performance/tcp_ringbuffer_short_write/)
 >
-> **定位差异**: [ARM-Linux 网络性能优化](../arm_linux_network_optimization/) 侧重**调优** (怎么让网络更快)，本文侧重**排障** (网络出问题时怎么定位原因) 和**高性能传输方案选型**。两篇互补，调优是预防，排障是治疗。
+> **定位差异**: [ARM-Linux 网络性能优化](/tech-notes/posts/performance/arm_linux_network_optimization/) 侧重**调优** (怎么让网络更快)，本文侧重**排障** (网络出问题时怎么定位原因) 和**高性能传输方案选型**。两篇互补，调优是预防，排障是治疗。
 
 **本文解决的问题**: 嵌入式 Linux 网络程序上线后出现丢包、端口耗尽、传输瓶颈时，如何系统化定位原因并选择合适的优化方案。
 
@@ -308,7 +308,7 @@ recvmsg(fd, &msg, MSG_ERRQUEUE);
 - **崩溃恢复**: `CreateOrReplace` 语义，进程重启后自动重建共享内存段，无需外部监控
 - **ARM 单核优化**: 无 D-Cache 的 MCU 使用 relaxed 原子序 + `atomic_signal_fence` 替代硬件 DMB，避免不必要的内存屏障开销
 
-ARM Cortex-A53 实测: 共享内存 transport 延迟 <1us，TCP loopback ~30us，差距约 30 倍。当同机通信是瓶颈时，共享内存比调优 TCP 参数更有效。详见 [共享内存 IPC 与无锁环形缓冲区](../shared_memory_ipc_lockfree_ringbuffer/)。
+ARM Cortex-A53 实测: 共享内存 transport 延迟 <1us，TCP loopback ~30us，差距约 30 倍。当同机通信是瓶颈时，共享内存比调优 TCP 参数更有效。详见 [共享内存 IPC 与无锁环形缓冲区](/tech-notes/posts/performance/shared_memory_ipc_lockfree_ringbuffer/)。
 
 ---
 
@@ -452,5 +452,5 @@ TCP 的 16-bit checksum 强度不足。路由器内存 bit flip 可导致 payloa
 - [陈硕: 谈一谈网络编程学习经验](https://blog.csdn.net/solstice/article/details/6527585)
 - [sockpp - RAII C++ Socket Library](https://github.com/DeguiLiu/sockpp)
 - [newosp - 嵌入式基础设施库](https://github.com/DeguiLiu/newosp)
-- [ARM-Linux 网络性能优化实战](../arm_linux_network_optimization/)
-- [TCP Short Write 环形缓冲区方案](../tcp_ringbuffer_short_write/)
+- [ARM-Linux 网络性能优化实战](/tech-notes/posts/performance/arm_linux_network_optimization/)
+- [TCP Short Write 环形缓冲区方案](/tech-notes/posts/performance/tcp_ringbuffer_short_write/)

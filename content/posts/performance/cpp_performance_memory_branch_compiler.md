@@ -21,7 +21,7 @@ TocOpen: true
 
 违反这条定律的后果可能是"优化"反而让性能变差。一个典型案例: 在 ARMv8 上用 NEON SIMD 优化 CRC32，获得了 8 倍加速; 但用同样的思路优化简单字节累加校验和，性能反而下降 20% — SIMD 的寄存器加载/存储开销超过了并行计算的收益。
 
-> 详细的 CRC/NEON 对比实验数据参见 [ARMv8 CRC 性能实测: 硬件指令快 8 倍, NEON 反而更慢](/tech-notes/posts/blog/neon_crc32_analysis/)
+> 详细的 CRC/NEON 对比实验数据参见 [ARMv8 CRC 性能实测: 硬件指令快 8 倍, NEON 反而更慢](/tech-notes/posts/performance/armv8_crc32_hardware_vs_neon_benchmark/)
 
 ### 零拷贝思维
 
@@ -1027,7 +1027,7 @@ graph LR
 - **核 1 专职计算**: 算法处理、协议栈、结果封装
 - **CPU 亲和性绑定**: 避免任务在核间迁移导致的缓存抖动
 
-> 详细的 Zynq-7000 架构设计参见 [Zynq-7000 激光雷达点云处理: FPGA + 双核 ARM 的架构设计](/tech-notes/posts/architecture/zynq7000_lidar_feasibility/)
+> 详细的 Zynq-7000 架构设计参见 [Zynq-7000 激光雷达点云处理: FPGA + 双核 ARM 的架构设计](/tech-notes/posts/architecture/fpga_arm_soc_lidar_feasibility/)
 
 ---
 
@@ -1117,7 +1117,7 @@ SIMD (单指令多数据) 理论上可以提供 4-16 倍的并行加速，但实
 
 **实测案例**: ARM NEON 优化 CRC32 获得 8 倍加速 (适合并行)，但同样手法优化简单字节累加校验和反而下降 20% (加载/存储开销大于并行收益)。
 
-> 完整实验数据参见 [ARMv8 CRC 性能实测](/tech-notes/posts/blog/neon_crc32_analysis/)
+> 完整实验数据参见 [ARMv8 CRC 性能实测](/tech-notes/posts/performance/armv8_crc32_hardware_vs_neon_benchmark/)
 
 ### DMA 零拷贝
 

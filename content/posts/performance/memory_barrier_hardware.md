@@ -12,11 +12,11 @@ TocOpen: true
 > 配套代码: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp) -- header-only C++17 嵌入式基础设施库
 >
 > 相关文章:
-> - [无锁编程核心原理: 从 CAS 到三种队列模式](../lockfree_programming_fundamentals/) -- acquire/release 内存序在无锁队列中的应用
-> - [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) -- ARM 指令映射、FakeTSO 单核优化
-> - [共享内存进程间通信](../shm_ipc_newosp/) -- 跨进程场景的 ARM 内存序加固
-> - [C++ 单例模式的线程安全实现](../cpp_singleton_dclp/) -- DCLP 失败的内存序根因
-> - [无锁异步日志设计](../lockfree_async_log/) -- ARM 弱序模型下的日志缓冲区设计
+> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- acquire/release 内存序在无锁队列中的应用
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- ARM 指令映射、FakeTSO 单核优化
+> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/) -- 跨进程场景的 ARM 内存序加固
+> - [C++ 单例模式的线程安全实现](/tech-notes/posts/performance/cpp_singleton_thread_safety_dclp/) -- DCLP 失败的内存序根因
+> - [无锁异步日志设计](/tech-notes/posts/performance/lockfree_async_log/) -- ARM 弱序模型下的日志缓冲区设计
 >
 > CSDN 原文: [C++多线程编程中的内存屏障/内存栅栏](https://blog.csdn.net/stallion5632/article/details/141271819)
 
@@ -253,7 +253,7 @@ std::atomic_signal_fence(std::memory_order_acq_rel);
 #endif
 ```
 
-详见 [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) 中的 FakeTSO 机制。
+详见 [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) 中的 FakeTSO 机制。
 
 ### 4.2 硬件屏障
 
@@ -377,7 +377,7 @@ auto h = head_.load(std::memory_order_acquire);    // ARM: ldar 或 ldr + dmb is
 auto data = buffer[h];
 ```
 
-详见 [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) 和 [共享内存进程间通信](../shm_ipc_newosp/) 中的 ARM 内存序实战分析。
+详见 [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) 和 [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/) 中的 ARM 内存序实战分析。
 
 ## 6. ARM 三条屏障指令
 
@@ -515,7 +515,7 @@ ldr   r4, [buffer, tail]    ; (4) 普通 Load: data
 
 ### 7.2 DCLP (Double-Checked Locking Pattern)
 
-[C++ 单例模式的线程安全实现](../cpp_singleton_dclp/) 详细分析了 DCLP 在 C++03 中失败的原因。其核心就是缺少内存屏障:
+[C++ 单例模式的线程安全实现](/tech-notes/posts/performance/cpp_singleton_thread_safety_dclp/) 详细分析了 DCLP 在 C++03 中失败的原因。其核心就是缺少内存屏障:
 
 ```cpp
 // C++11 正确的 DCLP
@@ -549,7 +549,7 @@ Singleton* Singleton::getInstance() {
 - 多核 ARM: 必须用 `atomic_thread_fence` → 生成 `DMB`
 - 单核 MCU: 只需 `atomic_signal_fence` → 零硬件开销
 
-详见 [SPSC 无锁环形缓冲区设计剖析](../spsc_ringbuffer_design/) 中的 FakeTSO 分析。
+详见 [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) 中的 FakeTSO 分析。
 
 ## 8. 常见误区
 
