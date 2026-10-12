@@ -9,6 +9,8 @@ ShowToc: true
 TocOpen: true
 ---
 
+> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/165884013)
+
 > 结论先行：主机能够枚举一颗从未见过的芯片，并非因为主机预先识别了该芯片，而是因为设备按 USB 规范**用描述符描述自身**。描述符说明设备的身份与接口数量，Probe/Commit 协商确定输出格式。
 
 ## 1. 基础：协议分层、双方角色与通信方式

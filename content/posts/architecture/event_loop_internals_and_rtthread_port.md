@@ -9,6 +9,8 @@ ShowToc: true
 TocOpen: true
 ---
 
+> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/164593464)
+
 > 结论：libev 是一个单线程的事件循环库（Reactor 模式）。使用时把要等待的事件（文件描述符可读、定时器到期、跨线程通知）注册进去，事件发生后由库调用回调函数处理。在嵌入式系统中，它可以作为一个 RT-Thread 线程运行，STM32F407 上已用 select 后端验证了 ev_io、ev_timer、ev_async 三种用法；它也可以承接中断处理中的耗时部分。是否引入 libev，取决于两点：数据来源能不能映射成文件描述符（fd），以及模块自身是否已经有一套完整的并发处理机制。
 
 本文整理 libev 4.33 的设计文档与 RT-Thread 移植实践，回答三个问题：libev 是什么、内部怎么实现、在嵌入式系统上怎么用、何时不该用。

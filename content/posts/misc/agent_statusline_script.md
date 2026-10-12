@@ -9,6 +9,8 @@ ShowToc: true
 TocOpen: true
 ---
 
+> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/164993390)
+
 Claude Code 界面底部有一行状态栏，`~/.local/bin/claude-statusline.sh` 就是渲染它的脚本。它把当前会话的模型、上下文占用、git 分支和当前目录压成一行：
 
 ```

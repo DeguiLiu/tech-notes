@@ -9,6 +9,8 @@ ShowToc: true
 TocOpen: true
 ---
 
+> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/164593464)
+
 > 结论先行：对一套已经基于「中断 + 线程 + IPC」自洽的嵌入式模块群，引入 Reactor 事件循环（libev）在大多数模块上是净成本，本质是「第二套并发模型叠第一套」。是否值得，取决于两个先决条件：数据源能否映射成 fd、模块是否已有完整的并发机制。
 
 ## 1. 问题与评估框架

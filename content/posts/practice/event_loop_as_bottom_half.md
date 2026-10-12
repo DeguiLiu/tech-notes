@@ -9,6 +9,8 @@ ShowToc: true
 TocOpen: true
 ---
 
+> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/164593464)
+
 > 结论先行：libev 不碰硬件中断，却为中断驱动的系统提供了完整的「慢事慢办」机制。它的定位可以一句话说清：**下半部调度器**。
 
 ## 1. libev 是什么：一个「事件管家」
