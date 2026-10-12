@@ -167,6 +167,4 @@ CRC32 硬件指令 (`crc32cx`) 每条指令在单周期内处理 8 字节数据�
 - 手写 SIMD 代码需要注意数据类型宽度 (如 `vaddq_u8` 的 8-bit 溢出) 和严格别名规则
 - 编译器优化能力不可忽视，简单规整的循环应优先让编译器自动向量化，仅在编译器无法优化的复杂算法中才考虑手写 intrinsics
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/140112767)
-
 ---

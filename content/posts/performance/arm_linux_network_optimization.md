@@ -9,7 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [嵌入式Linux的网络吞吐量优化](https://blog.csdn.net/stallion5632/article/details/143636884)
 >
 > 参考:
 > - [Linux Network Performance Ultimate Guide](https://ntk148v.github.io/posts/linux-network-performance-ultimate-guide/)

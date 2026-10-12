@@ -9,7 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/150849448)
 >
 > 参考: [UG585 - Zynq-7000 SoC TRM](https://docs.amd.com/r/en-US/ug585-zynq-7000-SoC-TRM),
 > [newosp](https://github.com/DeguiLiu/newosp) v0.2.0,
@@ -266,4 +265,3 @@ stateDiagram-v2
 
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/150849448)

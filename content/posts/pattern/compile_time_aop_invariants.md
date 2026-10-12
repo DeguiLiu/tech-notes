@@ -9,8 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/164835803)
-
 [newosp](https://github.com/DeguiLiu/newosp) 用 `detail::BeatLoop(hb, pred, body)` 这一个函数模板，把嵌入式线程循环里重复了 12 处的"每轮必须上报心跳"横切不变式收进固定骨架。打点（Beat）由骨架拥有，循环体无法跳过它，遗漏心跳从"运行期看门狗误报"变成"结构上不存在"。完整实现见 newosp 的 `include/osp/platform.hpp`。
 
 ## 问题: 写在规范里却靠人工维持的不变式

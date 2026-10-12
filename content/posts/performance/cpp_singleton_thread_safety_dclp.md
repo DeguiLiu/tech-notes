@@ -13,7 +13,6 @@ TocOpen: true
 > - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](../memory_barrier_hardware/) -- DCLP 失败的硬件根因 (Store Buffer 导致的写入重排)
 > - [无锁编程核心原理](../lockfree_programming_fundamentals/) -- acquire/release 内存序的完整理论
 >
-> 原文链接: [C++单例的安全实现，double-check(双重检查锁定)的安全实现方法](https://blog.csdn.net/stallion5632/article/details/126218126)
 >
 > 核心参考: [Double-Checked Locking is Fixed In C++11](https://preshing.com/20130930/double-checked-locking-is-fixed-in-cpp11/) (Jeff Preshing)
 >

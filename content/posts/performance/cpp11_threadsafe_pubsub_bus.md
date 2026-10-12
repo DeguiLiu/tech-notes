@@ -100,5 +100,3 @@ private:
 
 （完整实现请参阅代码仓库）
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/125514223)
-> 代码仓库: [Gitee](https://gitee.com/liudegui/message_bus)

@@ -192,6 +192,4 @@ ngx_int_t ngx_http_process_request(ngx_http_request_t *r) {
 
 通过阶段划分和函数指针数组的机制，Nginx 实现了高度解耦的请求处理流水线，完美地符合责任链模式的设计要求。
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/154867716)
-
 ---

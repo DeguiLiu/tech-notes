@@ -9,8 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/165617577)
-
 Codex CLI 0.154.0 及以上版本原生支持状态栏配置，不需要额外脚本。将字段名数组写入 `config.toml` 的 `[tui]` 段即可决定显示内容；临时试验可用命令行覆盖，确认后再持久化。
 
 ## 配置状态栏

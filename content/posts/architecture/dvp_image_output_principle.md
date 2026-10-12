@@ -9,8 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/164045426)
-
 结论先行：DVP 输出不是把一块图像内存直接送到引脚，而是由 `VIDEO_O` 顺序读取 DDR 中的像素，再由 VOC 生成 PCLK、HSYNC、VSYNC 和并行数据。硬件与底层驱动就绪并不等于链路可用，模块框架还必须把待输出图像接入 VOC。
 
 ## DVP 信号与输出时序

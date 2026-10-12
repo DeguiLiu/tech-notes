@@ -9,8 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/165458966)
-
 [picopaste](https://github.com/DeguiLiu/picopaste) 把 Windows 截图送到 Linux 的步骤压缩为一次热键：截图进入剪贴板后按 `alt+shift+v`，工具通过已有 SSH 通道上传图片，将远端绝对路径写入剪贴板并注入当前焦点窗口。Linux 端不安装新服务、不开放额外端口，也不需要工具接触 SSH 凭据。
 
 ## 使用方式与问题边界

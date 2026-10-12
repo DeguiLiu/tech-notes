@@ -9,8 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/164758605)
-
 在 nginx 框架内直接完成 RTMP 到 WebRTC 的转换，不引入 SRS 这类独立 RTC 服务，端到端实测首包约 560 ms，延迟从 RTMP/HLS 的 1 到 10 秒降到 0.5 秒以内；视频 H264 761 包、362 KB，音频 Opus 389 包、67 KB，全链路可达。方案与实现开源：模块代码 [github.com/DeguiLiu/nginx-rtc-module](https://github.com/DeguiLiu/nginx-rtc-module)（纯 C，MIT），部署与示例 [github.com/DeguiLiu/nginx-rtc-example](https://github.com/DeguiLiu/nginx-rtc-example)。
 
 ## 延迟卡在 TCP 上

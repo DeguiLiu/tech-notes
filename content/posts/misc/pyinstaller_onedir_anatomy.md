@@ -9,8 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/163884912)
-
 一个用 PySide6 纯 Python 加 C++ 原生核心加 ctypes C ABI 桥构建的桌面客户端，用 onedir 方式打包后，启动器并不是 Python 写的，它是 PyInstaller 编译的纯 C 引导程序；它加载 `python3*.dll` 拉起 CPython 解释器，解释器从 `base_library.zip` 解出字节码跑入口模块，其中再经 ctypes 动态绑定并调用 C++ 核心 DLL。实测环境：CPython 3.14.7（x64 官方版）、PySide6 6.11.1、numpy 2.5.2、PyInstaller 6.22.1。
 
 ## exe 里到底有什么

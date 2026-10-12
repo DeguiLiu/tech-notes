@@ -9,7 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [如何优化 Linux 中 Domain Socket 的线程间通信实时性](https://blog.csdn.net/stallion5632/article/details/143735726)
 >
 > 参考:
 > - [unix(7) - Linux manual page](https://man7.org/linux/man-pages/man7/unix.7.html)

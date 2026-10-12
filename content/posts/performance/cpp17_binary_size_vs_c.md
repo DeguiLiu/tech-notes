@@ -9,8 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/158074852)
-
 > 基于 GCC 13 / x86-64 实测数据，面向 ARM-Linux 工业嵌入式开发者
 
 ---

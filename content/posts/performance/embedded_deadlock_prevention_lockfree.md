@@ -666,5 +666,3 @@ static void ApplyRealtimeConfig(const RealtimeConfig& cfg) noexcept {
 
 **核心原则: 最好的锁是不需要锁。** 通过架构层面的单向数据流、生产者-消费者分离、固定容量资源预算，在设计阶段就消除死锁的结构性条件，而非在实现阶段通过锁策略去"修补"。
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/156591921)
-> 参考实现: [newosp](https://github.com/DeguiLiu/newosp) -- ARM-Linux 工业级嵌入式 C++17 基础设施库

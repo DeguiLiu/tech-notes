@@ -249,6 +249,4 @@ int main(void) {
 
 核心优势: O(1) 任务检查、精确休眠计算、无动态内存分配、代码简洁易移植。
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/153326149)
-
 ---

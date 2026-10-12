@@ -9,8 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/163926536)
-
 可靠的 USB 固件烧写工具应把职责分成主流程、指令封装和底层收发三层：主流程编排下载、擦写、校验和重启；指令层映射 Flash 操作与 `subcmd`；收发层处理 vendor 命令头和 bulk 端点。本文保留具体的 `mode` 分区、Flash ID 容量表、认证握手、26 字节命令头和 4K 回读校验规则。
 
 ## 三层架构与烧写主流程

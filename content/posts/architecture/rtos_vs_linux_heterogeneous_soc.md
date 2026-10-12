@@ -9,7 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/154877100)
 >
 > 参考: [RK3506 Datasheet](https://www.rock-chips.com/uploads/pdf/RK3506.pdf),
 > [newosp](https://github.com/DeguiLiu/newosp) v0.2.0
@@ -299,4 +298,3 @@ flowchart LR
 
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/154877100)

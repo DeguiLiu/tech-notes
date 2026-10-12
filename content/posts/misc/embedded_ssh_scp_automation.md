@@ -9,8 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [Linux Shell: 使用 Expect 自动化 SCP 和 SSH 连接的 Shell 脚本详解](https://blog.csdn.net/stallion5632/article/details/142489557)
-
 ## 1. 问题场景
 
 嵌入式 Linux 开发的典型工作流：

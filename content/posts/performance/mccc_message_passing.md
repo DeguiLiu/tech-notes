@@ -9,7 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [Linux 实现一个简单的 SendMessage 和 PostMessage](https://blog.csdn.net/stallion5632/article/details/144097813)
 >
 > 相关文章:
 > - [newosp 深度解析: C++17 事件驱动架构](../newosp_event_driven_architecture/) -- MCCC 的 C++17 演进: newosp AsyncBus

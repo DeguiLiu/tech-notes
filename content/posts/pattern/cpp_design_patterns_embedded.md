@@ -9,7 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [MISRA C++设计模式改进：模板编程替代虚函数](https://blog.csdn.net/stallion5632/article/details/143805125)
 >
 > 参考实现: [newosp](https://github.com/DeguiLiu/newosp) v0.2.0 -- 工业嵌入式 C++17 Header-Only 基础设施库
 

@@ -9,7 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/151228053)
 >
 > 参考: [UG585 - Zynq-7000 SoC TRM](https://docs.amd.com/r/en-US/ug585-zynq-7000-SoC-TRM),
 > [ARM Cortex-A9 MPCore TRM](https://documentation-service.arm.com/static/5e7e1f4fb2608e4d7f0a369f)
@@ -385,4 +384,3 @@ SG BD 为 64B 结构体，环形链接。BD 池位于 DDR_SG_DESC 区域 (Non-ca
 
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/151228053)

@@ -9,7 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [C++编程：实现一个简单的消息总线](https://blog.csdn.net/stallion5632/article/details/143785271)
 >
 > 完整代码: [message_bus](https://gitee.com/liudegui/message_bus) (optimze 分支)
 >

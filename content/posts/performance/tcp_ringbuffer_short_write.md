@@ -9,7 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [C++编程：利用环形缓冲区优化 TCP 发送流程，避免 Short Write 问题](https://blog.csdn.net/stallion5632/article/details/143668586)
 >
 > 前置阅读: [Linux编程：解析 EAGAIN 错误 Resource temporarily unavailable](https://blog.csdn.net/stallion5632/article/details/142407679)
 >

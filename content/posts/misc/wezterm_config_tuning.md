@@ -9,8 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/165613846)
-
 调优结论是：Codex 等 TUI 的主要 CPU 成本来自 PTY 更新与终端状态合成，近似随屏幕更新次数增长，而不是由 `max_fps` 决定。确定有效的只有关闭滚动条与限帧；当前配置另关闭光标闪烁，并保留输入法、剪贴板、`HOME` 和快捷键等行为配置。
 
 ## 渲染成本模型与调优原则

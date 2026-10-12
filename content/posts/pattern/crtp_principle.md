@@ -9,8 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/164815930)
-
 CRTP（Curiously Recurring Template Pattern，奇异递归模板模式）是 C++ 用模板实现编译期多态的经典手法。它让基类在编译期就知道子类是谁，从而直接调用子类方法、直接内联，不查虚表、不留 vptr，代价从运行期搬到了编译期。一个真实落地是嵌入式框架 coact（[github.com/DeguiLiu/coact](https://github.com/DeguiLiu/coact)），第五节以它的状态机为例。
 
 ## 它解决了什么

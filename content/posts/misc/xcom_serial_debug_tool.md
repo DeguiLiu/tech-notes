@@ -9,8 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/165245142)
-
 [XCOM](https://github.com/DeguiLiu/xcom_lua) 的核心取舍是：串口收发与内存管理放在 C++，界面和业务扩展放在 LuaJIT；接收数据只复制一次，显示和文件通道共享固定大小的内存池。压缩包为 3.93 MB，Windows 10/11 x64 绿色版解压即用，接收池固定为 512 KB，不随数据量增长。
 
 | 你关心的 | XCOM 的答案 |

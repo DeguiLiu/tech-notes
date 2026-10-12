@@ -14,7 +14,6 @@ TocOpen: true
 
 > 在轻量 RTOS 项目和嵌入式Linux中，合作式任务调度器是比操作系统线程更轻量的执行抽象。
 
-
 ## 1. 设计决策
 本文的设计是参考与对比[tomzbj/ztask](https://github.com/tomzbj/ztask)
 
@@ -439,7 +438,5 @@ int main(void) {
 }
 ```
 
-
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/xxxxxxxx)

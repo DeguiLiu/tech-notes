@@ -9,8 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接: [CSDN](https://blog.csdn.net/stallion5632/article/details/164803749)
-
 [coact](https://github.com/DeguiLiu/coact) 是面向嵌入式场景的 C++ 事件驱动框架，约束是 `-fno-exceptions -fno-rtti`、业务零堆、无锁。它的框架层（`include/coact/`）用六种编译期手段替代运行期抽象：骨架加钩子（`Hsm<Context>`）处理状态机流程差异，无状态策略（`EventPool<Profile>`）处理算法差异，Traits 注入（`Ao`）处理属性差异，模板装配（`Runtime`）处理平台差异，组合（`AoRegistry`）与运行期擦除（`StaticAoEntry`）守住结构边界。这是一条主线：把"多形态行为"的差异从运行期搬到编译期，代价在编译期一次付清，换来运行期零虚表、零堆。
 
 ## 为什么不用虚函数

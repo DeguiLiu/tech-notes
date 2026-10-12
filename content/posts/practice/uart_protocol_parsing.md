@@ -9,10 +9,6 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 原文链接:
-> - [嵌入式串口数据流处理中的粘包解决方案](https://blog.csdn.net/stallion5632/article/details/139940595)
-> - [串口协议解析方案对比：缓冲区滑窗与分层状态机](https://blog.csdn.net/stallion5632/article/details/148597654)
-> - [基于 RT-Thread 的 Bootloader 串口通信协议栈优化方案](https://blog.csdn.net/stallion5632/article/details/149034862)
 >
 > 配套代码: [uart_statemachine_ringbuffer_linux](https://gitee.com/liudegui/uart_statemachine_ringbuffer_linux) -- C99 实现，POSIX 线程模拟 MCU 中断
 
