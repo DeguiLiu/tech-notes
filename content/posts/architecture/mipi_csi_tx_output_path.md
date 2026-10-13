@@ -1,7 +1,7 @@
 ---
 title: "MIPI CSI-2 发送端配置: 虚拟通道、行长度与接收端排错"
 date: 2026-10-12T08:00:00
-draft: false
+draft: true
 ShowToc: true
 categories: ["architecture"]
 tags: ["MIPI", "CSI-2", "embedded", "video"]

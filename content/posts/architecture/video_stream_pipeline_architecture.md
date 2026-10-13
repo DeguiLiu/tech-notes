@@ -1,7 +1,7 @@
 ---
 title: "图像 SoC 的视频流架构: stream、node 的装配与启停顺序"
 date: 2026-10-12T08:00:00
-draft: false
+draft: true
 ShowToc: true
 categories: ["architecture"]
 tags: ["embedded", "RTOS", "video", "architecture"]

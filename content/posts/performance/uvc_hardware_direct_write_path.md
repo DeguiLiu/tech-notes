@@ -1,7 +1,7 @@
 ---
 title: "UVC 视频的硬件直写通路: 端点 FIFO、丢帧判断与适用边界"
 date: 2026-10-12T08:00:00
-draft: false
+draft: true
 ShowToc: true
 categories: ["performance"]
 tags: ["USB", "UVC", "embedded", "video"]

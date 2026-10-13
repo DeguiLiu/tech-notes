@@ -5,22 +5,28 @@
 ## 目录结构
 
 ```
-architecture/       -- 架构设计 (23 篇公开, 1 篇草稿)
-performance/        -- 性能优化 (31 篇)
-practice/           -- 工程实践 (30 篇)
+architecture/       -- 架构设计 (24 篇公开, 6 篇草稿)
+performance/        -- 性能优化 (31 篇公开, 1 篇草稿)
+practice/           -- 工程实践 (30 篇公开, 1 篇草稿)
 pattern/            -- 设计模式 (11 篇)
 interview/          -- 面试题 (2 篇)
 misc/               -- 杂项 (13 篇)
 ```
 
-共 **111** 篇文章 (110 篇公开, 1 篇草稿)
+共 **119** 篇文章 (111 篇公开, 8 篇草稿)
 
 ## 文章索引
 
-### architecture/ -- 架构设计 (23 篇)
+### architecture/ -- 架构设计 (24 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [triple_frame_buffer_consistency_risk.md](architecture/triple_frame_buffer_consistency_risk.md) | 三帧缓冲地址的三层责任: 声明区间、计算长度、逐帧校验 *(草稿)* | 2026-10-12T10:00:00 |
+| [two_level_dma_triple_buffer.md](architecture/two_level_dma_triple_buffer.md) | 两级三帧缓冲: 一级按输入算尺寸、二级按输出算 *(草稿)* | 2026-10-12T10:00:00 |
+| [riscv_firmware_boot_chain.md](architecture/riscv_firmware_boot_chain.md) | RISC-V 应用核的启动链路: 从 Reset_Handler 到调度器启动 | 2026-10-12T09:00:00 |
+| [soc_memory_partition_and_buffer_layout.md](architecture/soc_memory_partition_and_buffer_layout.md) | 图像 SoC 的内存分区与缓冲布局: 链接脚本、Cache 属性与 DMA 对齐 *(草稿)* | 2026-10-12T09:00:00 |
+| [mipi_csi_tx_output_path.md](architecture/mipi_csi_tx_output_path.md) | MIPI CSI-2 发送端配置: 虚拟通道、行长度与接收端排错 *(草稿)* | 2026-10-12T08:00:00 |
+| [video_stream_pipeline_architecture.md](architecture/video_stream_pipeline_architecture.md) | 图像 SoC 的视频流架构: stream、node 的装配与启停顺序 *(草稿)* | 2026-10-12T08:00:00 |
 | [dma_devmem_and_fpga_ringbuffer.md](architecture/dma_devmem_and_fpga_ringbuffer.md) | DMA 物理内存映射与 FPGA 环形缓冲: 零拷贝通路与无锁读写 | 2026-10-06T08:00:00 |
 | [embedded_sd_boot_load_flow.md](architecture/embedded_sd_boot_load_flow.md) | 嵌入式 SD 卡上电加载: 从卡检测到文件系统挂载 | 2026-09-20T08:00:00 |
 | [embedded_usb_dual_video_output.md](architecture/embedded_usb_dual_video_output.md) | 嵌入式双路 USB 视频输出: 一个设备、两个摄像头的同步原理 | 2026-09-20T08:00:00 |
@@ -50,6 +56,7 @@ misc/               -- 杂项 (13 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [uvc_hardware_direct_write_path.md](performance/uvc_hardware_direct_write_path.md) | UVC 视频的硬件直写通路: 端点 FIFO、丢帧判断与适用边界 *(草稿)* | 2026-10-12T08:00:00 |
 | [zero_heap_zero_copy_event_passing.md](performance/zero_heap_zero_copy_event_passing.md) | 零堆分配与零拷贝事件传递: 单次构造、指针流转与回收契约 | 2026-09-10T08:00:00 |
 | [linux_network_troubleshooting_guide.md](performance/linux_network_troubleshooting_guide.md) | Linux 网络编程排障与高性能传输: 从丢包诊断到零拷贝实战 | 2026-02-20T14:00:00 |
 | [object_pool_hidden_costs.md](performance/object_pool_hidden_costs.md) | 对象池在嵌入式热路径上的三个隐性成本 | 2026-02-17T09:30:00 |
@@ -86,6 +93,7 @@ misc/               -- 杂项 (13 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [display_pipeline_atomic_reconfigure.md](practice/display_pipeline_atomic_reconfigure.md) | 运行期重配输出链路: 哪些状态要一起改、失败了怎么退 *(草稿)* | 2026-10-12T10:00:00 |
 | [mcu_periodic_service_concurrency.md](practice/mcu_periodic_service_concurrency.md) | MCU 周期服务的并发三件套: RMW、RTC 与 AOP | 2026-09-22T08:00:00 |
 | [usb_uvc_enumeration_and_negotiation.md](practice/usb_uvc_enumeration_and_negotiation.md) | USB 视频设备枚举与能力协商: 描述符、Probe 与 Commit | 2026-09-18T08:00:00 |
 | [serial_dtr_rts_timing_pitfall.md](practice/serial_dtr_rts_timing_pitfall.md) | 串口控制线时序陷阱: DTR 与 RTS 导致的偶发复位 | 2026-09-12T08:00:00 |
