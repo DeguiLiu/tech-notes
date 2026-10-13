@@ -10,7 +10,7 @@ TocOpen: true
 ---
 
 >
-> 参考: [RK3506 Datasheet](https://www.rock-chips.com/uploads/pdf/RK3506.pdf),
+> 参考: [RK3506 Datasheet](https://www.rock-chips.com/uploads/pdf/RK3506.pdf)，
 > [newosp](https://github.com/DeguiLiu/newosp) v0.2.0
 >
 > 适用场景: 激光雷达、工业视觉、机器人控制器、边缘传感器融合
@@ -37,11 +37,11 @@ RK3506J 提供 3 个 Cortex-A7 (1.2 GHz) + 1 个 Cortex-M0 (200 MHz) 的异构�
 | 项目 | 配置 |
 |------|------|
 | A 核组 | 3x Cortex-A7 @ 1.2 GHz, 32 KB L1 I/D, Thumb-2, NEON VFPv4 |
-| M 核 | 1x Cortex-M0 @ 200 MHz, 无 Cache, 无硬件除法, 无 DSP |
+| M 核 | 1x Cortex-M0 @ 200 MHz，无 Cache，无硬件除法，无 DSP |
 | 内存 | 256 MB - 512 MB DDR3/DDR3L |
-| 核间通信 | Hardware Mailbox (4 通道), 共享内存 (SRAM / DDR) |
+| 核间通信 | Hardware Mailbox (4 通道)，共享内存 (SRAM / DDR) |
 | 外设 | SPI x4, I2C x6, UART x6, USB 2.0, RGMII, SDIO |
-| 编译器 | arm-none-eabi-gcc (M0), arm-linux-gnueabihf-gcc (A7) |
+| 编译器 | arm-none-eabi-gcc (M0)，arm-linux-gnueabihf-gcc (A7) |
 
 ---
 
@@ -121,7 +121,7 @@ flowchart LR
 
 | 功能 | newosp 模块 | 部署位置 | 说明 |
 |------|------------|----------|------|
-| 控制消息路由 | AsyncBus + Node | A7-0 | MPSC 无锁, 优先级准入 |
+| 控制消息路由 | AsyncBus + Node | A7-0 | MPSC 无锁，优先级准入 |
 | 数据面零拷贝 | ShmChannel (SPSC) | A7-1 -> A7-2 | Wait-free, cache line 对齐 |
 | 设备状态管理 | HSM | A7-0 | Init/Ready/Active/Fault/Shutdown |
 | 实时调度 | RealtimeExecutor | A7-1, A7-2 | SCHED_FIFO + mlockall + 绑核 |
@@ -142,8 +142,8 @@ M0 与 A7 之间通过 Hardware Mailbox + 共享 SRAM 通信:
 | Mailbox CH3 | A7 -> M0 | 采集触发同步 | 4B (触发计数) |
 
 **协议约定**:
-- Mailbox 中断触发, 非轮询
-- 共享 SRAM 区域存放详细数据, Mailbox 仅传递通知和索引
+- Mailbox 中断触发，非轮询
+- 共享 SRAM 区域存放详细数据，Mailbox 仅传递通知和索引
 - M0 侧使用原子操作 + memory barrier, A7 侧使用 `acquire/release` 语义
 
 ### 3.4 内存分区
@@ -161,12 +161,12 @@ M0 与 A7 之间通过 Hardware Mailbox + 共享 SRAM 通信:
 
 | 维度 | 评估 |
 |------|------|
-| 开发效率 | 高 -- Linux 生态成熟, 驱动/网络/调试工具丰富 |
-| 实时性 | 中 -- A7 侧依赖 isolcpus + SCHED_FIFO, 非硬实时 |
-| 算力利用 | 高 -- 3 个 A7 核全部可用于数据处理 |
-| 启动时间 | 慢 -- Linux 启动 ~2 s |
-| 内存占用 | 高 -- Linux 基础 ~32 MB |
-| 维护成本 | 低 -- Linux 应用层开发, 调试手段丰富 |
+| 开发效率 | 高，Linux 生态成熟，驱动/网络/调试工具丰富 |
+| 实时性 | 中，A7 侧依赖 isolcpus + SCHED_FIFO，非硬实时 |
+| 算力利用 | 高，3 个 A7 核全部可用于数据处理 |
+| 启动时间 | 慢，Linux 启动 ~2 s |
+| 内存占用 | 高，Linux 基础 ~32 MB |
+| 维护成本 | 低，Linux 应用层开发，调试手段丰富 |
 
 ---
 
@@ -219,8 +219,8 @@ A7 核间采用 SPSC 无锁 Ring Buffer 传递数据 (所有权转移模型):
 
 | 属性 | 机制 |
 |------|------|
-| 无 ABA 问题 | 单生产者单消费者, 无 CAS |
-| 无数据撕裂 | uint32_t 对齐, ARM 原子 LDR/STR |
+| 无 ABA 问题 | 单生产者单消费者，无 CAS |
+| 无数据撕裂 | uint32_t 对齐，ARM 原子 LDR/STR |
 | 内存序正确 | DMB 保证数据/索引写入顺序 |
 | 无 false sharing | head/tail 间 32B padding |
 
@@ -228,12 +228,12 @@ A7 核间采用 SPSC 无锁 Ring Buffer 传递数据 (所有权转移模型):
 
 | 维度 | 评估 |
 |------|------|
-| 开发效率 | 低 -- 需自行移植 LwIP/USB 协议栈, 无现成驱动 |
-| 实时性 | 高 -- 全系统确定性调度, 中断响应 < 15 us |
-| 算力利用 | 高 -- 3 个 A7 核 + NEON, 无 Linux 内核开销 |
-| 启动时间 | 快 -- < 500 ms |
-| 内存占用 | 低 -- RTOS 基础 < 512 KB |
-| 维护成本 | 高 -- 所有协议栈需自行维护和调试 |
+| 开发效率 | 低，需自行移植 LwIP/USB 协议栈，无现成驱动 |
+| 实时性 | 高，全系统确定性调度，中断响应 < 15 us |
+| 算力利用 | 高，3 个 A7 核 + NEON，无 Linux 内核开销 |
+| 启动时间 | 快，< 500 ms |
+| 内存占用 | 低，RTOS 基础 < 512 KB |
+| 维护成本 | 高，所有协议栈需自行维护和调试 |
 
 ---
 
@@ -261,9 +261,9 @@ flowchart LR
 
 **建议**:
 
-1. **首选方案一** (Linux + M0 RTOS) -- 开发效率高, 生态成熟, 适合快速原型和首版交付
-2. **方案二作为演进目标** -- 当方案一无法满足延迟/抖动要求时, 逐步将热点迁移到 RT-Thread SMP
-3. **渐进式迁移** -- 先在 Linux 上用 newosp RealtimeExecutor (isolcpus + SCHED_FIFO) 尝试优化, 若仍不足再考虑全 RTOS
+1. **首选方案一** (Linux + M0 RTOS)，开发效率高，生态成熟，适合快速原型和首版交付
+2. **方案二作为演进目标**，当方案一无法满足延迟/抖动要求时，逐步将热点迁移到 RT-Thread SMP
+3. **渐进式迁移**，先在 Linux 上用 newosp RealtimeExecutor (isolcpus + SCHED_FIFO) 尝试优化，若仍不足再考虑全 RTOS
 
 ---
 
@@ -291,10 +291,10 @@ flowchart LR
 
 核心设计决策:
 
-1. **M0 专责硬实时**: 电机控制、安全保护等微秒级响应任务固定在 M0, 与应用层完全隔离
-2. **Hardware Mailbox 核间通信**: 中断驱动、低延迟, 共享 SRAM 传递详细数据
-3. **方案一优先**: 利用 Linux 生态快速交付, newosp 的 RealtimeExecutor + ShmChannel 在用户态提供软实时保障
-4. **渐进式演进**: 通过量化验证 (延迟/抖动/吞吐) 驱动方案选择, 避免过度设计
+1. **M0 专责硬实时**: 电机控制、安全保护等微秒级响应任务固定在 M0，与应用层完全隔离
+2. **Hardware Mailbox 核间通信**: 中断驱动、低延迟，共享 SRAM 传递详细数据
+3. **方案一优先**: 利用 Linux 生态快速交付，newosp 的 RealtimeExecutor + ShmChannel 在用户态提供软实时保障
+4. **渐进式演进**: 通过量化验证 (延迟/抖动/吞吐) 驱动方案选择，避免过度设计
 
 ---
 

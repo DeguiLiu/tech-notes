@@ -442,7 +442,7 @@ Submit(block_id, refcount=1)
   -> fusion 执行 -> Release() -> refcount=0 -> 回收到 free list
 ```
 
-每个数据块有 `atomic<uint32_t> refcount`，消费者通过 `Release()` 递减。最后一个消费者使 refcount 降为 0 时，数据块自动回收。这比 SPMC 的 per-consumer tail 更灵活 -- 支持 DAG 拓扑而非仅 1:N 分发。
+每个数据块有 `atomic<uint32_t> refcount`，消费者通过 `Release()` 递减。最后一个消费者使 refcount 降为 0 时，数据块自动回收。这比 SPMC 的 per-consumer tail 更灵活，支持 DAG 拓扑而非仅 1:N 分发。
 
 ### 9.2 与 SPMC 的关系
 
@@ -495,4 +495,4 @@ disp.SubmitBlock(bid.value(), kFrameDataSize);
 - SPMC 示例: [data_visitor_dispatcher](https://github.com/DeguiLiu/newosp/tree/main/examples/data_visitor_dispatcher)
 - 进程内分发: [基于无锁消息总线的观察者模式](/tech-notes/posts/practice/cyberrt_datavisitor_mccc_rewrite/)
 - 参考项目: [data-visitor-dispatcher](https://gitee.com/liudegui/data-visitor-dispatcher) (mccc-bus 版)
-- 消息总线: [mccc-bus](https://gitee.com/liudegui/mccc-bus) -- C++17 header-only 无锁消息总线
+- 消息总线: [mccc-bus](https://gitee.com/liudegui/mccc-bus)，C++17 header-only 无锁消息总线

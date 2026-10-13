@@ -318,7 +318,7 @@ C 的 `strncpy(buf, "sensor", sizeof(buf))` 在超长时静默截断，不报任
 
 上述四项改造不是孤立的替换，它们依赖 C++17 的几个关键特性协同工作:
 
-### 5.1 std::variant -- 编译期类型路由的基础
+### 5.1 std::variant：编译期类型路由的基础
 
 `std::variant` (C++17) 替代 C++14 的 `union` + 手动标签:
 
@@ -331,7 +331,7 @@ using Payload = std::variant<SensorData, MotorCmd>;
 // 访问错误类型 -> 编译期报错或运行时 bad_variant_access
 ```
 
-### 5.2 if constexpr -- 编译期分支消除
+### 5.2 if constexpr：编译期分支消除
 
 FixedFunction 内部使用 `if constexpr` 选择不同的调用路径:
 
@@ -352,7 +352,7 @@ void assign(F&& f) noexcept {
 
 C++14 需要 SFINAE + 两个重载函数实现同样的效果，代码量翻倍。
 
-### 5.3 std::is_same_v / std::enable_if_t -- 简化模板元编程
+### 5.3 std::is_same_v / std::enable_if_t：简化模板元编程
 
 C++17 的变量模板和别名模板减少了样板代码:
 
@@ -366,7 +366,7 @@ std::is_same_v<T, First>
 std::enable_if_t<condition>
 ```
 
-### 5.4 enum class + static_assert -- 编译期约束
+### 5.4 enum class + static_assert：编译期约束
 
 ```cpp
 enum class MessagePriority : uint8_t { LOW, MEDIUM, HIGH };

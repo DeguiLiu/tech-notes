@@ -76,7 +76,7 @@ using MyBus = mccc::AsyncBus<MyPayload>;
 
 `std::mutex` 的问题不在于"慢"，而在于**不可预测**。在 Linux SCHED_OTHER 调度下，持有锁的线程可能被抢占，导致其他生产者等待不确定时长。对于需要确定性延迟的实时系统，这是不可接受的。
 
-Lock-free 的保证是：即使某个线程被挂起，其他线程仍能继续推进。代价是实现复杂度显著增加。
+Lock-free 的保证是：即使某个线程被挂起，其他线程仍能继续推进。实现复杂度因此显著增加。
 
 ### Sequence-based Ring Buffer
 
@@ -108,7 +108,7 @@ flowchart LR
 
 关键权衡：CAS 在高竞争下会退化 (自旋重试)，但 MPSC 场景下消费者只有一个，竞争仅存在于生产者之间，实际冲突率远低于 MPMC。
 
-## 决策二: Envelope 内嵌 -- 零堆分配的核心
+## 决策二: Envelope 内嵌：零堆分配的核心
 
 这是 MCCC 最重要的设计决策。
 
@@ -123,7 +123,7 @@ struct MCCC_ALIGN_CACHELINE RingBufferNode {
 };
 ```
 
-这意味着：消息数据直接写入预分配的环形缓冲区，发布路径上**零堆分配**。代价是 Ring Buffer 的内存占用等于 `槽位数 x envelope 大小`，需要在启动时一次性分配。对于嵌入式系统，这恰好是期望的行为 -- 资源在初始化时确定，运行时不再变化。
+这意味着：消息数据直接写入预分配的环形缓冲区，发布路径上**零堆分配**。换来的约束是 Ring Buffer 的内存占用等于 `槽位数 x envelope 大小`，需要在启动时一次性分配。对嵌入式系统来说这恰好是期望的行为：资源在初始化时确定，运行时不再变化。
 
 Envelope 内嵌还带来一个隐含收益：数据局部性。连续处理的消息在内存中物理相邻，对 CPU Cache 友好。
 
@@ -143,7 +143,7 @@ struct VariantIndex;
 std::array<CallbackSlot, MCCC_MAX_MESSAGE_TYPES> callback_table_;
 ```
 
-类型到索引的映射在编译期完成，运行时的分发退化为一次数组下标访问 -- O(1) 且完全确定。
+类型到索引的映射在编译期完成，运行时的分发退化为一次数组下标访问，O(1) 且完全确定。
 
 ## 决策四: FixedFunction 替代 std::function
 
@@ -207,7 +207,7 @@ producer_pos_.store(prod_pos + 1U, std::memory_order_relaxed);
 
 SPSC 路径将 `compare_exchange_weak` 替换为普通的 `store`，完全消除了 CAS 的自旋重试开销。实测 SPSC BARE_METAL 吞吐量比 MPSC 高约 31%。
 
-## 决策七: ProcessBatchWith -- 编译期 Visitor 分发
+## 决策七: ProcessBatchWith：编译期 Visitor 分发
 
 MCCC 的常规处理路径 (`ProcessBatch`) 通过 `shared_mutex` 读锁保护回调表，再通过 `FixedFunction` 间接调用回调。这条路径功能完备但存在两层间接调用开销。
 
@@ -228,7 +228,7 @@ bus.ProcessBatchWith(visitor);  // 全路径可内联
 
 这是"为不需要的功能不付费"原则的体现：如果你不需要运行时动态订阅/退订，就不应该为 `shared_mutex` 和间接调用付出代价。
 
-## 决策八: Signal Fence -- 单核 MCU 适配
+## 决策八: Signal Fence：单核 MCU 适配
 
 在多核系统上，`memory_order_acquire/release` 会编译为硬件内存屏障指令 (ARM 的 DMB)。但在单核 Cortex-M MCU 上，核间可见性问题不存在，真正需要防止的只是**编译器重排序**。
 
@@ -246,7 +246,7 @@ inline void AcquireFence() {
 
 `atomic_signal_fence` 仅约束编译器，不生成任何硬件指令。在单核 MCU 上，这将原子操作的开销降到接近零。
 
-此选项需要用户同时定义 `MCCC_I_KNOW_SINGLE_CORE_IS_UNSAFE=1` 作为安全确认 -- 因为如果在多核平台上误用，将导致数据竞争。这是一个显式的"你知道你在做什么"接口设计。
+此选项需要用户同时定义 `MCCC_I_KNOW_SINGLE_CORE_IS_UNSAFE=1` 作为安全确认，因为如果在多核平台上误用，将导致数据竞争。这是一个显式的"你知道你在做什么"接口设计。
 
 ## 决策九: 编译期配置矩阵
 
@@ -269,7 +269,7 @@ cmake .. -DCMAKE_CXX_FLAGS="-DMCCC_QUEUE_DEPTH=4096 -DMCCC_SINGLE_PRODUCER=1 \
   -DMCCC_CACHELINE_SIZE=0"
 ```
 
-队列从 128K 缩小到 4K，关闭 CAS 和硬件屏障，去除缓存行填充 -- 在资源受限的 MCU 上最大限度降低内存占用和指令开销。
+队列从 128K 缩小到 4K，关闭 CAS 和硬件屏障，去除缓存行填充，在资源受限的 MCU 上最大限度降低内存占用和指令开销。
 
 ## 批处理: 减少共享状态更新
 
@@ -309,7 +309,7 @@ uint32_t ProcessBatch() noexcept {
 
 FULL_FEATURED 模式包含优先级准入、背压监控和统计计数，是生产环境的默认模式。BARE_METAL 模式剥离所有非核心功能，用于衡量纯队列性能基线。
 
-两点值得注意：SPSC 比 MPSC 快约 31% (CAS 消除)；SINGLE_CORE 比多核快约 15% (relaxed ordering 减少了 store buffer 序列化)。而 FULL_FEATURED 各配置趋于接近 (~28-30 M/s)，说明 `shared_mutex` 读锁成为该模式下的主要瓶颈。
+有两点比较明显：SPSC 比 MPSC 快约 31% (CAS 消除)；SINGLE_CORE 比多核快约 15% (relaxed ordering 减少了 store buffer 序列化)。而 FULL_FEATURED 各配置趋于接近 (~28-30 M/s)，说明 `shared_mutex` 读锁成为该模式下的主要瓶颈。
 
 ### 端到端延迟 (FULL_FEATURED)
 
@@ -341,7 +341,7 @@ HIGH 优先级消息在压力测试中实现了零丢弃，验证了容量预留
 | 统计计数 (批量) | ~1-2 ns |
 | **总功能开销** | ~6-10 ns |
 
-全功能模式的总开销约 6-10 ns/消息。对于大多数嵌入式应用，这个开销是完全可接受的 -- 一个 1 kHz 控制回路的周期为 1 ms，消息传递仅占千分之一。
+全功能模式的总开销约 6-10 ns/消息。对于大多数嵌入式应用，这个开销是完全可接受的，一个 1 kHz 控制回路的周期为 1 ms，消息传递仅占千分之一。
 
 ## 总结与反思
 

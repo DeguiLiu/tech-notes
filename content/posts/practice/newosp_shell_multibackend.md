@@ -12,8 +12,8 @@ TocOpen: true
 > [newosp](https://github.com/DeguiLiu/newosp) 项目地址
 >
 > 相关文章:
-> - [嵌入式 Linux 调试 Shell 设计: 从 RT-Thread MSH 到自研 embsh](/tech-notes/posts/practice/rtthread_msh_linux_multibackend/) -- Shell 引擎选型与设计决策
-> - [telsh: 从 boost::asio 到纯 POSIX 的 Telnet Shell 重构](/tech-notes/posts/practice/telnet_debug_shell_posix_refactoring/) -- Telnet 协议与会话管理实现
+> - [嵌入式 Linux 调试 Shell 设计: 从 RT-Thread MSH 到自研 embsh](/tech-notes/posts/practice/rtthread_msh_linux_multibackend/)，Shell 引擎选型与设计决策
+> - [telsh: 从 boost::asio 到纯 POSIX 的 Telnet Shell 重构](/tech-notes/posts/practice/telnet_debug_shell_posix_refactoring/)，Telnet 协议与会话管理实现
 
 ---
 
@@ -72,10 +72,10 @@ newosp 的调试 Shell 模块在一个 header-only 文件中提供完整的嵌�
 ```
 
 四层各司其职:
-- **I/O 抽象层**: 函数指针隔离底层差异, 后端可运行时切换
-- **Shell 引擎**: 行编辑、分词、Tab 补全、历史, 与后端无关
-- **命令系统**: 注册/查找/分发/参数解析, 与 Shell 引擎解耦
-- **应用层**: shell_commands.hpp 桥接模块状态, 零侵入
+- **I/O 抽象层**: 函数指针隔离底层差异，后端可运行时切换
+- **Shell 引擎**: 行编辑、分词、Tab 补全、历史，与后端无关
+- **命令系统**: 注册/查找/分发/参数解析，与 Shell 引擎解耦
+- **应用层**: shell_commands.hpp 桥接模块状态，零侵入
 
 ---
 
@@ -85,11 +85,11 @@ newosp 的调试 Shell 模块在一个 header-only 文件中提供完整的嵌�
 
 | 方案 | 优点 | 缺点 | 判定 |
 |------|------|------|------|
-| 虚基类 `IShellBackend` | 语义清晰 | vtable 开销, 违反"不优先 virtual" | 否 |
-| 模板参数 `ShellT<Backend>` | 编译期绑定, 可内联 | Printf 类型不统一, 无法运行时选择后端 | 否 |
-| 函数指针 | 零 vtable, 运行时可选, POSIX 自然映射 | 无法内联 | **选用** |
+| 虚基类 `IShellBackend` | 语义清晰 | vtable 开销，违反"不优先 virtual" | 否 |
+| 模板参数 `ShellT<Backend>` | 编译期绑定，可内联 | Printf 类型不统一，无法运行时选择后端 | 否 |
+| 函数指针 | 零 vtable，运行时可选，POSIX 自然映射 | 无法内联 | **选用** |
 
-Shell I/O 不是热路径 (人类打字速度 ~10 字符/秒), 无法内联的代价可忽略. 函数指针与 POSIX `read(2)/write(2)` 签名天然一致, 无需适配层.
+Shell I/O 不是热路径 (人类打字速度 ~10 字符/秒)，无法内联的代价可忽略。函数指针与 POSIX `read(2)/write(2)` 签名天然一致，无需适配层。
 
 ### 3.2 实现
 
@@ -109,7 +109,7 @@ inline ssize_t ShellPosixWrite(int fd, const void* buf, size_t len) {
 }
 ```
 
-不用 `std::function` 或 `FixedFunction` 的原因: Shell I/O 函数是无状态的 (不需要捕获), 原始函数指针最轻量.
+不用 `std::function` 或 `FixedFunction` 的原因: Shell I/O 函数是无状态的 (不需要捕获)，原始函数指针最轻量。
 
 ### 3.3 统一会话结构
 
@@ -128,11 +128,11 @@ struct ShellSession {
 };
 ```
 
-关键点: `read_fd/write_fd` 分开 (stdin 和 stdout 是不同 fd); `telnet_mode` 区分 TCP 和 POSIX 行结束符; 256 字节 line_buf 栈分配, 零堆.
+关键点: `read_fd/write_fd` 分开 (stdin 和 stdout 是不同 fd)；`telnet_mode` 区分 TCP 和 POSIX 行结束符；256 字节 line_buf 栈分配，零堆。
 
 ### 3.4 ShellPrintf: thread-local 会话路由
 
-命令回调只调 `ShellPrintf(fmt, ...)`, 不关心底层后端:
+命令回调只调 `ShellPrintf(fmt, ...)`，不关心底层后端:
 
 ```cpp
 inline int ShellPrintf(const char* fmt, ...) {
@@ -148,7 +148,7 @@ inline int ShellPrintf(const char* fmt, ...) {
 }
 ```
 
-每个会话运行在独立线程, `CurrentSession()` 返回 thread-local 指针, 天然隔离, 无需传参或全局锁. 命令执行前设置指针, 执行后清空:
+每个会话运行在独立线程，`CurrentSession()` 返回 thread-local 指针，天然隔离，无需传参或全局锁。命令执行前设置指针，执行后清空:
 
 ```
 cmd->func(argc, argv)
@@ -161,9 +161,9 @@ cmd->func(argc, argv)
 
 | 后端 | 场景 | 线程 | 堆 | 特性 |
 |------|------|------|-----|------|
-| `DebugShell` | 实验室 TCP telnet | 1 accept + N session | ~4KB | IAC 协议, 可选认证, 多连接 |
-| `ConsoleShell` | SSH 远程, 无 telnet | 1 | 0 | termios raw mode, 管道测试 |
-| `UartShell` | 早期硬件调试, 现场 | 1 | 0 | cfmakeraw, 支持 9600~921600 |
+| `DebugShell` | 实验室 TCP telnet | 1 accept + N session | ~4KB | IAC 协议，可选认证，多连接 |
+| `ConsoleShell` | SSH 远程，无 telnet | 1 | 0 | termios raw mode，管道测试 |
+| `UartShell` | 早期硬件调试，现场 | 1 | 0 | cfmakeraw，支持 9600~921600 |
 
 ```cpp
 // 实验室: telnet localhost 5090
@@ -221,11 +221,11 @@ void RegisterWatchdog(T& wd) {
 }
 ```
 
-`+cmd` 将无捕获 lambda 转为函数指针 (C++ 标准保证). `static` 确保对象指针在整个程序生命周期内有效, 且无堆分配.
+`+cmd` 将无捕获 lambda 转为函数指针 (C++ 标准保证)。 `static` 确保对象指针在整个程序生命周期内有效，且无堆分配。
 
 ### 4.2 子命令分发: ShellDispatch
 
-当命令需要多个操作时 (如 `osp_bus status` 和 `osp_bus reset`), 手工解析 argv 容易出错且重复. ShellDispatch 参考 TCLAP 思想, 用声明式子命令表实现分发:
+当命令需要多个操作时 (如 `osp_bus status` 和 `osp_bus reset`)，手工解析 argv 容易出错且重复。 ShellDispatch 参考 TCLAP 思想，用声明式子命令表实现分发:
 
 ```cpp
 struct ShellSubCmd {
@@ -241,9 +241,9 @@ int ShellDispatch(int argc, char* argv[],
 ```
 
 行为:
-- **无子命令** (`argc <= 1`): 调用 `default_fn` (保持向后兼容), 若为 nullptr 则打印帮助
+- **无子命令** (`argc <= 1`): 调用 `default_fn` (保持向后兼容)，若为 nullptr 则打印帮助
 - **`help`**: 自动生成格式化帮助表
-- **匹配子命令**: 调用 `handler(argc-1, argv+1)` (argv 左移, 子命令名变 argv[0])
+- **匹配子命令**: 调用 `handler(argc-1, argv+1)` (argv 左移，子命令名变 argv[0])
 - **未匹配**: 打印错误提示
 
 使用示例:
@@ -275,7 +275,7 @@ osp> osp_bus bogus        # Unknown subcommand: bogus (try 'osp_bus help')
 
 ### 4.3 类型安全参数解析
 
-命令参数作为 `char*` 传入, 直接 `atoi` 不安全 (undefined behavior on overflow). Shell 提供三个解析函数, 返回 `optional`:
+命令参数作为 `char*` 传入，直接 `atoi` 不安全 (undefined behavior on overflow)。 Shell 提供三个解析函数，返回 `optional`:
 
 ```cpp
 [[nodiscard]] optional<int32_t>  ShellParseInt(const char* str) noexcept;
@@ -283,8 +283,8 @@ osp> osp_bus bogus        # Unknown subcommand: bogus (try 'osp_bus help')
 [[nodiscard]] optional<bool>     ShellParseBool(const char* str) noexcept;
 ```
 
-- `ShellParseInt`: `strtol` base 10, 拒绝 null / 空串 / 尾部垃圾 / 溢出
-- `ShellParseUint`: `strtoul`, 额外拒绝前导 `-`
+- `ShellParseInt`: `strtol` base 10，拒绝 null / 空串 / 尾部垃圾 / 溢出
+- `ShellParseUint`: `strtoul`，额外拒绝前导 `-`
 - `ShellParseBool`: 大小写无关匹配 `true/1/yes/on` 和 `false/0/no/off`
 
 使用示例:
@@ -315,10 +315,10 @@ if (!num.has_value() || num.value() > 5U) {
 
 | 需求 | 传统做法 | 问题 |
 |------|---------|------|
-| **查状态** (只读) | 诊断命令打印统计 | 已解决, 14 个诊断命令覆盖 |
-| **改行为** (可控) | 重新编译 + 烧录 + 重启 | 现场调试无法重编译, 修改一个日志级别要停机 |
+| **查状态** (只读) | 诊断命令打印统计 | 已解决，14 个诊断命令覆盖 |
+| **改行为** (可控) | 重新编译 + 烧录 + 重启 | 现场调试无法重编译，修改一个日志级别要停机 |
 
-Shell 的控制命令解决第二类需求: 在运行时动态调整系统行为, **仅修改内存, 重启恢复原值**, 适合现场调试和问题排查.
+Shell 的控制命令解决第二类需求: 在运行时动态调整系统行为, **仅修改内存，重启恢复原值**, 适合现场调试和问题排查。
 
 ### 5.2 osp_log: 日志级别控制
 
@@ -403,7 +403,7 @@ class ConfigStore {
 };
 ```
 
-**仅修改内存**: `SetString` 不触发文件写入, 重启后丢失. 这是有意的设计 -- 现场调试改配置不应永久影响设备.
+**仅修改内存**: `SetString` 不触发文件写入，重启后丢失。这是有意的设计，现场调试改配置不应永久影响设备。
 
 ### 5.4 osp_bus: 统计重置
 
@@ -418,7 +418,7 @@ osp> osp_bus reset
 [osp_bus] Statistics reset.
 ```
 
-向后兼容: 无参数调用仍显示统计 (通过 `default_fn = show_status`).
+向后兼容: 无参数调用仍显示统计 (通过 `default_fn = show_status`)。
 
 ### 5.5 osp_lifecycle: 生命周期状态机转换
 
@@ -447,7 +447,7 @@ Unconfigured --configure--> Inactive --activate--> Active
      +--shutdown--> Finalized <------shutdown-------+
 ```
 
-实现使用 `expected<void, LifecycleError>` 返回值, 转换失败打印错误类型 (`InvalidTransition` / `CallbackFailed` / `AlreadyFinalized`):
+实现使用 `expected<void, LifecycleError>` 返回值，转换失败打印错误类型 (`InvalidTransition` / `CallbackFailed` / `AlreadyFinalized`):
 
 ```cpp
 static auto try_transition = [](const char* name,
@@ -466,7 +466,7 @@ static auto try_transition = [](const char* name,
 
 ## 6. 诊断命令
 
-14 个只读命令按架构层分组, 通过模板 Register 函数零侵入注册:
+14 个只读命令按架构层分组，通过模板 Register 函数零侵入注册:
 
 | 层 | 命令 | 输出内容 |
 |----|------|----------|
@@ -506,7 +506,7 @@ osp> osp_sysmon
 
 ## 7. 零侵入桥接模式
 
-`shell_commands.hpp` 的设计原则: 模块 (bus, watchdog, config...) 完全不知道 Shell 的存在. 桥接文件单向依赖:
+`shell_commands.hpp` 的设计原则: 模块 (bus, watchdog, config...) 完全不知道 Shell 的存在。桥接文件单向依赖:
 
 ```
 shell_commands.hpp ──include──> shell.hpp
@@ -515,7 +515,7 @@ shell_commands.hpp ──include──> shell.hpp
 bus.hpp ──X──> shell.hpp  (bus 不依赖 shell)
 ```
 
-不需要 Shell 的场景 (如 MCU 移植), 不 include shell_commands.hpp 即可, 零开销.
+不需要 Shell 的场景 (如 MCU 移植)，不 include shell_commands.hpp 即可，零开销。
 
 注册实现模式:
 
@@ -660,21 +660,21 @@ TEST_CASE("osp_log level debug sets DEBUG") {
 | 18 个命令回调 | ~150 B | 0 | 0 | 静态局部变量 |
 | ShellDispatch 子命令表 | 静态 | 0 | 0 | const 数组 |
 
-ConsoleShell/UartShell 比 DebugShell 少 ~4KB 堆和 2 个线程, 适合资源受限场景.
+ConsoleShell/UartShell 比 DebugShell 少 ~4KB 堆和 2 个线程，适合资源受限场景。
 
 ---
 
 ## 10. 经验总结
 
-1. **函数指针是嵌入式 I/O 抽象的最佳平衡点**. 比虚基类轻量, 比模板灵活, 对非热路径场景足够
+1. **函数指针是嵌入式 I/O 抽象的最佳平衡点**. 比虚基类轻量，比模板灵活，对非热路径场景足够
 
-2. **thread-local 是 Shell 会话路由的自然选择**. 每个会话独立线程, 天然隔离, 无需传参
+2. **thread-local 是 Shell 会话路由的自然选择**. 每个会话独立线程，天然隔离，无需传参
 
-3. **子命令分发要带 default_fn**. `osp_bus` 无参数时仍显示统计, 与升级前行为一致, 用户无感知升级
+3. **子命令分发要带 default_fn**. `osp_bus` 无参数时仍显示统计，与升级前行为一致，用户无感知升级
 
-4. **运行时修改仅限内存**. 现场调试改配置/日志级别不应永久影响设备, 重启恢复原值是刻意的安全边界
+4. **运行时修改仅限内存**. 现场调试改配置/日志级别不应永久影响设备，重启恢复原值是刻意的安全边界
 
-5. **零侵入桥接优于修改模块接口**. 模块不知道 Shell 存在, 不需要 Shell 时零开销, 移植到无 Shell 平台零改动
+5. **零侵入桥接优于修改模块接口**. 模块不知道 Shell 存在，不需要 Shell 时零开销，移植到无 Shell 平台零改动
 
 6. **pipe(2) 和 openpty() 是测试 I/O 的利器**. 不需要物理硬件也能测试完整的 Shell 交互流程
 

@@ -10,15 +10,15 @@ TocOpen: true
 ---
 
 > 相关文章:
-> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- 预分配环形缓冲的完整设计
-> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- MPSC/SPSC 原理
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- 零堆分配流水线
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，预分配环形缓冲的完整设计
+> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，MPSC/SPSC 原理
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，零堆分配流水线
 >
 > CSDN 原文: [嵌入式 C++ 对象池优化串口数据解析性能](https://blog.csdn.net/stallion5632/article/details/140674036)
 
 ## 1. 问题: 串口解析的 malloc 瓶颈
 
-在一个 ARM Cortex-A72 (1.5GHz) 的工业网关项目中，`perf` 火焰图显示串口数据解析函数占用了过多 CPU。瓶颈不在解析算法本身，而在 `ProtocolParse` 对象的频繁创建和销毁 -- 每收到一帧数据就 `new` 一个解析器，处理完毕 `delete`，10kHz 采样率意味着每秒 10000 次堆操作。
+在一个 ARM Cortex-A72 (1.5GHz) 的工业网关项目中，`perf` 火焰图显示串口数据解析函数占用了过多 CPU。瓶颈不在解析算法本身，而在 `ProtocolParse` 对象的频繁创建和销毁，每收到一帧数据就 `new` 一个解析器，处理完毕 `delete`，10kHz 采样率意味着每秒 10000 次堆操作。
 
 对象池是解决这个问题的自然选择: 预分配一批解析器对象，用时取出，用完归还，避免反复 malloc/free。
 
@@ -57,7 +57,7 @@ private:
 
 ### 2.2 效果
 
-将串口解析改为对象池后，100 万次解析的耗时从 ~1.2s 降至 ~0.5s，**提升约 60%**。对象池确实有效 -- 它消除了绝大多数 malloc/free 调用，减少了内存碎片，降低了分配器锁竞争。
+将串口解析改为对象池后，100 万次解析的耗时从 ~1.2s 降至 ~0.5s，**提升约 60%**。对象池确实有效，它消除了绝大多数 malloc/free 调用，减少了内存碎片，降低了分配器锁竞争。
 
 对于桌面应用或后端服务，这个优化幅度通常已经足够。但在嵌入式实时系统中，"快了 60%"不是终点，因为对象池引入了三项新的隐性成本。
 
@@ -125,7 +125,7 @@ std::queue<std::shared_ptr<T>> pool_;  // 底层是 std::deque
 - 环形缓冲消除了引用计数和动态增长
 - variant 消息总线将类型路由也纳入编译期
 
-对象池处于这个递进链的第二级 -- **比裸 malloc 好，但距离嵌入式热路径的要求还有三步**。
+对象池处于这个递进链的第二级，**比裸 malloc 好，但距离嵌入式热路径的要求还有三步**。
 
 ## 5. 何时该用对象池
 
@@ -146,11 +146,11 @@ std::queue<std::shared_ptr<T>> pool_;  // 底层是 std::deque
 
 对象池是"减少 malloc"这条路上的第一个路标。它解决了最显眼的问题 (频繁堆分配)，但引入了三个更隐蔽的成本 (mutex 同步、原子引用计数、内存增长不可控)。在桌面和后端场景中，这三项成本通常可以接受；在嵌入式实时热路径上，它们是下一个需要消除的瓶颈。
 
-从对象池继续优化的方向是明确的: 用 CAS 或 wait-free 替代 mutex，用值语义替代引用计数，用固定数组替代动态容器。最终到达预分配环形缓冲和 variant 消息总线 -- 编译期确定全部资源，运行时零 malloc，最坏延迟 O(1)。
+从对象池继续优化的方向是明确的: 用 CAS 或 wait-free 替代 mutex，用值语义替代引用计数，用固定数组替代动态容器。最终到达预分配环形缓冲和 variant 消息总线，编译期确定全部资源，运行时零 malloc，最坏延迟 O(1)。
 
 ## 参考资料
 
-1. [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- wait-free 环形缓冲的完整工程设计
-2. [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- variant 值语义 + 零堆分配流水线
-3. [嵌入式 C++ 对象池优化串口数据解析性能](https://blog.csdn.net/stallion5632/article/details/140674036) -- 本文改进的原始方案
-4. [使用 perf 查看热点函数](https://blog.csdn.net/stallion5632/article/details/138562957) -- perf 火焰图分析方法
+1. [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，wait-free 环形缓冲的完整工程设计
+2. [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，variant 值语义 + 零堆分配流水线
+3. [嵌入式 C++ 对象池优化串口数据解析性能](https://blog.csdn.net/stallion5632/article/details/140674036)，本文改进的原始方案
+4. [使用 perf 查看热点函数](https://blog.csdn.net/stallion5632/article/details/138562957)，perf 火焰图分析方法

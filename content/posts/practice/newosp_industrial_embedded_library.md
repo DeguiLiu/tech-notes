@@ -15,7 +15,7 @@ TocOpen: true
 
 ROS2 太重，对资源受限的嵌入式 Linux 平台不友好；自研框架又容易陷入"只有作者能维护"的困境。于是我决定把这些年积累的基础设施抽象出来，做成一个轻量、可组合、经过充分测试的 C++17 库。
 
-这就是 [newosp](https://github.com/DeguiLiu/newosp) -- 一个面向工业嵌入式系统（激光雷达、机器人、边缘计算）的纯头文件基础设施库。
+这就是 [newosp](https://github.com/DeguiLiu/newosp)，一个面向工业嵌入式系统（激光雷达、机器人、边缘计算）的纯头文件基础设施库。
 
 项目地址: [https://github.com/DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)
 
@@ -174,7 +174,7 @@ Alive (root)
 
 这是最复杂的一个示例，集成了 12 个 newosp 组件，模拟了一个完整的工业串口 OTA 固件升级流程。
 
-**场景**: 主机通过串口向设备推送固件，支持分块传输、CRC 校验、NAK 重传、超时恢复。
+场景：主机通过串口向设备推送固件，支持分块传输、CRC 校验、NAK 重传、超时恢复。
 
 **架构**:
 - `protocol.hpp`: 定义帧格式（0xAA 帧头 / 0x55 帧尾）、CRC-CCITT constexpr 查表、OTA 命令集

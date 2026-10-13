@@ -11,13 +11,13 @@ TocOpen: true
 
 >
 > 相关文章:
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- MCCC 的 C++17 演进: newosp AsyncBus
-> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- MPSC 无锁队列的理论基础
-> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- 底层环形缓冲区的设计详解
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，MCCC 的 C++17 演进: newosp AsyncBus
+> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，MPSC 无锁队列的理论基础
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，底层环形缓冲区的设计详解
 >
-> 配套代码: [mccc-message-cpp](https://gitee.com/liudegui/mccc-message-cpp) -- C++17 实现，8 个 Catch2 测试，ASan+UBSan clean
+> 配套代码: [mccc-message-cpp](https://gitee.com/liudegui/mccc-message-cpp)，C++17 实现，8 个 Catch2 测试，ASan+UBSan clean
 >
-> 依赖库: [mccc-bus](https://gitee.com/liudegui/mccc-bus) -- 无锁 MPSC 消息总线，171 个单元测试
+> 依赖库: [mccc-bus](https://gitee.com/liudegui/mccc-bus)，无锁 MPSC 消息总线，171 个单元测试
 
 ## 1. 问题回顾：为什么需要 SendMessage / PostMessage
 
@@ -179,7 +179,7 @@ using MsgBus = mccc::AsyncBus<MsgPayload>;
 
 两种消息类型通过 `std::variant` 区分，编译期确定类型索引，分发无需运行时 switch。
 
-### 4.2 ResponsePool -- 零堆分配的同步响应机制
+### 4.2 ResponsePool：零堆分配的同步响应机制
 
 MCCC 是纯异步总线（fire-and-forget），不提供内建的请求-应答模式。为实现 `SendMessage` 的同步语义，需要一个响应通道。
 
@@ -460,10 +460,10 @@ Producer                       Consumer
 
 关键开销点：
 
-1. `mutex.lock()` / `unlock()` -- 2 次系统调用（futex）
-2. `cv.notify_one()` -- 唤醒阻塞线程（上下文切换）
-3. `priority_queue.push()` -- O(log n) 堆调整
-4. `promise.set_value()` -- 内部包含 mutex + cv
+1. `mutex.lock()` / `unlock()`，2 次系统调用（futex）
+2. `cv.notify_one()`，唤醒阻塞线程（上下文切换）
+3. `priority_queue.push()`，O(log n) 堆调整
+4. `promise.set_value()`，内部包含 mutex + cv
 
 ### 6.2 MCCC 方案的数据流
 
@@ -484,9 +484,9 @@ Producer                       Consumer
 
 关键优势：
 
-1. CAS 入队 -- 无系统调用，无上下文切换
-2. `ProcessBatch()` -- 批量处理最多 1024 条，摊薄开销
-3. `ResponseSlot` -- 纯原子操作，无 mutex/cv 开销
+1. CAS 入队，无系统调用，无上下文切换
+2. `ProcessBatch()`，批量处理最多 1024 条，摊薄开销
+3. `ResponseSlot`，纯原子操作，无 mutex/cv 开销
 
 ## 7. 测试验证
 

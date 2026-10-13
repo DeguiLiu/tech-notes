@@ -14,13 +14,13 @@ TocOpen: true
 > 本文基于 newosp v0.2.0，1114 test cases (26085 assertions)，ASan/TSan/UBSan 全部通过。
 >
 > 相关文章:
-> - [嵌入式并发的第四条路: 为什么多线程、协程和 epoll 都不够用](/tech-notes/posts/architecture/newosp_concurrency_io_architecture/) -- 三条并发路径的局限与事件驱动方案
-> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- AsyncBus 底层的无锁原理
-> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- newosp SPSC 的逐行代码分析
-> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/) -- ShmRingBuffer 的工程实践
-> - [newosp ospgen: YAML 驱动的 C++17 零堆消息代码生成](/tech-notes/posts/practice/newosp_ospgen_codegen/) -- Bus/Node 消息类型的自动生成
-> - [C 语言层次状态机框架: 从过程驱动到数据驱动](/tech-notes/posts/pattern/c_hsm_data_driven_framework/) -- C 语言 HSM 的演进路径
-> - [嵌入式线程间消息传递重构: MCCC 无锁消息总线](/tech-notes/posts/performance/mccc_message_passing/) -- newosp AsyncBus 的前身 MCCC
+> - [嵌入式并发的第四条路: 为什么多线程、协程和 epoll 都不够用](/tech-notes/posts/architecture/newosp_concurrency_io_architecture/)，三条并发路径的局限与事件驱动方案
+> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，AsyncBus 底层的无锁原理
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，newosp SPSC 的逐行代码分析
+> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/)，ShmRingBuffer 的工程实践
+> - [newosp ospgen: YAML 驱动的 C++17 零堆消息代码生成](/tech-notes/posts/practice/newosp_ospgen_codegen/)，Bus/Node 消息类型的自动生成
+> - [C 语言层次状态机框架: 从过程驱动到数据驱动](/tech-notes/posts/pattern/c_hsm_data_driven_framework/)，C 语言 HSM 的演进路径
+> - [嵌入式线程间消息传递重构: MCCC 无锁消息总线](/tech-notes/posts/performance/mccc_message_passing/)，newosp AsyncBus 的前身 MCCC
 >
 > CSDN 原文: [newosp 深度解析: C++17 事件驱动架构](https://blog.csdn.net/stallion5632)
 
@@ -98,7 +98,7 @@ static_assert(std::is_trivially_copyable_v<RawFrame>);
 static_assert(std::is_trivially_copyable_v<ComputedFrame>);
 ```
 
-**为什么用 variant 值语义而不是 `shared_ptr`**: `shared_ptr<Frame>` 的 control block 需要堆分配，引用计数的原子操作在 ARM 上也有可观开销。variant 将帧数据 (固定大小 POD) 直接嵌入 Bus 的 Envelope 中，一次 `memcpy` 完成发布，`sizeof` 编译期确定。
+**variant 值语义与 `shared_ptr` 的取舍**: `shared_ptr<Frame>` 的 control block 需要堆分配，引用计数的原子操作在 ARM 上也有可观开销。variant 将帧数据 (固定大小 POD) 直接嵌入 Bus 的 Envelope 中，一次 `memcpy` 完成发布，`sizeof` 编译期确定。
 
 ### 2.3 流水线装配
 
@@ -242,7 +242,7 @@ newosp 提供两种消费模式:
 
 StaticNode 的 Handler 在编译期确定，编译器为每个 variant alternative 生成直接调用，无 FixedFunction 间接调用、无 SharedSpinLock、无回调表遍历。流水线的 5 个处理阶段全部使用 StaticNode。
 
-**FixedFunction**: 需要运行时动态订阅的场景使用 Node 模式，回调存储在 `FixedFunction<void(const Envelope&), 32>` 中 -- 32 字节 SBO 缓冲，编译期 `static_assert` 拒绝超限 lambda，**杜绝 `std::function` 的隐式堆分配**。
+**FixedFunction**: 需要运行时动态订阅的场景使用 Node 模式，回调存储在 `FixedFunction<void(const Envelope&), 32>` 中，32 字节 SBO 缓冲，编译期 `static_assert` 拒绝超限 lambda，**杜绝 `std::function` 的隐式堆分配**。
 
 ## 4. HSM: 采集阶段的状态管理
 
@@ -515,7 +515,7 @@ newosp 核心模块保持 POSIX API 边界清晰:
 
 ## 参考资料
 
-1. [newosp GitHub 仓库](https://github.com/DeguiLiu/newosp) -- C++17 header-only 嵌入式基础设施库
+1. [newosp GitHub 仓库](https://github.com/DeguiLiu/newosp)，C++17 header-only 嵌入式基础设施库
 2. [ROS2 Lifecycle Node Design](https://design.ros2.org/articles/node_lifecycle.html)
 3. [事件驱动架构的嵌入式激光雷达点云数据处理](https://blog.csdn.net/stallion5632/article/details/150624229)
 4. Miro Samek, *Practical UML Statecharts in C/C++*, 2nd Edition

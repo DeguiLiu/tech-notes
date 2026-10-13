@@ -52,9 +52,9 @@ void DispatchMessage(const EnvelopeType& envelope) noexcept {
 
 优化前需要先分类。嵌入式系统中的回调场景可以分为两大类：
 
-**编译期确定的分发** -- 传感器数据总是交给同一个处理函数，电机指令总是交给同一个执行器。`std::function` 的运行时灵活性完全多余，可以用模板参数 / CRTP / `std::visit` 替代，实现零开销。
+**编译期确定的分发**：传感器数据总是交给同一个处理函数，电机指令总是交给同一个执行器。`std::function` 的运行时灵活性完全多余，可以用模板参数 / CRTP / `std::visit` 替代，实现零开销。
 
-**运行时动态注册** -- 订阅关系在运行时变化，或回调跨编译单元/动态库边界传递。类型擦除不可避免，但可以用更轻量的手段（`FixedFunction` 或 `void(*)(void*, const T&)`）替代 `std::function`。
+**运行时动态注册**：订阅关系在运行时变化，或回调跨编译单元/动态库边界传递。类型擦除不可避免，但可以用更轻量的手段（`FixedFunction` 或 `void(*)(void*, const T&)`）替代 `std::function`。
 
 判断矩阵：
 
@@ -124,7 +124,7 @@ while (running) {
 
 ## 优化 2: CRTP 静态组件
 
-许多消息总线的 `Component` 基类使用 `shared_from_this()` + `weak_ptr` 保护回调生命周期，避免 use-after-free。代价是每次分发都要付出多层间接调用：
+许多消息总线的 `Component` 基类使用 `shared_from_this()` + `weak_ptr` 保护回调生命周期，避免 use-after-free。但每次分发都要付出多层间接调用：
 
 ```
 std::function::operator()          <- 间接调用 (不可内联)

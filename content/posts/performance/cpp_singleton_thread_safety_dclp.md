@@ -10,8 +10,8 @@ TocOpen: true
 ---
 
 > 相关文章:
-> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](/tech-notes/posts/performance/memory_barrier_hardware/) -- DCLP 失败的硬件根因 (Store Buffer 导致的写入重排)
-> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- acquire/release 内存序的完整理论
+> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](/tech-notes/posts/performance/memory_barrier_hardware/)，DCLP 失败的硬件根因 (Store Buffer 导致的写入重排)
+> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，acquire/release 内存序的完整理论
 >
 >
 > 核心参考: [Double-Checked Locking is Fixed In C++11](https://preshing.com/20130930/double-checked-locking-is-fixed-in-cpp11/) (Jeff Preshing)
@@ -118,7 +118,7 @@ private:
 };
 ```
 
-**编译器实现细节**: GCC 和 Clang 内部使用 guard 变量 + `__cxa_guard_acquire`/`__cxa_guard_release` 实现，本质上就是编译器替你写了正确的 DCLP。在 ARM 上，GCC 甚至利用数据依赖省略了 acquire fence (`dmb` 指令)，生成的代码比手写 DCLP 更高效。
+**编译器实现细节**: GCC 和 Clang 内部使用 guard 变量 + `__cxa_guard_acquire`/`__cxa_guard_release` 实现，等于编译器替你写了正确的 DCLP。在 ARM 上，GCC 甚至利用数据依赖省略了 acquire fence (`dmb` 指令)，生成的代码比手写 DCLP 更高效。
 
 **优点:**
 - 代码最简洁
@@ -460,10 +460,10 @@ int main() {
 
 **推荐:**
 
-1. **默认选择 Magic Statics** -- 简洁、正确、零动态分配、MISRA 合规
-2. **需要控制销毁顺序时**用 acquire/release DCLP -- 理解内存序是前提
-3. **不确定时用 seq_cst** -- 性能代价在单例场景中可忽略，正确性更重要
-4. **考虑是否真的需要单例** -- 依赖注入通常是更好的设计
+1. **默认选择 Magic Statics**，简洁、正确、零动态分配、MISRA 合规
+2. **需要控制销毁顺序时**用 acquire/release DCLP，理解内存序是前提
+3. **不确定时用 seq_cst**，性能代价在单例场景中可忽略，正确性更重要
+4. **考虑是否真的需要单例**，依赖注入通常是更好的设计
 
 ## 参考文献
 
@@ -471,5 +471,5 @@ int main() {
 2. Jeff Preshing, [*Double-Checked Locking is Fixed In C++11*](https://preshing.com/20130930/double-checked-locking-is-fixed-in-cpp11/), 2013
 3. StackOverflow, [*Is implementation of double-checked singleton thread-safe?*](https://stackoverflow.com/questions/43292897/is-implementation-of-double-checked-singleton-thread-safe)
 4. Herb Sutter, [*atomic<> Weapons*](https://herbsutter.com/2013/02/11/atomic-weapons-the-c-memory-model-and-modern-hardware/), 2013
-5. ISO/IEC 14882:2011 (C++11), [stmt.dcl] p4 -- 静态局部变量并发初始化保证
+5. ISO/IEC 14882:2011 (C++11), [stmt.dcl] p4，静态局部变量并发初始化保证
 6. [*Double-Checked Locking Is Broken*](https://www.cs.umd.edu/~pugh/java/memoryModel/DoubleCheckedLocking.html), Bill Pugh et al., 2000

@@ -9,21 +9,21 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 配套代码: [liudegui/ringbuffer](https://gitee.com/liudegui/ringbuffer) -- header-only C++14 SPSC 环形缓冲区，Catch2 测试，ASan/UBSan/TSan clean
+> 配套代码: [liudegui/ringbuffer](https://gitee.com/liudegui/ringbuffer)，header-only C++14 SPSC 环形缓冲区，Catch2 测试，ASan/UBSan/TSan clean
 >
 > 相关文章:
-> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](/tech-notes/posts/performance/memory_barrier_hardware/) -- acquire/release 背后的硬件机制
-> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- SPSC/MPSC/MPMC 的理论基础与对比
-> - [无锁异步日志设计: Per-Thread SPSC](/tech-notes/posts/performance/lockfree_async_log/) -- SPSC 在日志系统中的工程应用
-> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/) -- 跨进程场景的 SPSC Ring Buffer
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- SPSC 在 newosp 消息总线中的角色
+> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](/tech-notes/posts/performance/memory_barrier_hardware/)，acquire/release 背后的硬件机制
+> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，SPSC/MPSC/MPMC 的理论基础与对比
+> - [无锁异步日志设计: Per-Thread SPSC](/tech-notes/posts/performance/lockfree_async_log/)，SPSC 在日志系统中的工程应用
+> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/)，跨进程场景的 SPSC Ring Buffer
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，SPSC 在 newosp 消息总线中的角色
 >
 > 参考:
-> - 原始实现: [jnk0le/Ring-Buffer](https://github.com/jnk0le/Ring-Buffer) -- 本项目在其基础上修正了所有权违反、冗余屏障等问题
+> - 原始实现: [jnk0le/Ring-Buffer](https://github.com/jnk0le/Ring-Buffer)，本项目在其基础上修正了所有权违反、冗余屏障等问题
 > - CSDN 原文: [C++ 无锁环形队列 (LockFreeRingQueue) 的简单实现、测试和分析](https://blog.csdn.net/stallion5632/article/details/139755553)
 > - CSDN 原文: [嵌入式 ARM Linux 平台高性能无锁异步日志系统设计与实现](https://blog.csdn.net/stallion5632/article/details/143567510)
 
-## 1. 为什么是 SPSC 而不是 MPMC
+## 1. SPSC 与 MPMC 的取舍
 
 在嵌入式系统中，环形缓冲区是最基础的数据结构之一。笔者之前在 CSDN 上发布过一个基于 CAS 的 MPMC（多生产者多消费者）无锁队列 `LockFreeRingQueue`，它的核心入队逻辑如下：
 
@@ -58,11 +58,11 @@ bool Enqueue(const T& data) {
 
 对这些场景，MPMC 的 CAS 竞争是不必要的开销。SPSC 可以做到 **wait-free**（最坏情况也是 O(1)），而 MPMC 只能做到 **lock-free**（全局保证进展，但单个线程可能饿死）。
 
-这就是 [liudegui/ringbuffer](https://gitee.com/liudegui/ringbuffer) 的出发点：**为单生产者单消费者场景提供最优解，而不是为通用场景提供折中方案**。
+这就是 [liudegui/ringbuffer](https://gitee.com/liudegui/ringbuffer) 的出发点：**为单生产者单消费者场景提供最优解，不为通用场景做折中**。
 
 ## 2. 为什么不用对象池
 
-避免热路径上 `malloc`/`free` 的第一反应通常是对象池 -- 预分配一批对象，`acquire()` 取出，用完 `release()` 归还：
+避免热路径上 `malloc`/`free` 的第一反应通常是对象池，预分配一批对象，`acquire()` 取出，用完 `release()` 归还：
 
 ```cpp
 template<typename T>
@@ -409,7 +409,7 @@ static constexpr std::memory_order ReleaseOrder() noexcept {
 
 ### 8.2 为什么叫 FakeTSO
 
-TSO（Total Store Order）是 x86 的内存模型，在 TSO 下 acquire-load 和 release-store 不需要额外屏障（硬件保证）。`FakeTSO` 的含义是「**假装我们运行在 TSO 架构上**」——在单核 MCU 上这是安全的，因为没有第二个 CPU 核心能观察到重排。
+TSO（Total Store Order）是 x86 的内存模型，在 TSO 下 acquire-load 和 release-store 不需要额外屏障（硬件保证）。`FakeTSO` 的含义是「**假装我们运行在 TSO 架构上**」：在单核 MCU 上这是安全的，因为没有第二个 CPU 核心能观察到重排。
 
 ### 8.3 安全边界
 
@@ -551,7 +551,7 @@ void ConsumerClear() noexcept {
 2. Clear 之后的下一次 Push/Pop 会用 acquire/release 重新建立同步关系
 3. Clear 通常在系统初始化或错误恢复路径调用，不在热路径
 
-## 11. PushFromCallback -- 延迟构造
+## 11. PushFromCallback：延迟构造
 
 ```cpp
 template <typename Callable>
@@ -647,7 +647,7 @@ Address   Content              Size    Cache Line
 | 数据拷贝 | 逐元素赋值 | `memcpy` 批量 |
 | 适用场景 | 多个生产者/消费者 | 严格一对一 |
 
-**选择原则**：如果你的场景是严格的单生产者单消费者（绝大多数嵌入式数据通道），使用 SPSC。MPMC 的通用性是以性能为代价的。
+选择原则：如果你的场景是严格的单生产者单消费者（绝大多数嵌入式数据通道），使用 SPSC。MPMC 的通用性是以性能为代价的。
 
 ## 15. 在实际项目中的应用
 

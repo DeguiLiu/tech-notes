@@ -9,13 +9,13 @@ ShowToc: true
 TocOpen: true
 ---
 
-在 nginx 框架内直接完成 RTMP 到 WebRTC 的转换，不引入 SRS 这类独立 RTC 服务，端到端实测首包约 560 ms，延迟从 RTMP/HLS 的 1 到 10 秒降到 0.5 秒以内；视频 H264 761 包、362 KB，音频 Opus 389 包、67 KB，全链路可达。方案与实现开源：模块代码 [github.com/DeguiLiu/nginx-rtc-module](https://github.com/DeguiLiu/nginx-rtc-module)（纯 C，MIT），部署与示例 [github.com/DeguiLiu/nginx-rtc-example](https://github.com/DeguiLiu/nginx-rtc-example)。
+在 nginx 框架内直接完成 RTMP 到 WebRTC 的转换，不引入 SRS 这样的独立 RTC 服务，端到端实测首包约 560 ms，延迟从 RTMP/HLS 的 1 到 10 秒降到 0.5 秒以内；视频 H264 761 包、362 KB，音频 Opus 389 包、67 KB，全链路可达。方案与实现开源：模块代码 [github.com/DeguiLiu/nginx-rtc-module](https://github.com/DeguiLiu/nginx-rtc-module)（纯 C，MIT），部署与示例 [github.com/DeguiLiu/nginx-rtc-example](https://github.com/DeguiLiu/nginx-rtc-example)。
 
 ## 延迟卡在 TCP 上
 
 问题归结为两点：TCP 的重传与队头阻塞决定了延迟下界；客户端缓存决定了保密性上限。直播分发最常见的组合是 Nginx-rtmp 模块（支持 RTMP、HLS）和它的扩展 Nginx-http-flv-module，三条链路都绕不开码流走 TCP 这个前提。
 
-RTMP 是 Adobe 为 Flash 平台设计的应用层协议，靠 TCP 保证可靠传输，局域网内延迟一般在 1 到 3 秒；主流浏览器早已放弃 Flash，iOS 端还需要第三方解码器。HLS 走 HTTP/80，穿透防火墙没问题，但服务端要把流切成 ts 小文件、客户端按序播放，延迟普遍在 10 秒以上，还会产生海量小文件。Http-Flv 把 RTMP 码流重新封装成 HTTP 长连接流，浏览器免插件就能播，实时性与 RTMP 相当，本质上仍是 TCP，1 到 3 秒的瓶颈没有解决，且客户端本地会缓存流媒体资源，保密性差。
+RTMP 是 Adobe 为 Flash 平台设计的应用层协议，靠 TCP 保证可靠传输，局域网内延迟一般在 1 到 3 秒；主流浏览器早已放弃 Flash，iOS 端还需要第三方解码器。HLS 走 HTTP/80，穿透防火墙没问题，但服务端要把流切成 ts 小文件、客户端按序播放，延迟普遍在 10 秒以上，还会产生海量小文件。Http-Flv 把 RTMP 码流重新封装成 HTTP 长连接流，浏览器免插件就能播，实时性与 RTMP 相当，底子仍是 TCP，1 到 3 秒的瓶颈没有解决，且客户端本地会缓存流媒体资源，保密性差。
 
 两条典型链路的形态如下：
 
@@ -288,11 +288,11 @@ RTMP 推流是 TCP 可靠输入，播放端唯一能给出的反馈就是 RTCP�
 
 丢包恢复走发送侧 NACK：answer 声明 `a=rtcp-fb:102 nack` 与 `nack pli`，stream 模块解码 SRTCP，按 `media_ssrc` 过滤后从 ring 取包重传。两个容易忽略的点：音视频 seq 各自独立计数，重传缓存要么按媒体分环、要么按 ssrc 加 seq 双重匹配，否则会重传出错误流的数据；GOP 回放瞬间可突发上千包，socket 满时直接丢并计数，让客户端经 NACK/PLI 自行恢复，回放循环检测到发送失败即提前终止，避免冲击播放器的抖动缓冲区。
 
-TWCC、GCC、REMB 这类上行带宽估计在本场景不适用：单向播放没有上行媒体，服务端也没有可下调码率的编码器，明确不做。
+TWCC、GCC、REMB 这些上行带宽估计在本场景不适用：单向播放没有上行媒体，服务端也没有可下调码率的编码器，明确不做。
 
 ### 多 worker 与多分辨率
 
-**多 worker**：信令落在 worker A、UDP 落在 worker B 时，进程内注册表查不到 session。解法是把跨 worker 必需的身份信息（name、SSRC/PT、seq/ts、SPS/PPS、ufrag/pwd、就绪标志、owner worker）放进 `ngx_shm_zone` 加 `ngx_slab_pool`，媒体数据走 per-worker 环形队列，eventfd 在 master fork 前创建、所有 worker 继承后互相唤醒，owner worker 消费环并做 SRTP 加密发送。一条硬约束贯穿始终：DTLS/SRTP/转码器这类私有句柄绝不进 shm，共享结构只放可以 memcpy 进 slab 的字段。
+**多 worker**：信令落在 worker A、UDP 落在 worker B 时，进程内注册表查不到 session。解法是把跨 worker 必需的身份信息（name、SSRC/PT、seq/ts、SPS/PPS、ufrag/pwd、就绪标志、owner worker）放进 `ngx_shm_zone` 加 `ngx_slab_pool`，媒体数据走 per-worker 环形队列，eventfd 在 master fork 前创建、所有 worker 继承后互相唤醒，owner worker 消费环并做 SRTP 加密发送。一条硬约束贯穿始终：DTLS/SRTP/转码器这些私有句柄绝不进 shm，共享结构只放可以 memcpy 进 slab 的字段。
 
 **多分辨率**：模块内不引 x264（GPL 风险），转码档用一路外部 ffmpeg 级联完成：拉源流转 1080p/720p/540p/360p 四档推回服务器成独立流，每档独立鉴权，播放端改流名即可切档。x264 侧 `zerolatency + bf=0` 保证每一档都保持 WebRTC 可播的无 B 帧低延迟码流；`fps=30` 滤镜放在滤镜链首，否则 testsrc 源经转码后帧率会翻倍。
 

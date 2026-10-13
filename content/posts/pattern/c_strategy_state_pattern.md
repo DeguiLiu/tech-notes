@@ -9,7 +9,7 @@ ShowToc: true
 TocOpen: true
 ---
 
-在 C 语言中，策略模式和状态模式的实现代码高度相似 -- 都是"上下文持有函数指针表"。这种结构相似性常导致混淆: 既然代码一样，为什么要区分两种模式？
+在 C 语言中，策略模式和状态模式的实现代码高度相似，都是"上下文持有函数指针表"。这种结构相似性常导致混淆: 既然代码一样，为什么要区分两种模式？
 
 答案在于**谁控制切换、何时切换**。这个设计意图的差异决定了系统的架构走向。
 
@@ -142,7 +142,7 @@ static const filter_strategy_t g_median_strategy = {
 };
 ```
 
-使用方式 -- 调用方主动选择策略:
+使用方式，调用方主动选择策略:
 
 ```c
 static mean_state_t   s_mean_state;
@@ -360,7 +360,7 @@ static const comm_state_t st_error = {
 };
 ```
 
-使用方式 -- 外部只投递事件，不控制状态:
+使用方式，外部只投递事件，不控制状态:
 
 ```c
 comm_ctx_t comm = { .state = &st_disconnected };

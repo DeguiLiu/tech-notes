@@ -17,9 +17,9 @@ TocOpen: true
 - **安全启动**: 设备暴露在物理环境中，攻击者可能替换 Flash 中的固件。Bootloader 必须在加载应用前验证固件的完整性和真实性。
 - **版本管理**: 新固件上线后出现严重缺陷，必须能回滚到上一个已知稳定的版本。
 
-一级 Bootloader (通常固化在 ROM 或受保护的 Flash 区域) 功能极其有限 -- 它只做最基本的硬件初始化和镜像跳转。上述复杂功能需要一个功能更丰富的**二级 Bootloader (Secondary Bootloader, SBL)** 来承担。
+一级 Bootloader (通常固化在 ROM 或受保护的 Flash 区域) 功能极其有限，它只做最基本的硬件初始化和镜像跳转。上述复杂功能需要一个功能更丰富的**二级 Bootloader (Secondary Bootloader, SBL)** 来承担。
 
-SBL 运行在裸机环境下 (无 RTOS)，这意味着不能依赖操作系统的线程调度、互斥锁、消息队列。所有并发逻辑 -- 通信协议解析、固件写入、超时监控 -- 必须在一个主循环中用状态机协调完成。
+SBL 运行在裸机环境下 (无 RTOS)，这意味着不能依赖操作系统的线程调度、互斥锁、消息队列。所有并发逻辑，通信协议解析、固件写入、超时监控，必须在一个主循环中用状态机协调完成。
 
 ## 2. 系统架构
 
@@ -53,7 +53,7 @@ sequenceDiagram
     end
 ```
 
-- **一级 Bootloader**: 固化在受保护区域，职责最小化 -- 验证 SBL 镜像签名，通过则跳转，失败则进入安全模式。
+- **一级 Bootloader**: 固化在受保护区域，职责最小化，验证 SBL 镜像签名，通过则跳转，失败则进入安全模式。
 - **二级 Bootloader**: 本文的设计目标。裸机运行，承担 A/B 分区管理、固件更新、安全验证、通信协议处理。
 - **应用程序**: 启动后执行自检，成功则通知 SBL 清零启动计数器，为自动回滚机制提供依据。
 
@@ -190,7 +190,7 @@ stateDiagram-v2
 
 如果在步骤 1-3 的任意位置断电，下次启动时 SBL 读取 NVM 中的进度状态，从中断点继续执行。由于 Scratch 中始终保存着原 Active 分区的扇区数据，任何步骤的中断都不会导致数据丢失。
 
-这个方案的代价是: 更新耗时增加 (需要 3 倍的 Flash 操作量)，且需要额外的 Scratch 空间 (至少 1 个扇区大小)。对于 Flash 容量有限的 MCU，需要权衡是否值得。
+这个方案要多花两笔成本：更新耗时增加（需要 3 倍的 Flash 操作量），以及额外的 Scratch 空间（至少 1 个扇区大小）。对于 Flash 容量有限的 MCU，需要权衡是否值得。
 
 ### 3.4 自动回滚
 
@@ -280,7 +280,7 @@ struct image_tlv {
 #define IMAGE_TLV_DEPENDENCY    0x50   /* 依赖声明 (App 依赖某个 SBL 版本) */
 ```
 
-TLV 的扩展性体现在: 未来增加新的安全特性 (例如 AES-256 加密标志、多签名支持)，只需定义新的 TLV 类型，SBL 的解析代码不需要修改结构体 -- 遍历 TLV 链表时跳过不认识的类型即可。
+TLV 的扩展性体现在: 未来增加新的安全特性 (例如 AES-256 加密标志、多签名支持)，只需定义新的 TLV 类型，SBL 的解析代码不需要修改结构体，遍历 TLV 链表时跳过不认识的类型即可。
 
 ### 4.2 安全启动验证状态机
 
@@ -339,7 +339,7 @@ int sbl_verify_firmware_version(const struct image_header *header) {
 }
 ```
 
-新固件通过完整验证并成功启动后，SBL 将 `min_allowed_version` 更新为当前固件的版本号。此后，任何版本号更低的固件都无法通过验证 -- 即使攻击者获取了旧版本的签名固件。
+新固件通过完整验证并成功启动后，SBL 将 `min_allowed_version` 更新为当前固件的版本号。此后，任何版本号更低的固件都无法通过验证，即使攻击者获取了旧版本的签名固件。
 
 `min_allowed_version` 所在的 NVM 区域应配置硬件写保护 (如果 MCU 支持)，并附加 CRC 校验防止意外损坏。
 
@@ -528,9 +528,9 @@ void rb_parser_process(rb_parser_t *parser) {
 }
 ```
 
-**优点**: 实现简单直观，CPU 占用低 (主循环批量处理)，适合固定格式协议。
+优点：实现简单直观，CPU 占用低 (主循环批量处理)，适合固定格式协议。
 
-**缺点**: `memmove` 操作在每次丢弃字节时移动整个缓冲区；状态隐含在代码逻辑中，扩展复杂协议困难。
+缺点：`memmove` 操作在每次丢弃字节时移动整个缓冲区；状态隐含在代码逻辑中，扩展复杂协议困难。
 
 #### 方案二: 层次状态机 (HSM) 逐字节解析
 
@@ -596,9 +596,9 @@ void process_uart_events(void) {
 }
 ```
 
-**优点**: 状态转换显式声明 (数据驱动)，支持层次化复杂协议，自恢复能力强 (任何异常状态都有明确的回退路径)，便于单元测试。
+优点：状态转换显式声明 (数据驱动)，支持层次化复杂协议，自恢复能力强 (任何异常状态都有明确的回退路径)，便于单元测试。
 
-**缺点**: 实现复杂度高于滑窗方案，每个字节都触发一次状态机分发 (但在 Cortex-M 上开销约为微秒级，远低于 UART 字节间隔)。
+缺点：实现复杂度高于滑窗方案，每个字节都触发一次状态机分发 (但在 Cortex-M 上开销约为微秒级，远低于 UART 字节间隔)。
 
 #### 方案选择建议
 
@@ -775,11 +775,11 @@ HSM 的层次特性在 SBL 中的价值: 例如固件更新的所有子状态 (R
 
 **状态机 vs 简单流程**。状态机框架引入了学习成本和代码量。对于只有 3-4 个状态的简单协议，switch-case 可能更直接。但当业务复杂度增长 (多种帧格式、超时重传、会话管理)，状态机的结构优势会迅速体现。SBL 恰好处在这个复杂度拐点上。
 
-**复用 vs 重写**。复用主应用的 HAL 和驱动可以降低开发成本，但要注意 RTOS 兼容层的局限性 -- mutex 空操作意味着原代码中依赖锁保护的临界区失去了保护。需要逐一审查被复用代码的并发假设。
+**复用 vs 重写**。复用主应用的 HAL 和驱动可以降低开发成本，但要注意 RTOS 兼容层的局限性，mutex 空操作意味着原代码中依赖锁保护的临界区失去了保护。需要逐一审查被复用代码的并发假设。
 
-**TLV vs 固定格式**。TLV 的灵活性在 SBL 的长生命周期中非常有价值 -- 产品可能需要在不更换 SBL 的情况下支持新的安全特性。代价是解析代码略微复杂，但 TLV 遍历本身只是一个简单的循环。
+**TLV vs 固定格式**。TLV 的灵活性在 SBL 的长生命周期中很有价值：产品可能需要在不更换 SBL 的情况下支持新的安全特性。多出来的成本是解析代码略微复杂，但 TLV 遍历本身只是一个简单的循环。
 
 > 参考:
-> - [uart_statemachine_ringbuffer_linux](https://gitee.com/liudegui/uart_statemachine_ringbuffer_linux) -- UART 协议解析 Demo (Ring Buffer + HSM 两种方案)
-> - [state_machine](https://github.com/DeguiLiu/state_machine) -- 轻量层次状态机框架
-> - [MCUboot](https://github.com/mcu-tools/mcuboot) -- TLV 镜像格式参考
+> - [uart_statemachine_ringbuffer_linux](https://gitee.com/liudegui/uart_statemachine_ringbuffer_linux)，UART 协议解析 Demo (Ring Buffer + HSM 两种方案)
+> - [state_machine](https://github.com/DeguiLiu/state_machine)，轻量层次状态机框架
+> - [MCUboot](https://github.com/mcu-tools/mcuboot)，TLV 镜像格式参考

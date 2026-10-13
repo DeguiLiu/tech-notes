@@ -103,7 +103,7 @@ flowchart LR
     linkStyle default stroke:#7A8B99,stroke-width:2px
 ```
 
-一个重要的实现选择是**单编译单元**：ev.c 在编译期用 `#include` 把各个后端的 .c 文件内联进来，全部编译进同一个翻译单元。好处是编译器能看到全部代码，便于内联优化；代价是无法单独编译某个后端。编译期根据 `HAVE_SYS_EPOLL_H`、`HAVE_KQUEUE` 等宏决定启用哪些后端，运行期可以用 `ev_supported_backends()` 和 `ev_recommended_backends()` 查询。
+一个重要的实现选择是**单编译单元**：ev.c 在编译期用 `#include` 把各个后端的 .c 文件内联进来，全部编译进同一个翻译单元。好处是编译器能看到全部代码，便于内联优化，只是没法单独编译某个后端。编译期根据 `HAVE_SYS_EPOLL_H`、`HAVE_KQUEUE` 等宏决定启用哪些后端，运行期可以用 `ev_supported_backends()` 和 `ev_recommended_backends()` 查询。
 
 ### 2.2 核心数据结构
 
@@ -224,7 +224,7 @@ flowchart LR
 | B 类 | RT-Thread 设备 `rt_device_t` + 中断回调 | 需要 DFS fd 桥接，成本高 |
 | C 类 | 直接操作外设寄存器做同步握手（如 SPI slave 的 CS 中断 + master 轮询） | 没有可读 / 可写状态，无法映射 |
 
-凡是数据来源是「设备 + 中断」而不是 fd 的模块，引入 libev 都要先承担桥接的移植和验证成本。
+凡是数据来源是「设备 + 中断」、拿不到 fd 的模块，引入 libev 都要先承担桥接的移植和验证成本。
 
 ### 4.2 引入的代价与决策流程
 

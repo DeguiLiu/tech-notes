@@ -29,7 +29,7 @@ TocOpen: true
 
 ## 2. 架构设计
 
-ztask-cpp 保留了ztask原始算法的核心 -- 排序侵入式链表，但将运行时约束提升为编译期保证:
+ztask-cpp 保留了ztask原始算法的核心，排序侵入式链表，但将运行时约束提升为编译期保证:
 
 ```
                     C 版 ztask                          ztask-cpp
@@ -93,7 +93,7 @@ TaskSlot 内存布局 (32 字节 / 32-bit 平台):
 
 **为什么不用堆 (priority_queue)?**
 - `std::priority_queue` 底层是 `std::vector`，insert/extract 均 O(log n)
-- 隐含堆分配 -- 嵌入式环境不可接受
+- 隐含堆分配，嵌入式环境不可接受
 - 指针追踪导致 cache-unfriendly
 
 **为什么不用简单数组扫描?**
@@ -101,9 +101,9 @@ TaskSlot 内存布局 (32 字节 / 32-bit 平台):
 - 每次 poll 浪费 CPU 周期检查未就绪任务
 
 **排序侵入式链表的优势:**
-- 任务存储在定长数组中 -- cache-friendly，零分配
+- 任务存储在定长数组中，cache-friendly，零分配
 - 侵入式 `next_index` 按 `next_schedule` 升序链接
-- head 始终指向最早到期任务 -- poll 仅检查 head，O(1)
+- head 始终指向最早到期任务，poll 仅检查 head，O(1)
 - insert O(n) 最坏情况，但任务绑定是低频操作
 
 总内存占用:
@@ -246,7 +246,7 @@ ztask::TaskScheduler<10> sched;  // 栈分配，大小编译期确定
 // 容量为 0 时可通过 static_assert 在编译期捕获
 ```
 
-C++ 版的优势不仅仅是语法简洁 -- 编译器可以:
+C++ 版的优势不仅仅是语法简洁，编译器可以:
 - 在编译期计算总内存大小，无运行时 `sizeof` 计算
 - 模板实例化时展开循环，对小 MaxTasks 值可完全展开
 - 构造函数中的初始化循环在 `-O2` 下被优化为 `memset`
@@ -338,7 +338,7 @@ C++ 版在热路径 (Bind/Poll) 上稳定快 5-7%，原因是模板实例化使�
 
 *k = 就绪任务数, n = 活跃任务总数*
 
-关键路径是 Poll -- 在无任务就绪时仅需一次比较即退出，这是低功耗系统最频繁的状态。
+关键路径是 Poll，在无任务就绪时仅需一次比较即退出，这是低功耗系统最频繁的状态。
 
 ## 7. 线程安全
 

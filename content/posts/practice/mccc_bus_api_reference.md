@@ -9,12 +9,12 @@ ShowToc: true
 TocOpen: true
 ---
 
-> **MCCC** (Message-Centric Component Communication) — 面向安全关键嵌入式系统的 Lock-free MPSC 消息总线
+> **MCCC** (Message-Centric Component Communication)：面向安全关键嵌入式系统的 Lock-free MPSC 消息总线
 
 ## 目录
 
 - [核心概念](#核心概念)
-- [mccc.hpp — 核心定义](#mccchpp--核心定义)
+- [mccc.hpp: 核心定义](#mccchpp-核心定义)
   - [FixedString\<N\>](#fixedstringn)
   - [FixedVector\<T, N\>](#fixedvectort-n)
   - [MessagePriority](#messagepriority)
@@ -22,7 +22,7 @@ TocOpen: true
   - [MessageEnvelope\<PayloadVariant\>](#messageenvelopepayloadvariant)
   - [make_overloaded](#make_overloaded)
   - [FixedFunction\<Sig, Capacity\>](#fixedfunctionsig-capacity)
-- [mccc.hpp — 消息总线](#mccchpp--消息总线)
+- [mccc.hpp: 消息总线](#mccchpp-消息总线)
   - [AsyncBus\<PayloadVariant\>](#asyncbuspayloadvariant)
   - [发布 API](#发布-api)
   - [订阅 API](#订阅-api)
@@ -31,9 +31,9 @@ TocOpen: true
   - [性能模式](#性能模式)
   - [统计信息](#统计信息)
   - [错误处理](#错误处理)
-- [component.hpp — 组件基类](#componenthpp--组件基类)
+- [component.hpp: 组件基类](#componenthpp-组件基类)
   - [Component\<PayloadVariant\>](#componentpayloadvariant)
-- [static_component.hpp — CRTP 零开销组件](#static_componenthpp--crtp-零开销组件)
+- [static_component.hpp: CRTP 零开销组件](#static_componenthpp-crtp-零开销组件)
 - [编译期配置宏](#编译期配置宏)
 - [完整示例](#完整示例)
 
@@ -76,7 +76,7 @@ MyBus::Instance().ProcessBatch();
 
 ---
 
-## mccc.hpp — 核心定义
+## mccc.hpp: 核心定义
 
 ### FixedString\<N\>
 
@@ -88,7 +88,7 @@ class FixedString;
 ```
 
 **模板参数**:
-- `Capacity` — 最大字符数（不含 null 终止符），必须 > 0
+- `Capacity`：最大字符数（不含 null 终止符），必须 > 0
 
 #### 构造函数
 
@@ -134,8 +134,8 @@ class FixedVector;
 ```
 
 **模板参数**:
-- `T` — 元素类型
-- `Capacity` — 最大元素数，必须 > 0
+- `T`：元素类型
+- `Capacity`：最大元素数，必须 > 0
 
 #### 成员类型
 
@@ -271,8 +271,8 @@ class FixedFunction;
 ```
 
 **模板参数**:
-- `Signature` — 函数签名，如 `void(int)`, `int(float, float)`
-- `Capacity` — 内联存储字节数（默认 48），callable 超过此大小编译失败
+- `Signature`：函数签名，如 `void(int)`, `int(float, float)`
+- `Capacity`：内联存储字节数（默认 48），callable 超过此大小编译失败
 
 #### 构造函数
 
@@ -302,7 +302,7 @@ class FixedFunction;
 
 ---
 
-## mccc.hpp — 消息总线
+## mccc.hpp: 消息总线
 
 ### AsyncBus\<PayloadVariant\>
 
@@ -314,7 +314,7 @@ class AsyncBus;
 ```
 
 **模板参数**:
-- `PayloadVariant` — `std::variant<...>`，用户定义的消息类型集合
+- `PayloadVariant`：`std::variant<...>`，用户定义的消息类型集合
 
 #### 获取实例
 
@@ -381,7 +381,7 @@ SubscriptionHandle Subscribe(Func&& func);
 
 **返回值**: `SubscriptionHandle`，用于后续取消订阅。如果回调槽位已满，返回无效 handle（`callback_id == -1`）。
 
-**注意**: 回调在 `ProcessBatch()` 的调用线程中执行。
+注意：回调在 `ProcessBatch()` 的调用线程中执行。
 
 ```cpp
 auto handle = bus.Subscribe<SensorData>([](const auto& env) {
@@ -604,7 +604,7 @@ bus.SetErrorCallback(nullptr);
 
 ---
 
-## component.hpp — 组件基类
+## component.hpp: 组件基类
 
 ### Component\<PayloadVariant\>
 
@@ -672,11 +672,11 @@ void SubscribeSimple(Func&& callback) noexcept;
 void InitializeComponent() noexcept;
 ```
 
-**注意**: `Component` 必须通过 `std::shared_ptr` 持有（因为继承了 `enable_shared_from_this`），不能在栈上或裸 `new` 构造。
+注意：`Component` 必须通过 `std::shared_ptr` 持有（因为继承了 `enable_shared_from_this`），不能在栈上或裸 `new` 构造。
 
 ---
 
-## static_component.hpp — CRTP 零开销组件
+## static_component.hpp: CRTP 零开销组件
 
 ### StaticComponent\<Derived, PayloadVariant\>
 

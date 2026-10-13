@@ -305,7 +305,7 @@ cmake -B build -DENABLE_CLANG_TIDY=ON && cmake --build build
 
 **优势**: 每个 `.cpp` 文件编译时自动运行 clang-tidy，增量编译只检查修改的文件。无需手动指定文件列表。
 
-**注意**: `CMAKE_CXX_CLANG_TIDY` 只在 **编译源文件时** 触发。header-only 库如果没有 `.cpp` 文件，需要通过测试文件间接触发检查。
+注意：`CMAKE_CXX_CLANG_TIDY` 只在 **编译源文件时** 触发。header-only 库如果没有 `.cpp` 文件，需要通过测试文件间接触发检查。
 
 ### 4.2 自定义 target (适合 CI)
 
@@ -604,8 +604,8 @@ jobs:
 
 - [Clang-Tidy 官方文档](https://clang.llvm.org/extra/clang-tidy/)
 - [Clang-Tidy Checks 完整列表](https://clang.llvm.org/extra/clang-tidy/checks/list.html)
-- [Clang-Tidy 配置与 CMake 集成](https://blog.csdn.net/stallion5632/article/details/139545885) -- 原始教程 1
-- [多进程 shell 脚本加速 clang-tidy](https://blog.csdn.net/stallion5632/article/details/140122323) -- 原始教程 2
+- [Clang-Tidy 配置与 CMake 集成](https://blog.csdn.net/stallion5632/article/details/139545885)，原始教程 1
+- [多进程 shell 脚本加速 clang-tidy](https://blog.csdn.net/stallion5632/article/details/140122323)，原始教程 2
 - [CMake CMAKE_CXX_CLANG_TIDY 文档](https://cmake.org/cmake/help/latest/variable/CMAKE_LANG_CLANG_TIDY.html)
 - [LLVM Discussion Forums](https://forums.llvm.org/)
 - [C++ Core Guidelines](https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines)

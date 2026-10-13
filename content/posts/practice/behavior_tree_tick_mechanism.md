@@ -16,8 +16,8 @@ aliases:
 本文以 [newosp](https://gitee.com/liudegui/newosp) 框架的 `osp::BehaviorTree`（C++17 header-only，`include/osp/bt.hpp`）为主线，结合 HSM+BT 组合模式和嵌入式视觉平台预览服务的真实重构案例，系统讲解 BT 在嵌入式系统中的工程落地。
 
 > 相关文章:
-> - [C 语言层次状态机框架: 从过程驱动到数据驱动](/tech-notes/posts/pattern/c_hsm_data_driven_framework/) — HSM 与 BT 互补的架构基础
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) — newosp 中 HSM + BT 的实际集成
+> - [C 语言层次状态机框架: 从过程驱动到数据驱动](/tech-notes/posts/pattern/c_hsm_data_driven_framework/)：HSM 与 BT 互补的架构基础
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)：newosp 中 HSM + BT 的实际集成
 
 ## 1. 问题与解法
 
@@ -118,7 +118,7 @@ NodeStatus TickSequence(int32_t index) {
 
 Selector 依次尝试子节点，第一个成功即返回。天然映射"主路径失败 → 降级路径"。
 
-newosp 的 `bt_patrol_demo.cpp` 展示了一个典型的 Selector 用法——巡逻机器人的优先级决策：
+newosp 的 `bt_patrol_demo.cpp` 展示了一个典型的 Selector 用法，即巡逻机器人的优先级决策：
 
 ```cpp
 // examples/bt_patrol_demo.cpp
@@ -220,7 +220,7 @@ osp::NodeStatus CheckSensors(DeviceContext& ctx) {
 }
 ```
 
-Context 即 Blackboard——所有节点共享的状态集中在一个 struct 中，无需字符串 key 查找。
+Context 即 Blackboard：所有节点共享的状态集中在一个 struct 中，无需字符串 key 查找。
 
 ### 3.3 Builder API
 
@@ -256,7 +256,7 @@ HSM 管"什么时候做"，BT 管"做什么、怎么做"。
 
 ### 4.2 newosp 的 hsm_bt_combo_demo
 
-newosp 的 `examples/hsm_bt_combo_demo.cpp` 展示了标准的 HSM+BT 组合模式——工业设备控制器：
+newosp 的 `examples/hsm_bt_combo_demo.cpp` 展示了标准的 HSM+BT 组合模式，以工业设备控制器为例：
 
 ```
 HSM 状态图:
@@ -445,7 +445,7 @@ osp::NodeStatus SensorInitAsync(PreviewContext& ctx) {
 }
 ```
 
-状态变量存放在 Context 而非 `static` 局部变量——这是 newosp 的设计约定：节点本身无状态，所有运行时状态集中在 Context 中。
+状态变量存放在 Context，不用 `static` 局部变量。这是 newosp 的设计约定：节点本身无状态，所有运行时状态集中在 Context 中。
 
 ### 5.3 启动耗时对比
 
@@ -565,24 +565,24 @@ Polymath Robotics 的工程经验也印证了这一点：FSM 在状态数超过 
 
 不建议一次性重写，推荐四阶段迁移：
 
-**阶段一：包装验证** — 将现有线性流程整体包装为一个 Action 节点，验证 BT 框架可运行，不改变任何业务逻辑。
+**阶段一 包装验证**：将现有线性流程整体包装为一个 Action 节点，验证 BT 框架可运行，不改变任何业务逻辑。
 
-**阶段二：异步化** — 将耗时最长的步骤（配置文件加载）改为异步 Action，引入第一个 `kRunning` 状态。
+**阶段二 异步化**：将耗时最长的步骤（配置文件加载）改为异步 Action，引入第一个 `kRunning` 状态。
 
-**阶段三：容错化** — 引入 Selector 节点替换 `if-else` 错误处理，实现自动降级。
+**阶段三 容错化**：引入 Selector 节点替换 `if-else` 错误处理，实现自动降级。
 
-**阶段四：并发化** — 引入 Parallel 节点实现并发初始化，完成启动耗时优化。
+**阶段四 并发化**：引入 Parallel 节点实现并发初始化，完成启动耗时优化。
 
 Polymath Robotics 的迁移经验：先用一个简单场景（如 PING/PONG 测试）验证 BT 可行性，再迁移核心系统。
 
 ### 7.3 相关资源
 
-- [newosp](https://gitee.com/liudegui/newosp) — C++17 嵌入式事件驱动框架（含 `osp::BehaviorTree`）
-- [bt-cpp](https://gitee.com/liudegui/bt-cpp) — C++14 行为树库（header-only，MIT）
-- [BehaviorTree.CPP](https://behaviortree.dev/docs/4.0.2/intro) — C++ 生态事实标准
-- [micro_behaviortree_cpp](https://github.com/Kotakku/micro_behaviortree_cpp) — BT.CPP 嵌入式裁剪版
-- [ZephyrBT](https://github.com/ossystems/zephyrbt) — Zephyr RTOS 专用 BT 框架（2024）
-- [BT vs FSM 对比研究](https://arxiv.org/html/2405.16137v1) — IEEE TASE 2025
+- [newosp](https://gitee.com/liudegui/newosp)：C++17 嵌入式事件驱动框架（含 `osp::BehaviorTree`）
+- [bt-cpp](https://gitee.com/liudegui/bt-cpp)：C++14 行为树库（header-only，MIT）
+- [BehaviorTree.CPP](https://behaviortree.dev/docs/4.0.2/intro)：C++ 生态事实标准
+- [micro_behaviortree_cpp](https://github.com/Kotakku/micro_behaviortree_cpp)：BT.CPP 嵌入式裁剪版
+- [ZephyrBT](https://github.com/ossystems/zephyrbt)：Zephyr RTOS 专用 BT 框架（2024）
+- [BT vs FSM 对比研究](https://arxiv.org/html/2405.16137v1)：IEEE TASE 2025
 
 ---
 

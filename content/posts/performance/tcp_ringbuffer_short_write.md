@@ -48,7 +48,7 @@ EAGAIN (errno 11) 是 POSIX 标准定义的瞬态错误码，表示"资源暂时
 | -1 | EPIPE / ECONNRESET | 连接已断 | 关闭连接 |
 | 0 | - | 对端关闭 | 关闭连接 |
 
-一个常见的错误是把 EAGAIN 当作致命错误直接断开连接 -- 这会导致在网络拥塞或接收端处理缓慢时产生不必要的连接断开。
+一个常见的错误是把 EAGAIN 当作致命错误直接断开连接，这会导致在网络拥塞或接收端处理缓慢时产生不必要的连接断开。
 
 ### 1.3 正确的处理策略
 
@@ -290,7 +290,7 @@ class SendBuffer {
 | 可用空间计算 | `(r + N - w - 1) % N` | `N - (w - r)` (无符号差值) |
 | 缓存行对齐 | 无 | `alignas(64)` 消除伪共享 |
 | API 设计 | `beginRead`/`endRead` 分离 | `Peek`/`Consume` (更明确语义) |
-| 索引类型 | `size_t` (8 字节) | `uint32_t` (4 字节, 嵌入式友好) |
+| 索引类型 | `size_t` (8 字节) | `uint32_t` (4 字节，嵌入式友好) |
 
 ### 3.2 AsyncSocket: 事件驱动异步发送
 
@@ -523,7 +523,7 @@ while (remaining > 0) {
 }
 ```
 
-这是**同步有限重试**方案 -- 比 v0.4.0 的直接判定失败改进了对瞬态 EAGAIN 的容忍度，且 EAGAIN 重试耗尽后返回 `kWouldBlock` 而不断开连接，允许调用方决策是否重试。
+这是**同步有限重试**方案，比 v0.4.0 的直接判定失败改进了对瞬态 EAGAIN 的容忍度，且 EAGAIN 重试耗尽后返回 `kWouldBlock` 而不断开连接，允许调用方决策是否重试。
 
 对于 newosp 的目标场景 (同机 shm_transport 优先，TCP 仅作远程备选)，同步方案是合理的选择。高吞吐 TCP 场景应引入本文的 `SendBuffer` + EPOLLOUT 异步方案。
 
@@ -546,7 +546,7 @@ SPSC 模型中，`write_idx_` 只由生产者线程修改，`read_idx_` 只由�
 write_idx_.store(w + to_write, std::memory_order_release);
 ```
 
-release 保证: 在 store 之前的所有 `memcpy`(数据写入) 对另一个线程的 acquire load 可见。这是 SPSC 无锁正确性的核心 -- 消费者 acquire load 到新的 write_idx 后，数据一定已经就位。
+release 保证: 在 store 之前的所有 `memcpy`(数据写入) 对另一个线程的 acquire load 可见。这是 SPSC 无锁正确性的核心，消费者 acquire load 到新的 write_idx 后，数据一定已经就位。
 
 ### 5.3 ARM 上的实际代价
 
@@ -555,7 +555,7 @@ ARM (非 TSO 架构) 上:
 - `acquire` load: `ldar` 指令 (ARM v8) 或 `ldr` + `dmb ishld` (ARM v7)
 - `release` store: `stlr` 指令 (ARM v8) 或 `dmb ish` + `str` (ARM v7)
 
-每次 `Write()` 只有 1 次 acquire + 1 次 release，开销可控。这也是 newosp SpscRingbuffer 提供 `FakeTSO` 模式的原因 -- 单核 MCU 上所有 acquire/release 可降级为 relaxed + compiler fence，进一步消除 barrier 开销。
+每次 `Write()` 只有 1 次 acquire + 1 次 release，开销可控。这也是 newosp SpscRingbuffer 提供 `FakeTSO` 模式的原因，单核 MCU 上所有 acquire/release 可降级为 relaxed + compiler fence，进一步消除 barrier 开销。
 
 ---
 
@@ -567,13 +567,13 @@ ARM (非 TSO 架构) 上:
 
 3. **EPOLLOUT 管理关键**: 按需注册 (有数据时 arm，空时 disarm)，EPOLLET 模式下一次事件循环内尽量多发送，区分 EAGAIN (等待) / EINTR (重试) / 其他 (断开)。
 
-4. **同步 vs 异步 short write 处理**: 同步方案 (循环 `send()` 直到写完) 适合低吞吐场景，实现简单但阻塞调用线程; 异步方案 (缓冲 + EPOLLOUT) 适合高吞吐场景，不阻塞但需要管理缓冲区生命周期和背压。
+4. **同步 vs 异步 short write 处理**: 同步方案 (循环 `send()` 直到写完) 适合低吞吐场景，实现简单但阻塞调用线程；异步方案 (缓冲 + EPOLLOUT) 适合高吞吐场景，不阻塞但需要管理缓冲区生命周期和背压。
 
 ---
 
 ## 参考
 
-- [newosp SpscRingbuffer](https://github.com/DeguiLiu/newosp) -- C++17 header-only SPSC 无锁环形缓冲
-- [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- 12 项设计决策详解
-- [ARM-Linux 网络性能优化](/tech-notes/posts/performance/arm_linux_network_optimization/) -- 内核协议栈调优
-- Linux man page: epoll(7), send(2)
+- [newosp SpscRingbuffer](https://github.com/DeguiLiu/newosp)，C++17 header-only SPSC 无锁环形缓冲
+- [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，12 项设计决策详解
+- [ARM-Linux 网络性能优化](/tech-notes/posts/performance/arm_linux_network_optimization/)，内核协议栈调优
+- Linux man page: epoll(7)，send(2)

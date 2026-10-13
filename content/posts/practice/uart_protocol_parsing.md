@@ -10,7 +10,7 @@ TocOpen: true
 ---
 
 >
-> 配套代码: [uart_statemachine_ringbuffer_linux](https://gitee.com/liudegui/uart_statemachine_ringbuffer_linux) -- C99 实现，POSIX 线程模拟 MCU 中断
+> 配套代码: [uart_statemachine_ringbuffer_linux](https://gitee.com/liudegui/uart_statemachine_ringbuffer_linux)，C99 实现，POSIX 线程模拟 MCU 中断
 
 ## 1. 问题域：为什么串口协议解析值得认真设计
 
@@ -299,7 +299,7 @@ typedef struct {
 
 ### 5.5 优缺点分析
 
-**适用场景**：协议结构固定、帧长度短、波特率中低、对实时性要求不苛刻的简单应用。
+适用场景：协议结构固定、帧长度短、波特率中低、对实时性要求不苛刻的简单应用。
 
 | 优势 | 劣势 |
 |------|------|
@@ -467,7 +467,7 @@ bool_t hsm_parser_put_byte(hsm_parser_t *parser, uint8_t byte)
 
 ### 6.5 优缺点分析
 
-**适用场景**：复杂/可扩展协议、多路并行解析、需要高可靠性和可维护性的工业系统。
+适用场景：复杂/可扩展协议、多路并行解析、需要高可靠性和可维护性的工业系统。
 
 | 优势 | 劣势 |
 |------|------|
@@ -696,7 +696,7 @@ ISR 的职责与 RTOS 环境完全一致：只做数据搬运。区别仅在于�
 
 ### 9.3 主循环处理
 
-**滑窗方案 -- 裸机**：
+**滑窗方案，裸机**：
 
 ```c
 int main(void)
@@ -723,7 +723,7 @@ int main(void)
 }
 ```
 
-**HSM 方案 -- 裸机**：
+**HSM 方案，裸机**：
 
 ```c
 int main(void)

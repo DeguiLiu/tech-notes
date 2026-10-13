@@ -12,11 +12,11 @@ TocOpen: true
 > 筛选标准: 只保留 C11 在**语言层面无法实现**的能力。
 > 条件编译、`_Alignas`、`_Static_assert(常量表达式)`、`atomic_signal_fence`、栈上固定数组等 C11 同样能做到的内容不在讨论范围。
 
-> 姊妹篇: [newosp 源码中的 C++17 实践]({{< ref "cpp17_claims_in_newosp" >}}) -- 这些语言能力在工业嵌入式库中的具体落地位置与工程决策。
+> 姊妹篇: [newosp 源码中的 C++17 实践]({{< ref "cpp17_claims_in_newosp" >}})，这些语言能力在工业嵌入式库中的具体落地位置与工程决策。
 
 ---
 
-## 一、类型安全 -- 编译器拒绝类型混用
+## 一、类型安全：编译器拒绝类型混用
 
 ### 1. 编译期类型成员校验
 
@@ -75,7 +75,7 @@ TimerId tid = 1;
 SessionId sid = tid;  // 编译通过，运行时传错 ID
 ```
 
-### 3. enum class -- 枚举值不泄漏、不隐式转整型
+### 3. enum class：枚举值不泄漏、不隐式转整型
 
 ```cpp
 // C++: 作用域枚举
@@ -91,7 +91,7 @@ enum LogLevel { LOW, HIGH };  // 编译错误: LOW/HIGH 重定义
 int x = LOW;                  // 编译通过，LOW 就是 int 0
 ```
 
-### 4. not_null -- 空指针解引用在构造期拦截
+### 4. not_null：空指针解引用在构造期拦截
 
 ```cpp
 // C++: 类型系统标注"不可能为空"
@@ -111,9 +111,9 @@ void process(Sensor* sensor) {
 
 ---
 
-## 二、编译期计算 -- 将运行时工作移至编译期
+## 二、编译期计算：将运行时工作移至编译期
 
-### 5. constexpr 函数 -- 保证编译期求值
+### 5. constexpr 函数：保证编译期求值
 
 C 的 `const` 不是编译期常量合同，`#define` 宏无法写循环或条件逻辑。
 
@@ -133,7 +133,7 @@ constexpr auto kTopicHash = Fnv1a32("sensor/imu");  // 编译结果: 立即数
 
 C 可以用宏做简单常量折叠 (`#define MAKE_IID(a,b) ((a)<<16|(b))`)，但无法在宏中写循环来实现哈希函数。
 
-### 6. if constexpr -- 基于类型属性的编译期分支消除
+### 6. if constexpr：基于类型属性的编译期分支消除
 
 C 的 `#ifdef` 只能基于宏开关，无法检测类型属性。C 的运行时 `if` 在函数未内联时无法消除死分支。
 
@@ -176,7 +176,7 @@ auto DispatchFile(const char* path, ConfigFormat format) {
 
 C 没有类型 trait 系统，无法在编译期查询类型属性并据此选择代码路径。
 
-### 7. 模板实例化 -- 参数化专用代码生成
+### 7. 模板实例化：参数化专用代码生成
 
 C 的 `void* + size_t` 传参让编译器丢失常量信息。模板将参数编码为类型的一部分，编译器可据此生成专用指令。
 
@@ -214,9 +214,9 @@ C 无法从 `const char*` 推导字面量长度并做静态断言。`strncpy` �
 
 ---
 
-## 三、内存安全 -- 编译器管理资源生命周期
+## 三、内存安全：编译器管理资源生命周期
 
-### 8. RAII -- 编译器自动在每条退出路径插入清理代码
+### 8. RAII：编译器自动在每条退出路径插入清理代码
 
 标准 C 没有析构函数。GCC 的 `__attribute__((cleanup))` 是非标准扩展。
 
@@ -257,7 +257,7 @@ bool Unsubscribe(const Handle& handle) noexcept {
 
 C 没有语言级所有权转移，也无法禁止结构体赋值。
 
-**Move 语义** -- 零拷贝所有权转移:
+**Move 语义**：零拷贝所有权转移
 
 ```cpp
 auto socket = TcpSocket::Connect("host", 8080);
@@ -272,7 +272,7 @@ close(fd);              // 关闭后 fd2 变成悬空句柄
 write(fd2, data, len);  // 写入已关闭的 fd -> 未定义行为
 ```
 
-**拷贝删除** -- 禁止危险的复制:
+**拷贝删除**：禁止危险的复制
 
 ```cpp
 Bus(const Bus&) = delete;
@@ -280,7 +280,7 @@ Bus& operator=(const Bus&) = delete;
 // C: struct Bus b2 = b1; 编译通过，两份指向同一资源
 ```
 
-**expected 错误处理** -- 编译器强制检查:
+**expected 错误处理**：编译器强制检查
 
 ```cpp
 auto result = pool.CreateChecked(args...);
@@ -294,7 +294,7 @@ memcpy(ptr, data, size);           // ptr == NULL -> SIGSEGV，编译器不警�
 
 ---
 
-## 四、类型分发 -- 编译器穷举检查
+## 四、类型分发：编译器穷举检查
 
 ### 10. variant + visit 穷举式分发与 Fold Expression
 
@@ -352,4 +352,4 @@ void SubscribeAll(std::variant<Types...>*) noexcept {
 | 9 | Move / `= delete` / expected | 无所有权转移，无法禁止拷贝，错误码被忽略 |
 | 10 | variant + visit 穷举分发 | `switch` 缺 `case` 仅警告，`void*` 无法分发 |
 
-**本质**: C++17 让编译器掌握更多信息 -- 模板给类型和常量，`constexpr` 给求值合同，RAII 给生命周期，`variant` 给完整类型列表，`NewType` 给语义区分。信息越多，编译器能做的检查和优化就越多。C 的 `void*`、宏、手动 cleanup 在隐藏信息，编译器看到的只是指针和整数。
+这些能力的共同点是让编译器掌握更多信息：模板给类型和常量，`constexpr` 给求值合同，RAII 给生命周期，`variant` 给完整类型列表，`NewType` 给语义区分。信息越多，编译器能做的检查和优化就越多。C 的 `void*`、宏、手动 cleanup 在隐藏信息，编译器看到的只是指针和整数。

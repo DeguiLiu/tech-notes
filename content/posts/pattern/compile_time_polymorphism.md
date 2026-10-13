@@ -141,7 +141,7 @@ enum class TransitionKind : uint8_t {
 - **Self**：从活动叶子退出到源状态（含源），跑 `action`，再重入源，用于自环与拒收弧。
 - **External**：计算源与目标的最近公共祖先（LCA），沿路径退出、跑 `action`、再沿路径进入目标。
 
-非法（状态, 信号）对落到 Self 转移的 reject 弧（计数加 trace），不静默丢弃。这套语义让"复合状态退回到哪一层"由 LCA 决定，而不是手写退出与进入代码。
+非法（状态, 信号）对落到 Self 转移的 reject 弧（计数加 trace），不静默丢弃。这套语义让"复合状态退回到哪一层"由 LCA 决定，无需手写退出与进入代码。
 
 ### 父状态继承与退出路径
 
@@ -184,7 +184,7 @@ struct HostSmpProfile {
 
 ### 主动对象: 属性交给 Traits
 
-主动对象把优先级、RTC 预算、直投资格这些静态属性交给 `Traits`，而不是运行期 setter：
+主动对象把优先级、RTC 预算、直投资格这些静态属性交给 `Traits`，不走运行期 setter：
 
 ```cpp
 template <typename Context, typename HsmT, typename Traits>
@@ -336,4 +336,4 @@ flowchart LR
 
 核心框架的静态多态是两条正交的翼：骨架与策略管流程与算法差异，组合与擦除管结构与边界差异。`Hsm<Context>` 用模板绑定把状态机骨架与钩子钉在编译期；`EventPool<Profile>` 用无状态策略选单核或 SMP 后端；`Ao` 用 `Traits` 注入静态属性；`Runtime<Config, PalT, Profile>` 用三个模板参数装配预算、平台与并发语义；`AoRegistry` 与 `StaticAoEntry` 守住定容广播与运行期擦除的边界。它们共同兑现一个约束：运行期零虚表、零堆、零运行时分支、零 if-else 链，差异在编译期收敛为少数钩子或几张数据表并一次付清代价。
 
-对写惯了 C 的嵌入式工程师，接受 C++17 的关键不在语法，而在一个可以验证的事实：`Hsm<Context>` 的模板绑定、`EventPool<Profile>` 的 `if constexpr`、`Runtime` 的模板装配，把原本要靠函数指针、宏或全局配置硬凑的静态多态，做成了编译器能检查、能内联、能在编译期报错的类型系统。代价是编译时间变长、错误信息变长，收益是上线后少一类"错类型、错分支、错顺序"的缺陷。守得住那几条边界（钩子不超过 7、三相似才抽基类、静态多态优先于 vtable），这些机制就是把"骨架与钩子"写进类型系统的正确方式；守不住，它们就退化为猜未来的过度抽象。完整代码见 [DeguiLiu/coact](https://github.com/DeguiLiu/coact)。
+对写惯了 C 的嵌入式工程师，接受 C++17 的关键不在语法，而在一个可以验证的事实：`Hsm<Context>` 的模板绑定、`EventPool<Profile>` 的 `if constexpr`、`Runtime` 的模板装配，把原本要靠函数指针、宏或全局配置硬凑的静态多态，做成了编译器能检查、能内联、能在编译期报错的类型系统。换来的成本是编译时间变长、错误信息变长，收益是上线后少一类"错类型、错分支、错顺序"的缺陷。守得住那几条边界（钩子不超过 7、三相似才抽基类、静态多态优先于 vtable），这些机制就是把"骨架与钩子"写进类型系统的正确方式；守不住，它们就退化为猜未来的过度抽象。完整代码见 [DeguiLiu/coact](https://github.com/DeguiLiu/coact)。

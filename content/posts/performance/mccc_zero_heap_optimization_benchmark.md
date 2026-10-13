@@ -117,7 +117,7 @@ TocOpen: true
 
 ### 模式一: Envelope 内嵌 (消除每消息堆分配)
 
-**问题**: `std::make_shared<Envelope>` 在每次 Publish 时堆分配。
+问题：`std::make_shared<Envelope>` 在每次 Publish 时堆分配。
 
 ```cpp
 // 优化前: 每消息堆分配
@@ -135,7 +135,7 @@ struct RingBufferNode {
 
 ### 模式二: 编译期类型索引 (消除 hash 查找)
 
-**问题**: `std::unordered_map<std::type_index, vector<callback>>` 每次 dispatch 需要 hash 计算。
+问题：`std::unordered_map<std::type_index, vector<callback>>` 每次 dispatch 需要 hash 计算。
 
 ```cpp
 // 编译期计算类型在 variant 中的索引
@@ -149,7 +149,7 @@ std::array<CallbackSlot, std::variant_size_v<MessagePayload>> callbacks_;
 
 ### 模式三: 函数指针 RAII (消除虚表 + unique_ptr)
 
-**问题**: 资源释放通过虚基类 + `std::unique_ptr`，每次 `Borrow()` 堆分配。
+问题：资源释放通过虚基类 + `std::unique_ptr`，每次 `Borrow()` 堆分配。
 
 ```cpp
 // 优化前: 虚基类 + unique_ptr
@@ -186,11 +186,11 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 |------|----------|--------|
 | Envelope 内嵌 | 消息大小编译期已知 | 消息大小动态变化 |
 | 编译期类型索引 | 消息类型集合编译期固定 | 需运行时注册新类型 |
-| 函数指针 RAII | 释放逻辑简单, 无需多态 | 需要复杂的析构链 |
+| 函数指针 RAII | 释放逻辑简单，无需多态 | 需要复杂的析构链 |
 | 零堆分配容器 | 容量上界编译期可确定 | 容量不可预测 |
 | 编译期配置 | 需适配多种硬件平台 | 单一目标平台 |
 
-> 共同原则: **将运行时决策提前到编译期, 用编译期已知信息换取运行时零开销**。
+> 共同原则: **将运行时决策提前到编译期，用编译期已知信息换取运行时零开销**。
 
 ---
 
@@ -249,7 +249,7 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 | **P99** | **449 ns** | 99% 分位 |
 | Max | 17,649 ns | 最大延迟 |
 
-### eventpp + AO E2E 延迟 (10,000 样本, 优化后)
+### eventpp + AO E2E 延迟 (10,000 样本，优化后)
 
 | 分位数 | eventpp + AO (优化后) | 说明 |
 |--------|----------------------|------|
@@ -289,7 +289,7 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 
 > 大批量测试方差更小 (StdDev 0.10 vs 0.50)，说明性能在持续负载下更稳定。
 
-### MCCC 性能模式对比 (100K 消息, 10 轮)
+### MCCC 性能模式对比 (100K 消息，10 轮)
 
 | 模式 | 吞吐量 | 入队延迟 | 说明 |
 |------|--------|---------|------|
@@ -298,7 +298,7 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 | **功能开销** | - | **~118 ns** | 全功能额外开销 |
 | **BARE_METAL 提升** | **220%** | **69% 降低** | 相对 FULL_FEATURED |
 
-### eventpp Raw 测试 (优化后, 值语义, 10 轮统计)
+### eventpp Raw 测试 (优化后，值语义，10 轮统计)
 
 | 场景 | 消息数 | 吞吐量 | 入队延迟 |
 |------|--------|--------|---------|
@@ -307,7 +307,7 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 | Large | 100K | 26.5 +/- 4.6 M/s | 40 +/- 12 ns |
 | VeryLarge | 1M | 24.8 +/- 4.0 M/s | 42 +/- 11 ns |
 
-### eventpp PoolQueueList 测试 (OPT-5 池化分配器, 10 轮统计)
+### eventpp PoolQueueList 测试 (OPT-5 池化分配器，10 轮统计)
 
 | 场景 | 消息数 | 吞吐量 | 入队延迟 |
 |------|--------|--------|---------|
@@ -328,7 +328,7 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 | Large | 100K | 18.7 +/- 1.6 M/s | 54 +/- 5 ns |
 | VeryLarge | 1M | 17.0 +/- 2.1 M/s | 60 +/- 11 ns |
 
-### eventpp + Active Object 测试 (优化后, 10 轮统计)
+### eventpp + Active Object 测试 (优化后，10 轮统计)
 
 | 场景 | 消息数 | 吞吐量 | 入队延迟 |
 |------|--------|--------|---------|
@@ -466,7 +466,7 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 | Compiler | GCC 13.3.0 |
 | Optimization | -O3 -march=native -faligned-new |
 | C++ Standard | C++17 |
-| eventpp | 优化版 (OPT-1~8), Gitee: liudegui/eventpp |
+| eventpp | 优化版 (OPT-1~8)，Gitee: liudegui/eventpp |
 
 ---
 

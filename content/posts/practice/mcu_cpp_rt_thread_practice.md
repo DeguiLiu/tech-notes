@@ -59,7 +59,7 @@ RT-Thread kernel → C++ support
 | RTTI | 不支持 | 官方明确禁用 |
 | 静态类变量全局构造 | 强烈不推荐 | 构造时刻不可控，易引发启动顺序问题 |
 
-**实践建议**：语言特性用 C++17（`if constexpr`、`std::enable_if_t`、fold expression 等），标准库仅用 C++11 已验证的并发原语和 `<algorithm>` / `<array>` / `<atomic>`，不依赖需要动态分配的容器。
+实践建议：语言特性用 C++17（`if constexpr`、`std::enable_if_t`、fold expression 等），标准库仅用 C++11 已验证的并发原语和 `<algorithm>` / `<array>` / `<atomic>`，不依赖需要动态分配的容器。
 
 ---
 
@@ -546,8 +546,8 @@ std::any_of / std::all_of / std::count_if / std::fill / std::copy
 **参考资料**
 
 - [RT-Thread C++ 组件文档](https://github.com/RT-Thread/rt-thread/tree/master/components/libc/cplusplus)
-- [newosp —— 嵌入式 C++17 框架（FixedString / FixedPool / SpscRingbuffer / expected）](https://github.com/DeguiLiu/newosp)
-- [eclipse-iceoryx —— 零拷贝 IPC 中间件，FixedString 原型](https://github.com/eclipse-iceoryx/iceoryx)
+- [newosp: 嵌入式 C++17 框架（FixedString / FixedPool / SpscRingbuffer / expected）](https://github.com/DeguiLiu/newosp)
+- [eclipse-iceoryx: 零拷贝 IPC 中间件，FixedString 原型](https://github.com/eclipse-iceoryx/iceoryx)
 - [MISRA C++ 2023](https://misra.org.uk/misra-c-plus-plus/)
 - [AUTOSAR C++14 Coding Guidelines](https://www.autosar.org/fileadmin/standards/R22-11/AP/AUTOSAR_RS_CPP14Guidelines.pdf)
 

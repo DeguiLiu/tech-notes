@@ -95,7 +95,7 @@ struct CounterGuard {
 };
 ```
 
-### OPT-2: CallbackList 批量预取 [Batch 2] -- 核心改动
+### OPT-2: CallbackList 批量预取 [Batch 2]：核心改动
 
 原始代码每访问一个 `node->next` 都加锁（N 个回调 = N 次 mutex），这是 128us 最大延迟的根因。
 
@@ -201,26 +201,26 @@ process()
 
 对于**单消费者**场景 (一个线程消费所有事件，事件处理逻辑编译期已知)，上述基础设施开销完全不必要:
 
-- 不需要 shared_lock -- 只有一个消费者
-- 不需要 map.find -- 消费者已知如何处理所有事件
-- 不需要 CallbackList -- 不需要动态注册/注销回调
-- 不需要 std::function -- 处理函数编译期已知
+- 不需要 shared_lock，只有一个消费者
+- 不需要 map.find，消费者已知如何处理所有事件
+- 不需要 CallbackList，不需要动态注册/注销回调
+- 不需要 std::function，处理函数编译期已知
 
 [newosp](https://github.com/DeguiLiu/newosp) 项目的 `ProcessBatchWith<Visitor>` 已验证此优化方向: 绕过 FixedFunction 回调表 + SharedSpinLock，使用 `std::visit` 编译期跳转表 (C++17)，实测 15x 加速 (2 ns/msg vs 30 ns/msg)。
 
 #### API 设计
 
-**processQueueWith** -- 处理队列中的所有事件:
+**processQueueWith**：处理队列中的所有事件
 
 ```cpp
 template <typename Visitor>
 bool processQueueWith(Visitor && visitor);
 ```
 
-- 每个事件直接调用 `visitor(event, args...)` -- 无间接调用
+- 每个事件直接调用 `visitor(event, args...)`，无间接调用
 - 返回 `true` 如果处理了至少一个事件
 
-**processOneWith** -- 处理队列中的一个事件:
+**processOneWith**：处理队列中的一个事件
 
 ```cpp
 template <typename Visitor>
@@ -261,9 +261,9 @@ queue.processQueueWith([](int event, const std::string & data) {
 | Visitor 直接调用 (可内联) | -- | **每条消息** |
 
 共享的基础设施 (无差异):
-- 队列 swap (lock_guard + std::swap) -- 两者相同
-- CounterGuard (emptyQueue 语义) -- 两者相同
-- BufferedItem clear + freeList 回收 -- 两者相同
+- 队列 swap (lock_guard + std::swap)，两者相同
+- CounterGuard (emptyQueue 语义)，两者相同
+- BufferedItem clear + freeList 回收，两者相同
 
 #### 核心实现
 
@@ -462,6 +462,6 @@ ctest --output-on-failure
 
 ## 七、致谢
 
-- [wqking/eventpp](https://github.com/wqking/eventpp) -- 原始库
-- [iceoryx](https://github.com/eclipse-iceoryx/iceoryx) -- PoolAllocator 设计灵感
-- [newosp](https://github.com/DeguiLiu/newosp) -- ProcessBatchWith Visitor 模式验证
+- [wqking/eventpp](https://github.com/wqking/eventpp)，原始库
+- [iceoryx](https://github.com/eclipse-iceoryx/iceoryx)，PoolAllocator 设计灵感
+- [newosp](https://github.com/DeguiLiu/newosp)，ProcessBatchWith Visitor 模式验证

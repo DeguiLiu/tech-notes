@@ -14,11 +14,11 @@ TocOpen: true
 > 筛选标准: 只保留 C11 在语言层面**无法实现**的能力。
 > 边界检查、SBO 回调、ARM 内存序、cache line 对齐、`-fno-exceptions` 等 C 均可做到，已移除。
 
-> 姊妹篇: [C11 做不到的事: 10 项 C++17 语言级不可替代能力]({{< ref "cpp17_what_c_cannot_do" >}}) -- 语言层面的系统性对比与完整代码示例。
+> 姊妹篇: [C11 做不到的事: 10 项 C++17 语言级不可替代能力]({{< ref "cpp17_what_c_cannot_do" >}})，语言层面的系统性对比与完整代码示例。
 
 ---
 
-## 1. 编译期类型成员校验 -- bus.hpp
+## 1. 编译期类型成员校验：bus.hpp
 
 C 的 `void*` 不携带类型信息，编译器无法验证传入类型是否属于合法集合。
 
@@ -34,7 +34,7 @@ struct VariantIndex<T, std::variant<Types...>> {
 };
 ```
 
-`include/osp/bus.hpp:500-505` -- `Subscribe` 调用点验证:
+`include/osp/bus.hpp:500-505`，`Subscribe` 调用点验证:
 
 ```cpp
 template <typename T, typename Func>
@@ -44,11 +44,11 @@ SubscriptionHandle Subscribe(Func&& func) noexcept {
                 "Type index exceeds OSP_BUS_MAX_MESSAGE_TYPES");
 ```
 
-**工程决策**: `VariantIndex` 在模板实例化时递归展开，将"类型是否在合法集合中"从运行时 tag 校验提升为编译期硬错误。C 的 `subscribe(bus, GPS_TAG, handler)` 中 tag 写错不会产生编译错误。
+工程决策：`VariantIndex` 在模板实例化时递归展开，将"类型是否在合法集合中"从运行时 tag 校验提升为编译期硬错误。C 的 `subscribe(bus, GPS_TAG, handler)` 中 tag 写错不会产生编译错误。
 
 ---
 
-## 2. 穷举式类型分发 -- bus.hpp
+## 2. 穷举式类型分发：bus.hpp
 
 C 的 `switch (msg->tag)` 缺少 `case` 只产生 `-Wswitch` 警告。
 
@@ -63,11 +63,11 @@ template <class... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
 ```
 
-**工程决策**: `overloaded` + `std::visit` 的组合使新增消息类型时，所有未更新的处理点编译失败而非运行时丢消息。对于工业嵌入式系统，"编译不过"远好于"部署后丢数据"。
+工程决策：`overloaded` + `std::visit` 的组合使新增消息类型时，所有未更新的处理点编译失败而非运行时丢消息。对于工业嵌入式系统，"编译不过"远好于"部署后丢数据"。
 
 ---
 
-## 3. 强类型别名 -- vocabulary.hpp
+## 3. 强类型别名：vocabulary.hpp
 
 C 的 `typedef uint32_t TimerId` 和 `typedef uint32_t NodeId` 是同一类型。
 
@@ -89,15 +89,15 @@ using TimerTaskId = NewType<uint32_t, TimerTaskIdTag>;
 using SessionId   = NewType<uint32_t, SessionIdTag>;
 ```
 
-**工程决策**: `TimerTaskId id; SessionId sid = id;` 编译失败。在 newosp 中，节点 ID、定时器 ID、会话 ID 均使用 `NewType` 包装。零运行时开销 -- `sizeof(NewType<uint32_t, Tag>) == sizeof(uint32_t)`，编译器直接传寄存器。
+工程决策：`TimerTaskId id; SessionId sid = id;` 编译失败。在 newosp 中，节点 ID、定时器 ID、会话 ID 均使用 `NewType` 包装。零运行时开销，`sizeof(NewType<uint32_t, Tag>) == sizeof(uint32_t)`，编译器直接传寄存器。
 
 ---
 
-## 4. if constexpr -- spsc_ringbuffer.hpp / config.hpp / fault_collector.hpp
+## 4. if constexpr：spsc_ringbuffer.hpp / config.hpp / fault_collector.hpp
 
 C 的 `#ifdef` 只能基于宏开关，无法检测类型属性。
 
-**(a) `include/osp/spsc_ringbuffer.hpp:144-157`** -- 根据 T 是否 trivially copyable 选择路径:
+**(a) `include/osp/spsc_ringbuffer.hpp:144-157`**：根据 T 是否 trivially copyable 选择路径
 
 ```cpp
 if constexpr (kTriviallyCopyable) {
@@ -111,7 +111,7 @@ if constexpr (kTriviallyCopyable) {
 
 同一文件 184 行 (Pop)、210 行 (PopBatch) 使用相同模式。
 
-**(b) `include/osp/config.hpp:534-560`** -- 编译期递归展开多后端分派:
+**(b) `include/osp/config.hpp:534-560`**：编译期递归展开多后端分派
 
 ```cpp
 template <typename First, typename... Rest>
@@ -124,7 +124,7 @@ expected<void, ConfigError> DispatchFile(const char* path, ConfigFormat format) 
 }
 ```
 
-**(c) `include/osp/fault_collector.hpp:580`** -- 根据回调返回类型选择控制流:
+**(c) `include/osp/fault_collector.hpp:580`**：根据回调返回类型选择控制流
 
 ```cpp
 if constexpr (std::is_same_v<decltype(fn(recent_ring_[idx])), bool>) {
@@ -134,11 +134,11 @@ if constexpr (std::is_same_v<decltype(fn(recent_ring_[idx])), bool>) {
 }
 ```
 
-**工程决策**: 三处 `if constexpr` 的共同特征 -- 在同一个函数模板中，根据类型属性生成不同代码路径，编译后只保留命中分支。C 的 `#ifdef` 无法区分 `SensorData` 是否 trivially copyable，必须由程序员手动选择拷贝方式。
+工程决策：三处 `if constexpr` 的共同特征，在同一个函数模板中，根据类型属性生成不同代码路径，编译后只保留命中分支。C 的 `#ifdef` 无法区分 `SensorData` 是否 trivially copyable，必须由程序员手动选择拷贝方式。
 
 ---
 
-## 5. constexpr 函数 -- bus.hpp / app.hpp
+## 5. constexpr 函数：bus.hpp / app.hpp
 
 C 的 `const` 不是编译期常量合同。C 没有"函数必须在编译期求值"的语言机制。
 
@@ -164,11 +164,11 @@ constexpr uint32_t MakeIID(uint16_t app_id, uint16_t ins_id) noexcept {
 }
 ```
 
-**工程决策**: `Fnv1a32` 用于 topic 路由，编译期将字符串 `"sensor/imu"` 折叠为立即数，运行时零开销。`MakeIID` 将 app_id/ins_id 编码为 32 位实例标识符，同样在编译期完成。C 可以用宏做 `MAKE_IID`，但无法在宏中写 while 循环实现哈希函数。
+工程决策：`Fnv1a32` 用于 topic 路由，编译期将字符串 `"sensor/imu"` 折叠为立即数，运行时零开销。`MakeIID` 将 app_id/ins_id 编码为 32 位实例标识符，同样在编译期完成。C 可以用宏做 `MAKE_IID`，但无法在宏中写 while 循环实现哈希函数。
 
 ---
 
-## 6. 模板实例化 -- spsc_ringbuffer.hpp / bus.hpp
+## 6. 模板实例化：spsc_ringbuffer.hpp / bus.hpp
 
 C 的 `void* + size_t` 传参让编译器丢失常量信息，`index % depth` 变成运行时除法。
 
@@ -193,11 +193,11 @@ static_assert((kQueueDepth & (kQueueDepth - 1)) == 0,
               "Queue depth must be power of 2");
 ```
 
-**工程决策**: `SpscRingbuffer<SensorData, 256>` 和 `SpscRingbuffer<MotorCmd, 64>` 是不同类型，编译器为每个实例化独立优化 -- `& (256-1)` 编译为单条 AND 立即数指令。C11 的 `_Static_assert` 只能断言整型常量表达式，无法断言类型属性 (`is_unsigned`、`is_trivially_copyable`)。
+工程决策：`SpscRingbuffer<SensorData, 256>` 和 `SpscRingbuffer<MotorCmd, 64>` 是不同类型，编译器为每个实例化独立优化，`& (256-1)` 编译为单条 AND 立即数指令。C11 的 `_Static_assert` 只能断言整型常量表达式，无法断言类型属性 (`is_unsigned`、`is_trivially_copyable`)。
 
 ---
 
-## 7. RAII -- vocabulary.hpp / node.hpp / shm_transport.hpp
+## 7. RAII：vocabulary.hpp / node.hpp / shm_transport.hpp
 
 标准 C 没有析构函数。`goto cleanup` 是手动操作，漏一条路径就泄漏。
 
@@ -215,23 +215,23 @@ class ScopeGuard final {
 };
 ```
 
-`include/osp/node.hpp:177` -- Node 析构自动清理全部订阅:
+`include/osp/node.hpp:177`，Node 析构自动清理全部订阅:
 
 ```cpp
 ~Node() noexcept { Stop(); }
 ```
 
-`include/osp/shm_transport.hpp:98` -- SharedMemorySegment 析构自动 `munmap` + `shm_unlink`。
+`include/osp/shm_transport.hpp:98`，SharedMemorySegment 析构自动 `munmap` + `shm_unlink`。
 
-**工程决策**: newosp 中 RAII 的三层应用 -- (1) `ScopeGuard` 用于临时资源的确定性清理; (2) `Node` 析构自动取消所有订阅，防止悬空回调; (3) `SharedMemorySegment` 析构自动释放共享内存。编译器保证 `return`、异常、作用域结束等所有退出路径均调用析构函数。
+工程决策：newosp 中 RAII 的三层应用，(1) `ScopeGuard` 用于临时资源的确定性清理; (2) `Node` 析构自动取消所有订阅，防止悬空回调; (3) `SharedMemorySegment` 析构自动释放共享内存。编译器保证 `return`、异常、作用域结束等所有退出路径均调用析构函数。
 
 ---
 
-## 8. Fold Expression + CRTP -- worker_pool.hpp / static_node.hpp
+## 8. Fold Expression + CRTP：worker_pool.hpp / static_node.hpp
 
 C 没有可变参数模板，也缺少零开销的编译期多态机制。
 
-`include/osp/worker_pool.hpp:519-522` -- 参数包自动展开:
+`include/osp/worker_pool.hpp:519-522`，参数包自动展开:
 
 ```cpp
 template <typename... Types>
@@ -240,7 +240,7 @@ void SubscribeAllImpl(std::variant<Types...>* /*tag*/) noexcept {
 }
 ```
 
-`include/osp/static_node.hpp` -- CRTP 零 vtable 编译期多态:
+`include/osp/static_node.hpp`，CRTP 零 vtable 编译期多态:
 
 ```cpp
 template <typename Derived>
@@ -252,7 +252,7 @@ struct NodeBase {
 // DoProcess() 直接内联到调用点，零间接跳转
 ```
 
-**工程决策**: Fold Expression 一行代码为 variant 中每个类型调用 `MaybeSubscribe`，C 需要手动枚举或 X-Macro 生成。CRTP 让 `StaticNode` 的 handler 在编译期绑定，避免 `virtual` 的间接调用开销和 vtable 内存占用 -- 在 ARM Cortex-A 上，消除一次虚函数调用可节省约 10-20 个周期 (cache miss 时更多)。
+工程决策：Fold Expression 一行代码为 variant 中每个类型调用 `MaybeSubscribe`，C 需要手动枚举或 X-Macro 生成。CRTP 让 `StaticNode` 的 handler 在编译期绑定，避免 `virtual` 的间接调用开销和 vtable 内存占用，在 ARM Cortex-A 上，消除一次虚函数调用可节省约 10-20 个周期 (cache miss 时更多)。
 
 ---
 

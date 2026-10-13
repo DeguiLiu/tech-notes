@@ -319,7 +319,7 @@ SG BD 为 64B 结构体，环形链接。BD 池位于 DDR_SG_DESC 区域 (Non-ca
 | 任务间数据 | SPSC Ring (无锁) | Non-cacheable | 50-100 ns |
 | CPU0 <-> CPU1 控制 | Mailbox + flag | Cacheable, Shareable | 100-500 ns |
 
-**Mailbox 协议**: 发送方写数据 -> DMB -> 写 flag=1 -> DSB; 接收方检查 flag -> DMB -> 读数据 -> 写 flag=0。
+**Mailbox 协议**: 发送方写数据 -> DMB -> 写 flag=1 -> DSB；接收方检查 flag -> DMB -> 读数据 -> 写 flag=0。
 
 **内存屏障规则**:
 - 写数据后、写标志前: DMB

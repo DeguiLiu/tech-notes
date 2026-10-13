@@ -10,10 +10,10 @@ TocOpen: true
 ---
 
 > 相关文章:
-> - [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/) -- perf lock contention 的深度使用
-> - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/) -- 有锁与无锁的性能实测
-> - [C/C++ 系统级性能优化](/tech-notes/posts/performance/high_performance_system_design_principles/) -- 从编译器到架构的优化实践
-> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- perf 定位瓶颈后的无锁迁移方向
+> - [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/)，perf lock contention 的深度使用
+> - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/)，有锁与无锁的性能实测
+> - [C/C++ 系统级性能优化](/tech-notes/posts/performance/high_performance_system_design_principles/)，从编译器到架构的优化实践
+> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，perf 定位瓶颈后的无锁迁移方向
 >
 > 参考:
 > - [Brendan Gregg: perf Examples](https://www.brendangregg.com/perf.html)
@@ -280,7 +280,7 @@ L3 Cache (if exists, shared)
 Main Memory (DRAM)
 ```
 
-L1 miss 不一定是问题 -- 如果 L2 命中率很高，实际延迟只有 3-10 周期。真正致命的是**穿透到主内存**的 miss。
+L1 miss 不一定是问题，如果 L2 命中率很高，实际延迟只有 3-10 周期。致命的是**穿透到主内存**的 miss。
 
 ### 3.5 分支预测分析
 
@@ -527,7 +527,7 @@ graph TD
 
 ### 6.1 调度延迟是什么
 
-线程被唤醒后，并不会立即获得 CPU -- 它需要等待调度器分配时间片。这个等待时间就是**调度延迟**（scheduling latency）。对实时系统，调度延迟直接影响响应时间。
+线程被唤醒后，并不会立即获得 CPU，它需要等待调度器分配时间片。这个等待时间就是**调度延迟**（scheduling latency）。对实时系统，调度延迟直接影响响应时间。
 
 ```
 线程状态:

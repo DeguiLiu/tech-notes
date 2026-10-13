@@ -10,10 +10,10 @@ TocOpen: true
 ---
 
 > 相关文章:
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- C++17 对 QPC Active Object 理念的重新实现
-> - [C 语言层次状态机框架: 从过程驱动到数据驱动](/tech-notes/posts/pattern/c_hsm_data_driven_framework/) -- C 语言 HSM 的另一种设计方法
-> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- QActive 零拷贝队列的无锁理论基础
-> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- QActive 事件队列的 SPSC 设计详解
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，C++17 对 QPC Active Object 理念的重新实现
+> - [C 语言层次状态机框架: 从过程驱动到数据驱动](/tech-notes/posts/pattern/c_hsm_data_driven_framework/)，C 语言 HSM 的另一种设计方法
+> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，QActive 零拷贝队列的无锁理论基础
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，QActive 事件队列的 SPSC 设计详解
 >
 > 参考:
 > - [QPC 层次状态机（HSM）设计与优势分析](https://blog.csdn.net/stallion5632/article/details/149359525)
@@ -127,7 +127,7 @@ static QState Display_active(DisplayAO *me, QEvt const *e) {
 }
 ```
 
-两种方式的本质区别: 传统多线程是"共享内存 + 锁保护"，AO 是"消息传递 + 线程隔离"。后者从架构层面消除了数据竞争，代价是所有通信必须通过事件队列。
+两种方式的本质区别：传统多线程是"共享内存 + 锁保护"，AO 是"消息传递 + 线程隔离"。AO 从架构层面消除了数据竞争，但所有通信必须通过事件队列。
 
 ## 2. 层次状态机 (HSM) 设计
 
@@ -716,11 +716,11 @@ QP/C 的 Active Object 模型通过**线程隔离 + 零拷贝事件队列 + 层�
 
 ## 参考资料
 
-1. [QP/C 官方文档](https://www.state-machine.com/qpc/) -- Quantum Leaps
+1. [QP/C 官方文档](https://www.state-machine.com/qpc/)，Quantum Leaps
 2. [QPC 层次状态机（HSM）设计与优势分析](https://blog.csdn.net/stallion5632/article/details/149359525)
 3. [QPC 框架中状态机的设计优势和特殊之处](https://blog.csdn.net/stallion5632/article/details/149260812)
 4. [QPC QActive 零拷贝 & 无锁数据传输解析](https://blog.csdn.net/stallion5632/article/details/149374727)
 5. [QPC QActive 在 RT-Thread 上的实现原理详述](https://blog.csdn.net/stallion5632/article/details/149604623)
-6. Miro Samek, *Practical UML Statecharts in C/C++*, 2nd Edition -- QP/C 作者的经典著作
+6. Miro Samek, *Practical UML Statecharts in C/C++*, 2nd Edition，QP/C 作者的经典著作
 7. [RT-Thread 官方文档](https://www.rt-thread.org/document/site/)
 

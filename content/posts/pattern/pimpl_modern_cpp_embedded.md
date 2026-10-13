@@ -4,7 +4,7 @@ date: 2026-02-17T08:50:00
 draft: false
 categories: ["pattern"]
 tags: ["C++14", "PIMPL", "embedded", "compilation", "ABI", "design-pattern", "cache"]
-summary: "PIMPL 是 C++ 中最经典的编译隔离手段，但教科书只展示了 unique_ptr 一种实现。本文对比三种 C++14 兼容的 PIMPL 实现 -- Heap PIMPL、Fast PIMPL (栈内联)、函数指针表 PIMPL -- 从编译隔离、运行时成本、缓存友好性三个维度量化分析，给出不同场景的选型依据。"
+summary: "PIMPL 是 C++ 中最经典的编译隔离手段，但教科书只展示了 unique_ptr 一种实现。本文对比三种 C++14 兼容的 PIMPL 实现，Heap PIMPL、Fast PIMPL (栈内联)、函数指针表 PIMPL，从编译隔离、运行时成本、缓存友好性三个维度量化分析，给出不同场景的选型依据。"
 ShowToc: true
 TocOpen: true
 ---
@@ -213,7 +213,7 @@ float Sensor::Read() { return Self()->DoRead(); }
 
 ### 3.3 关键细节
 
-**kImplSize 的维护问题**。这是 Fast PIMPL 最大的实践痛点。`Impl` 的大小变化时，必须同步更新头文件中的 `kImplSize`。如果忘记更新，`static_assert` 会在编译 `.cpp` 时报错，但不会在其他编译单元报错 -- 这正是编译防火墙的意义。
+**kImplSize 的维护问题**。这是 Fast PIMPL 最大的实践痛点。`Impl` 的大小变化时，必须同步更新头文件中的 `kImplSize`。如果忘记更新，`static_assert` 会在编译 `.cpp` 时报错，但不会在其他编译单元报错，这正是编译防火墙的意义。
 
 **确定 kImplSize 的方法**:
 
@@ -222,7 +222,7 @@ float Sensor::Read() { return Self()->DoRead(); }
 #pragma message("sizeof(Impl) = " + std::to_string(sizeof(Impl)))
 ```
 
-或者更实用的做法 -- 预留一个合理的上界并加注释:
+或者更实用的做法，预留一个合理的上界并加注释:
 
 ```cpp
 // sizeof(Impl) 当前 = 72, 预留 80 应对未来扩展
@@ -246,7 +246,7 @@ Sensor::Sensor(Sensor&& other) noexcept {
 | 内存 | 对象本身包含 Impl 存储，无额外分配器元数据 |
 | 缓存 | Sensor 和 Impl 连续存储，cache 友好 |
 
-**代价**: 头文件中暴露了 `kImplSize`，这是一个"弱耦合" -- 大小变化需要更新头文件，但不会暴露 `Impl` 的内部结构。实际项目中，`Impl` 大小稳定后很少变动，这个代价可以接受。
+**代价**: 头文件中暴露了 `kImplSize`，这是一个"弱耦合"，大小变化需要更新头文件，但不会暴露 `Impl` 的内部结构。实际项目中，`Impl` 大小稳定后很少变动，这个代价可以接受。
 
 ### 3.5 与 Heap PIMPL 的编译隔离对比
 

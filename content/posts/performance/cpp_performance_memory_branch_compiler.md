@@ -16,12 +16,12 @@ TocOpen: true
 性能优化的第一条铁律: **不要猜**。
 
 - **度量** (Measure): 用 perf、DWT 周期计数器、Google Benchmark 建立基线数据
-- **定位** (Locate): 用火焰图或 profiler 找到真正的热点，而不是"感觉慢"的地方
+- **定位** (Locate): 用火焰图或 profiler 找到真正的热点，不靠"感觉慢"的地方
 - **验证** (Verify): 每次改动后重新跑基准，确认改进是真实且稳定的
 
-违反这条定律的后果可能是"优化"反而让性能变差。一个典型案例: 在 ARMv8 上用 NEON SIMD 优化 CRC32，获得了 8 倍加速; 但用同样的思路优化简单字节累加校验和，性能反而下降 20% — SIMD 的寄存器加载/存储开销超过了并行计算的收益。
+违反这条定律的后果可能是"优化"反而让性能变差。一个典型案例: 在 ARMv8 上用 NEON SIMD 优化 CRC32，获得了 8 倍加速；但用同样的思路优化简单字节累加校验和，性能反而下降 20%，SIMD 的寄存器加载/存储开销超过了并行计算的收益。
 
-> 详细的 CRC/NEON 对比实验数据参见 [ARMv8 CRC 性能实测: 硬件指令快 8 倍, NEON 反而更慢](/tech-notes/posts/performance/armv8_crc32_hardware_vs_neon_benchmark/)
+> 详细的 CRC/NEON 对比实验数据参见 [ARMv8 CRC 性能实测: 硬件指令快 8 倍，NEON 反而更慢](/tech-notes/posts/performance/armv8_crc32_hardware_vs_neon_benchmark/)
 
 ### 零拷贝思维
 
@@ -47,11 +47,11 @@ TocOpen: true
 
 架构决定上限，算法决定下限，微优化只影响常数因子:
 
-1. **算法复杂度** — O(n) → O(log n) 的改进远超任何微优化
-2. **架构设计** — 零拷贝、无锁、核绑定等系统级决策
-3. **数据布局** — 缓存友好的内存组织
-4. **编译器提示** — 分支预测、预取、强制内联
-5. **指令级优化** — SIMD、汇编 (投入大收益不确定)
+1. **算法复杂度**：O(n) → O(log n) 的改进远超任何微优化
+2. **架构设计**：零拷贝、无锁、核绑定等系统级决策
+3. **数据布局**：缓存友好的内存组织
+4. **编译器提示**：分支预测、预取、强制内联
+5. **指令级优化**：SIMD、汇编 (投入大收益不确定)
 
 ### 跨平台开发模型: 主机优化，目标部署
 
@@ -91,11 +91,11 @@ FORCE_INLINE uint32_t FastHash(uint32_t key) {
 
 内联消除了函数调用的固定开销 (参数压栈/出栈、返回地址保存、栈帧创建)，更重要的是让编译器能跨函数边界做常量传播和死代码消除。
 
-**注意**: 过度内联会导致代码膨胀 (code bloat)，增加指令缓存压力。只对**热路径上的短小函数**使用强制内联。
+注意：过度内联会导致代码膨胀 (code bloat)，增加指令缓存压力。只对**热路径上的短小函数**使用强制内联。
 
 ### 分支预测提示: `__builtin_expect`
 
-CPU 流水线依赖分支预测。当预测失败时，需要清空流水线重新执行，代价是 10-20 个周期。`__builtin_expect` 告诉编译器哪条分支更可能执行，让编译器把热路径放在直通路径上:
+CPU 流水线依赖分支预测。当预测失败时，需要清空流水线重新执行，成本是 10-20 个周期。`__builtin_expect` 告诉编译器哪条分支更可能执行，让编译器把热路径放在直通路径上:
 
 ```cpp
 #define likely(x)   __builtin_expect(!!(x), 1)
@@ -125,7 +125,7 @@ int ProcessPacket(const uint8_t* packet, size_t len) {
     bx  lr
 ```
 
-**适用场景**: 分支概率明显不均衡的情况 (90/10 或更极端)。如果两条分支概率接近 50/50，使用 `__builtin_expect` 没有意义。
+适用场景：分支概率明显不均衡的情况 (90/10 或更极端)。如果两条分支概率接近 50/50，使用 `__builtin_expect` 没有意义。
 
 ### 缓存预取: `__builtin_prefetch`
 
@@ -265,7 +265,7 @@ bool SubscribeOne() noexcept {
 | 内存 | vtable 指针 (8B/对象) | 零额外内存 |
 | 适用性 | 运行时多态 (插件系统) | 编译期已知类型集合 |
 
-**权衡**: CRTP 只适用于类型在编译期已知的场景。如果需要运行时动态加载 (如插件系统)，虚函数仍然是正确选择。
+权衡：CRTP 只适用于类型在编译期已知的场景。如果需要运行时动态加载 (如插件系统)，虚函数仍然是正确选择。
 
 ### C 语言等价方案: 函数指针表
 
@@ -309,7 +309,7 @@ C++17 提供了零开销替代方案:
 | Factory | 字符串映射 + 堆分配 | `std::make_unique<T>(args...)` (模板工厂) |
 | Observer | 虚函数回调链 | `FixedFunction` + 环形缓冲批处理 |
 
-**原则**: 热循环内禁止堆分配和虚调用。启动、初始化等冷路径可以保留面向对象层次; 中断和紧循环必须用编译期确定的调用。
+原则：热循环内禁止堆分配和虚调用。启动、初始化等冷路径可以保留面向对象层次；中断和紧循环必须用编译期确定的调用。
 
 ---
 
@@ -360,7 +360,7 @@ public:
 };
 ```
 
-32 字节的默认缓冲区足以容纳大多数 lambda (1-2 个捕获变量)。如果 callable 太大，`static_assert` 在编译期报错而不是默默回退到堆分配。
+32 字节的默认缓冲区足以容纳大多数 lambda (1-2 个捕获变量)。如果 callable 太大，`static_assert` 在编译期报错，不会默默回退到堆分配。
 
 ### 栈容器: FixedString 和 FixedVector
 
@@ -444,7 +444,7 @@ QPC 框架中的事件内存池 (`QF_poolInit/Q_NEW/QF_gc`) 采用相同的设�
 
 数据在内存中的组织方式直接决定缓存效率:
 
-**Array of Structs (AoS)** — 面向对象的自然布局:
+**Array of Structs (AoS)**：面向对象的自然布局
 
 ```cpp
 struct Particle {
@@ -458,7 +458,7 @@ std::array<Particle, 10000> particles;
 
 当算法只需要位置 (x, y, z) 时，每次加载一个缓存行 (64B)，只有 12B 有用，其余 20B 是速度/质量/类型的无用数据。缓存带宽利用率仅 37%。
 
-**Struct of Arrays (SoA)** — 数据并行友好:
+**Struct of Arrays (SoA)**：数据并行友好
 
 ```cpp
 struct ParticleSystem {
@@ -471,7 +471,7 @@ struct ParticleSystem {
 
 只处理位置时，x/y/z 数组连续存储，每个缓存行的数据全部有用。适合 SIMD 向量化 (一次加载 4 个 float)。
 
-**AoSoA** — 分块混合布局:
+**AoSoA**：分块混合布局
 
 ```cpp
 struct ParticleBlock {
@@ -587,7 +587,7 @@ class SpscRingBuffer {
 
 两个关键优化:
 
-1. **`if constexpr` 双路径**: 对于 trivially copyable 类型 (如 `int`、`float`、POD 结构体)，使用 `memcpy` 批量拷贝而不是逐元素赋值。这让编译器生成 SIMD 或 REP MOVSB 指令:
+1. **`if constexpr` 双路径**: 对于 trivially copyable 类型 (如 `int`、`float`、POD 结构体)，使用 `memcpy` 批量拷贝，不做逐元素赋值。这让编译器生成 SIMD 或 REP MOVSB 指令:
 
 ```cpp
 if constexpr (kTriviallyCopyable) {
@@ -641,7 +641,7 @@ bool TryEnqueue(const T& item) {
 
 ### 自适应退避: Spin → Yield → Sleep
 
-纯自旋等待 (busy-wait) 浪费 CPU 和电力; 直接 sleep 延迟太高。newosp 的 `AdaptiveBackoff` 实现了三阶段自适应策略:
+纯自旋等待 (busy-wait) 浪费 CPU 和电力；直接 sleep 延迟太高。newosp 的 `AdaptiveBackoff` 实现了三阶段自适应策略:
 
 ```cpp
 void Wait() noexcept {
@@ -749,7 +749,7 @@ void on_sensor_event(void) {
 }
 ```
 
-**适用场景**: 读写频繁、偶尔需要聚合的统计数据。不适合需要线程间实时共享的数据。
+适用场景：读写频繁、偶尔需要聚合的统计数据。不适合需要线程间实时共享的数据。
 
 ---
 
@@ -777,7 +777,7 @@ shared_queue.push(data);      // 仅保护必要操作
 lock.unlock();
 ```
 
-**第三步: 自适应自旋**。对持锁时间极短的场景，用自旋锁避免上下文切换。但纯自旋浪费 CPU — 参见上文 AdaptiveBackoff 三阶段策略。
+**第三步: 自适应自旋**。对持锁时间极短的场景，用自旋锁避免上下文切换。但纯自旋浪费 CPU，参见上文 AdaptiveBackoff 三阶段策略。
 
 **第四步: 无锁替代**。争用极其激烈的核心路径上，用 SPSC/MPSC Ring Buffer 替代锁。
 
@@ -901,7 +901,7 @@ public:
 };
 ```
 
-业务线程只做 O(1) 的消息入队; 所有硬件操作集中在一个线程，无竞争、无锁、无忙等持锁。
+业务线程只做 O(1) 的消息入队；所有硬件操作集中在一个线程，无竞争、无锁、无忙等持锁。
 
 进一步优化: 用硬件发送完成中断替代忙等。ISR 向消息队列投递 `EV_TX_DONE` 事件，UART 管理线程在 `mq_receive` 上阻塞等待，真正的零 CPU 占用:
 
@@ -1037,7 +1037,7 @@ graph LR
 
 在 Linux 实时系统中，三项配置决定了延迟的确定性:
 
-**1. CPU 亲和性绑定** — 消除缓存迁移:
+**1. CPU 亲和性绑定**：消除缓存迁移
 
 ```cpp
 void BindToCpu(int cpu_id) {
@@ -1050,7 +1050,7 @@ void BindToCpu(int cpu_id) {
 
 线程在核间迁移时，L1/L2 缓存全部失效。绑定后可减少 20-40% 的缓存 miss。
 
-**2. 内存锁定** — 消除页错误:
+**2. 内存锁定**：消除页错误
 
 ```cpp
 mlockall(MCL_CURRENT | MCL_FUTURE);
@@ -1060,7 +1060,7 @@ mlockall(MCL_CURRENT | MCL_FUTURE);
 
 实时线程被页错误中断会导致毫秒级的不确定延迟。`mlockall` 把所有虚拟内存页锁定在物理内存中。
 
-**3. 实时调度策略** — 保证优先级:
+**3. 实时调度策略**：保证优先级
 
 ```cpp
 struct sched_param param;
@@ -1097,7 +1097,7 @@ ts.tv_nsec = target_ns % 1000000000ULL;
 clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &ts, nullptr);
 ```
 
-`TIMER_ABSTIME` 避免了相对时间的累积误差 — 即使某次处理耗时超出预期，下一次唤醒时间仍然准确。
+`TIMER_ABSTIME` 避免了相对时间的累积误差，即使某次处理耗时超出预期，下一次唤醒时间仍然准确。
 
 ---
 
@@ -1219,7 +1219,7 @@ BENCHMARK(BM_ProcessMessage)->Range(1, 1 << 20);
 高冲突场景下 CAS 可能因反复重试而退化。此时应退回自旋 + 退避或直接用 mutex。
 
 **Q: `std::function` 会导致堆分配吗?**
-捕获体积 <= SBO 阈值 (通常 2-3 个指针大小) 时在栈上; 超过则堆分配。newosp 的 `FixedFunction<Ret(Args...), 32>` 通过 `static_assert` 在编译期强制要求栈分配。
+捕获体积 <= SBO 阈值 (通常 2-3 个指针大小) 时在栈上；超过则堆分配。newosp 的 `FixedFunction<Ret(Args...)，32>` 通过 `static_assert` 在编译期强制要求栈分配。
 
 **Q: 模板元编程会导致代码膨胀吗?**
 会。需要通过按需实例化、LTO (Link-Time Optimization) 和合理的接口设计来控制。

@@ -89,11 +89,11 @@ class _Sp_counted_base {
 
 在 ARM Cortex-A53 上，每次 `__atomic_add` 编译为 `ldaxr` + `stlxr` + 重试循环 (LL/SC)。在多核竞争下，单次原子操作耗时从 ~5 ns 膨胀到 ~50 ns。
 
-**根因**: `shared_ptr` 的设计目标是通用场景的安全性，它必须支持任意线程在任意时刻拷贝和销毁。这种灵活性的代价是每次操作都要经过原子读-改-写 (RMW) 路径，即使在单线程使用场景下也无法消除。
+根因：`shared_ptr` 的设计目标是通用场景的安全性，它必须支持任意线程在任意时刻拷贝和销毁。这种灵活性的成本落在每次操作上：都要经过原子读-改-写 (RMW) 路径，即使在单线程使用场景下也无法消除。
 
 > 关于 ARM 平台原子操作的硬件实现，参见 Preshing 的 [An Introduction to Lock-Free Programming](https://preshing.com/20120612/an-introduction-to-lock-free-programming/)，其中详细解释了 Load-Link/Store-Conditional (LL/SC) 机制和 CAS 循环。
 
-**实际影响**: 在 100 Hz 帧率的激光雷达 Pipeline 中，假设每帧经过 6 个 stage，每个 stage 拷贝一次 `shared_ptr` (入队) + 析构一次 (出队) = 12 次原子操作/帧。100 Hz x 12 = 1200 次/秒，看似不多。但如果 stage 内部将 `shared_ptr` 传递给子函数或临时存储，拷贝次数会迅速膨胀到数万次/秒。在多核竞争下，LL/SC 重试会产生不可预测的延迟尖峰。
+实际影响：在 100 Hz 帧率的激光雷达 Pipeline 中，假设每帧经过 6 个 stage，每个 stage 拷贝一次 `shared_ptr` (入队) + 析构一次 (出队) = 12 次原子操作/帧。100 Hz x 12 = 1200 次/秒，看似不多。但如果 stage 内部将 `shared_ptr` 传递给子函数或临时存储，拷贝次数会迅速膨胀到数万次/秒。在多核竞争下，LL/SC 重试会产生不可预测的延迟尖峰。
 
 ### 陷阱 2: 控制块的堆分配与碎片化
 
@@ -119,7 +119,7 @@ auto p = std::shared_ptr<Event>(new Event());  // Event 一次 + 控制块一次
 此时 malloc(4096) 可能失败，即使总空闲 > 4096
 ```
 
-**根因**: 通用堆分配器 (glibc malloc / dlmalloc) 为了支持任意大小的分配请求，使用 bin/arena/chunk 结构。频繁的小块分配-释放会产生外部碎片。嵌入式系统的 RAM 通常在 64 KB ~ 512 MB 之间，碎片化会直接导致内存耗尽。
+根因：通用堆分配器 (glibc malloc / dlmalloc) 为了支持任意大小的分配请求，使用 bin/arena/chunk 结构。频繁的小块分配-释放会产生外部碎片。嵌入式系统的 RAM 通常在 64 KB ~ 512 MB 之间，碎片化会直接导致内存耗尽。
 
 ### 陷阱 3: weak_ptr 竞态窗口
 
@@ -136,7 +136,7 @@ weak.lock() → nullptr!
 callback(nullptr)  → UB
 ```
 
-**根因**: `weak_ptr` 的设计假设是 "观察者不拥有对象"。但在事件队列中，消费者需要在处理期间拥有数据的所有权。用 `weak_ptr` 传递所有权是语义错误 -- 它是观察工具，不是传输机制。
+根因：`weak_ptr` 的设计假设是 "观察者不拥有对象"。但在事件队列中，消费者需要在处理期间拥有数据的所有权。用 `weak_ptr` 传递所有权是语义错误，它是观察工具，不是传输机制。
 
 > 关于 TOCTOU 竞态和内存可见性问题，Preshing 在 [Memory Barriers Are Like Source Control Operations](https://preshing.com/20120710/memory-barriers-are-like-source-control-operations/) 中用源码管理系统类比解释了多线程内存交互中的可见性延迟。
 
@@ -173,7 +173,7 @@ class function<R(Args...)> {
 2. **虚函数调用**: 类型擦除通过 `_M_manager` 虚表指针实现，每次调用多一次间接跳转
 3. **拷贝开销**: `std::function` 可拷贝，每次拷贝可能触发堆分配 (复制被擦除的 callable)
 
-**根因**: `std::function` 的设计目标是 "存储任意可调用对象"。这种通用性需要运行时多态 (虚函数/类型擦除) 和动态内存 (大 callable 堆分配)。嵌入式系统需要的是编译期已知大小、不分配内存的回调容器。
+根因：`std::function` 的设计目标是 "存储任意可调用对象"。这种通用性需要运行时多态 (虚函数/类型擦除) 和动态内存 (大 callable 堆分配)。嵌入式系统需要的是编译期已知大小、不分配内存的回调容器。
 
 ### 陷阱 5: 异常路径的不确定性
 
@@ -191,7 +191,7 @@ class function<R(Args...)> {
 
 在 `-fno-exceptions` 编译模式下 (嵌入式常见)，`shared_ptr` 仍然工作，但错误处理变成了 `std::terminate` 或未定义行为。而且 RTTI (运行时类型信息) 通常也被禁用 (`-fno-rtti`)，这使得 `std::function` 的类型擦除机制可能出现问题。
 
-**根因**: C++ 标准库的智能指针和函数对象设计于桌面/服务器环境，假设异常和 RTTI 可用。嵌入式编译选项 (`-fno-exceptions -fno-rtti`) 切断了这些假设，迫使开发者在标准库的 "安全" API 和嵌入式的编译约束之间进行权衡。
+根因：C++ 标准库的智能指针和函数对象设计于桌面/服务器环境，假设异常和 RTTI 可用。嵌入式编译选项 (`-fno-exceptions -fno-rtti`) 切断了这些假设，迫使开发者在标准库的 "安全" API 和嵌入式的编译约束之间进行权衡。
 
 ---
 
@@ -199,7 +199,7 @@ class function<R(Args...)> {
 
 newosp 是为 ARM-Linux 嵌入式平台设计的 C++17 header-only 基础设施库。它遵循一个核心原则:
 
-> **栈优先分配，热路径禁止堆分配。** -- newosp 设计文档
+> **栈优先分配，热路径禁止堆分配。**（newosp 设计文档）
 
 | 原则 | 说明 |
 |------|------|
@@ -269,7 +269,7 @@ FixedPool 的内部结构:
 | 内存预算 | 不可预测 | **编译期确定** (sizeof(T) x MaxObjects) |
 | 失败模式 | bad_alloc 异常 / OOM kill | `CreateChecked()` 返回 `expected` |
 
-**事件队列重写** -- 替代引子中的 `shared_ptr<void>` 方案:
+**事件队列重写**：替代引子中的 `shared_ptr<void>` 方案
 
 ```cpp
 struct Event { uint32_t id; /* ... */ };
@@ -363,7 +363,7 @@ bus.Subscribe<SensorData>([this](const auto& envelope) {
 });
 ```
 
-如果 lambda 捕获超过 32 字节，编译器会在 `Subscribe` 调用处报 `static_assert` 错误，而不是在运行时静默分配堆内存。
+如果 lambda 捕获超过 32 字节，编译器会在 `Subscribe` 调用处报 `static_assert` 错误，不会在运行时静默分配堆内存。
 
 ### 3.3 ScopeGuard: 替代 unique_ptr 的自定义删除器
 
@@ -659,12 +659,12 @@ config->Load("/etc/sensor.ini");
 
 ## 参考
 
-- [newosp GitHub](https://github.com/DeguiLiu/newosp) -- C++17 header-only 嵌入式基础设施库
-- [newosp 设计文档](https://github.com/DeguiLiu/newosp/blob/main/docs/design_zh.md) -- 完整架构设计
-- [C++ 智能指针失效分析](https://blog.csdn.net/stallion5632/article/details/140479753) -- weak_ptr 竞态案例
-- [An Introduction to Lock-Free Programming](https://preshing.com/20120612/an-introduction-to-lock-free-programming/) -- Lock-free 编程入门 (Jeff Preshing)
-- [Memory Barriers Are Like Source Control Operations](https://preshing.com/20120710/memory-barriers-are-like-source-control-operations/) -- 内存屏障与多核可见性 (Jeff Preshing)
-- [Double-Checked Locking is Fixed in C++11](https://preshing.com/20130930/double-checked-locking-is-fixed-in-cpp11/) -- C++11 内存模型与 DCLP (Jeff Preshing)
-- [Memory Ordering at Compile Time](https://preshing.com/20120625/memory-ordering-at-compile-time/) -- 编译器重排序与屏障 (Jeff Preshing)
-- [C++ and the Perils of Double-Checked Locking](http://www.aristeia.com/Papers/DDJ_Jul_Aug_2004_revised.pdf) -- Scott Meyers & Andrei Alexandrescu
-- [Is Parallel Programming Hard, And, If So, What Can You Do About It?](https://kernel.org/pub/linux/kernel/people/paulmck/perfbook/perfbook.html) -- Paul McKenney
+- [newosp GitHub](https://github.com/DeguiLiu/newosp)，C++17 header-only 嵌入式基础设施库
+- [newosp 设计文档](https://github.com/DeguiLiu/newosp/blob/main/docs/design_zh.md)，完整架构设计
+- [C++ 智能指针失效分析](https://blog.csdn.net/stallion5632/article/details/140479753)，weak_ptr 竞态案例
+- [An Introduction to Lock-Free Programming](https://preshing.com/20120612/an-introduction-to-lock-free-programming/)，Lock-free 编程入门 (Jeff Preshing)
+- [Memory Barriers Are Like Source Control Operations](https://preshing.com/20120710/memory-barriers-are-like-source-control-operations/)，内存屏障与多核可见性 (Jeff Preshing)
+- [Double-Checked Locking is Fixed in C++11](https://preshing.com/20130930/double-checked-locking-is-fixed-in-cpp11/)，C++11 内存模型与 DCLP (Jeff Preshing)
+- [Memory Ordering at Compile Time](https://preshing.com/20120625/memory-ordering-at-compile-time/)，编译器重排序与屏障 (Jeff Preshing)
+- [C++ and the Perils of Double-Checked Locking](http://www.aristeia.com/Papers/DDJ_Jul_Aug_2004_revised.pdf)，Scott Meyers & Andrei Alexandrescu
+- [Is Parallel Programming Hard, And, If So, What Can You Do About It?](https://kernel.org/pub/linux/kernel/people/paulmck/perfbook/perfbook.html)，Paul McKenney

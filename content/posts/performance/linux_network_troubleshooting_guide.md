@@ -31,7 +31,7 @@ TocOpen: true
 
 ## 1. UDP 丢包全链路诊断
 
-Julia Evans 在 [Why do UDP packets get dropped?](https://jvns.ca/blog/2016/08/24/find-out-where-youre-dropping-packets/) 中提出一个关键观点: **"UDP packets don't get lost by magic"** — 丢包不是 UDP 的天性，而是链路上某个缓冲区满了。她将丢包归纳为三个方向: lost on the way out (发送缓冲区满)、lost in transit (传输途中)、lost on the way in (接收缓冲区满)，并总结出 **"EVERYTHING IS BUFFERS"** — 网卡、backlog 队列、socket buffer、中间路由器，所有环节的丢包本质上都是缓冲区溢出。
+Julia Evans 在 [Why do UDP packets get dropped?](https://jvns.ca/blog/2016/08/24/find-out-where-youre-dropping-packets/) 中提出一个关键观点: **"UDP packets don't get lost by magic"**：丢包不是 UDP 的天性，而是链路上某个缓冲区满了。她将丢包归纳为三个方向: lost on the way out (发送缓冲区满)、lost in transit (传输途中)、lost on the way in (接收缓冲区满)，并总结出 **"EVERYTHING IS BUFFERS"**：网卡、backlog 队列、socket buffer、中间路由器，所有环节的丢包都是缓冲区溢出导致的。
 
 本章将这个思路展开为完整的诊断流程。数据包从网卡到应用层依次经过以下可能丢包的位置:
 

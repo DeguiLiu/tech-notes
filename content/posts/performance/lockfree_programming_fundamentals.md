@@ -10,15 +10,15 @@ TocOpen: true
 ---
 
 > 相关文章:
-> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](/tech-notes/posts/performance/memory_barrier_hardware/) -- 内存序的硬件根因 (Store Buffer/Invalidation Queue/MESI)
-> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- Wait-free SPSC 的逐行代码分析
-> - [无锁异步日志设计](/tech-notes/posts/performance/lockfree_async_log/) -- Per-Thread SPSC 在日志系统中的应用
-> - [嵌入式系统死锁防御: 从有序锁到无锁架构](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/) -- newosp 的无锁 MPSC 总线架构
-> - [嵌入式线程间消息传递重构: MCCC 无锁消息总线](/tech-notes/posts/performance/mccc_message_passing/) -- MPSC 消息总线的完整工程实现
-> - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/) -- 有锁与无锁的性能实测
-> - [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/) -- 何时需要从有锁迁移到无锁
-> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/) -- 跨进程场景的无锁 Ring Buffer
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- 无锁 MPSC 总线在完整框架中的集成
+> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](/tech-notes/posts/performance/memory_barrier_hardware/)，内存序的硬件根因 (Store Buffer/Invalidation Queue/MESI)
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，Wait-free SPSC 的逐行代码分析
+> - [无锁异步日志设计](/tech-notes/posts/performance/lockfree_async_log/)，Per-Thread SPSC 在日志系统中的应用
+> - [嵌入式系统死锁防御: 从有序锁到无锁架构](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/)，newosp 的无锁 MPSC 总线架构
+> - [嵌入式线程间消息传递重构: MCCC 无锁消息总线](/tech-notes/posts/performance/mccc_message_passing/)，MPSC 消息总线的完整工程实现
+> - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/)，有锁与无锁的性能实测
+> - [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/)，何时需要从有锁迁移到无锁
+> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/)，跨进程场景的无锁 Ring Buffer
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，无锁 MPSC 总线在完整框架中的集成
 >
 > 参考:
 > - [iceoryx Lock-Free Queue Design](https://github.com/eclipse-iceoryx/iceoryx/blob/main/doc/design/lockfree_queue.md)
@@ -36,9 +36,9 @@ TocOpen: true
 
 > 这两个开销可以用 `perf lock contention` 量化。详见 [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/)。
 
-无锁编程的目标不是消灭所有同步，而是**用原子操作替代锁，让多个线程能同时推进**。但无锁不是银弹 -- 它增加了代码复杂度，且只在特定数据结构（队列、栈、计数器）上有成熟方案。
+无锁编程的目标不是消灭所有同步，而是**用原子操作替代锁，让多个线程能同时推进**。但无锁不是银弹，它增加了代码复杂度，且只在特定数据结构（队列、栈、计数器）上有成熟方案。
 
-**决策原则**: 不要在没有数据支撑的情况下追求无锁。先用 `perf lock` 量化锁竞争，确认它确实是瓶颈，再考虑无锁替代。
+决策原则：不要在没有数据支撑的情况下追求无锁。先用 `perf lock` 量化锁竞争，确认它确实是瓶颈，再考虑无锁替代。
 
 ---
 
@@ -127,7 +127,7 @@ void increment(std::atomic<int>& counter) {
 }
 ```
 
-这段代码永远不会阻塞另一个线程。如果 CAS 失败，说明另一个线程成功了 -- 系统整体有进展。
+这段代码永远不会阻塞另一个线程。如果 CAS 失败，说明另一个线程成功了，系统整体有进展。
 
 ---
 
@@ -219,7 +219,7 @@ public:
 };
 ```
 
-虽然没有使用 OS mutex，但自旋锁本质上是**互斥的** -- 同一时刻只有一个线程能进入临界区。持有锁的线程被调度走后，等待线程无限自旋，系统没有进展。这不满足 lock-free 的定义。
+虽然没有使用 OS mutex，但自旋锁仍然是**互斥的**，同一时刻只有一个线程能进入临界区。持有锁的线程被调度走后，等待线程无限自旋，系统没有进展。这不满足 lock-free 的定义。
 
 > 自旋锁、互斥锁与无锁队列的性能对比，见 [锁竞争基准测试](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/)。结论: 无锁队列在 MPMC 场景下吞吐量领先 1-2 个数量级。
 
@@ -301,8 +301,8 @@ uintptr_t pack(void* ptr, uint16_t tag) {
 iceoryx 的无锁队列采用了一种优雅的 ABA 防护: **周期索引（Cyclic Index）**。
 
 索引 `j` 表示为 `(cycle, index)` 对:
-- `index = j % n` -- 数组中的实际位置
-- `cycle = j / n` -- 第几轮
+- `index = j % n`，数组中的实际位置
+- `cycle = j / n`，第几轮
 
 ```
 容量 n = 4 时:
@@ -336,7 +336,7 @@ bool push(uint64_t value) {
 }
 ```
 
-由于 head 和 tail 严格单调递增，要发生 ABA，需要完整的 `uint64_t` 溢出回绕 -- 即 2^64 次操作。以每秒 10 亿次操作计算，需要约 584 年。实际上不可能发生。
+由于 head 和 tail 严格单调递增，要发生 ABA，需要完整的 `uint64_t` 溢出回绕，即 2^64 次操作。以每秒 10 亿次操作计算，需要约 584 年。实际上不可能发生。
 
 ### 4.4 SPSC 不存在 ABA
 
@@ -367,7 +367,7 @@ void consumer() {
 }
 ```
 
-在 x86（TSO 模型）上，这段代码碰巧正确 -- 硬件保证 store-store 有序。但在 ARM（弱序模型）上，CPU 可能将 `data = 42` 重排到 `ready = true` 之后，消费者看到 `ready == true` 但 `data` 还是 0。重排序的硬件根因是 Store Buffer 和 Invalidation Queue，详见 [内存屏障的硬件原理](/tech-notes/posts/performance/memory_barrier_hardware/)。
+在 x86（TSO 模型）上，这段代码碰巧正确，硬件保证 store-store 有序。但在 ARM（弱序模型）上，CPU 可能将 `data = 42` 重排到 `ready = true` 之后，消费者看到 `ready == true` 但 `data` 还是 0。重排序的硬件根因是 Store Buffer 和 Invalidation Queue，详见 [内存屏障的硬件原理](/tech-notes/posts/performance/memory_barrier_hardware/)。
 
 ### 5.2 acquire-release 配对
 
@@ -416,7 +416,7 @@ x86 硬件天然保证了大多数排序，所以在 x86 上用 `relaxed` 的代
 | 写后让对方可见 | `release` | 保证之前的数据写入不会被重排到此之后 |
 | 不确定时 | `seq_cst` | 安全但代价高；确认正确后再降级优化 |
 
-> 每种内存序在 ARM 上的具体指令映射和代价分析，见 [SPSC 无锁环形缓冲区设计剖析 -- 第 6 节](/tech-notes/posts/performance/spsc_ringbuffer_design/)。四种屏障类型 (StoreStore/LoadLoad/LoadStore/StoreLoad) 和 ARM DMB/DSB/ISB 的精确语义，见 [内存屏障的硬件原理](/tech-notes/posts/performance/memory_barrier_hardware/)。
+> 每种内存序在 ARM 上的具体指令映射和代价分析，见 [SPSC 无锁环形缓冲区设计剖析，第 6 节](/tech-notes/posts/performance/spsc_ringbuffer_design/)。四种屏障类型 (StoreStore/LoadLoad/LoadStore/StoreLoad) 和 ARM DMB/DSB/ISB 的精确语义，见 [内存屏障的硬件原理](/tech-notes/posts/performance/memory_barrier_hardware/)。
 
 ---
 
@@ -441,7 +441,7 @@ graph TD
 
 ### 6.2 SPSC: Wait-Free, 零竞争
 
-**适用场景**: 严格的一对一通道 -- ISR 到处理线程、日志生产者到写盘线程、传感器采集到融合线程。
+适用场景：严格的一对一通道，ISR 到处理线程、日志生产者到写盘线程、传感器采集到融合线程。
 
 **核心设计**:
 
@@ -471,7 +471,7 @@ Producer Thread                    Consumer Thread
 
 ### 6.3 MPSC: 单消费者简化
 
-**适用场景**: 多个线程向同一个队列发送消息，一个专用线程消费 -- 消息总线、事件分发器、日志聚合。
+适用场景：多个线程向同一个队列发送消息，一个专用线程消费，消息总线、事件分发器、日志聚合。
 
 **核心设计**: 生产者之间通过 CAS 竞争 `tail`（写入端），消费者独占 `head`（读取端）。
 
@@ -516,7 +516,7 @@ uint32_t ProcessBatch() {
 }
 ```
 
-**关键差异**: 消费者不用 CAS -- 它是唯一的读者，`consumer_pos_` 是普通变量（非原子）。这比 MPMC 少了一半的 CAS 操作。
+**关键差异**: 消费者不用 CAS，它是唯一的读者，`consumer_pos_` 是普通变量（非原子）。这比 MPMC 少了一半的 CAS 操作。
 
 **每个 Slot 的 sequence 字段**用于协调生产者和消费者:
 
@@ -531,7 +531,7 @@ sequence == pos + N : 消费者已释放，下一轮可用
 
 ### 6.4 MPMC: 完全通用, 双端 CAS
 
-**适用场景**: 多个生产者和多个消费者都需要并发访问同一个队列 -- 线程池任务队列、通用工作分发。
+适用场景：多个生产者和多个消费者都需要并发访问同一个队列，线程池任务队列、通用工作分发。
 
 MPMC 队列是最复杂的无锁数据结构之一。一种经典的实现方案（iceoryx 采用）是**索引队列 + 数据缓冲区分离**:
 
@@ -606,7 +606,7 @@ graph TD
     style J fill:#ffcdd2
 ```
 
-**核心原则**: 能用 SPSC 就不用 MPSC，能用 MPSC 就不用 MPMC。每多一端 CAS 竞争，延迟和复杂度都显著增加。
+核心原则：能用 SPSC 就不用 MPSC，能用 MPSC 就不用 MPMC。每多一端 CAS 竞争，延迟和复杂度都显著增加。
 
 newosp 的架构正是这个原则的实践: MPSC 总线接收所有消息，Dispatcher 线程 round-robin 分发到每个 Worker 的独立 SPSC 队列。热路径上只有 SPSC（wait-free），MPSC 的 CAS 竞争限制在入口处。
 

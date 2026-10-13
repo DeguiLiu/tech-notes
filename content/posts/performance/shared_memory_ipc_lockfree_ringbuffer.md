@@ -10,17 +10,17 @@ TocOpen: true
 ---
 
 > 相关文章:
-> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](/tech-notes/posts/performance/memory_barrier_hardware/) -- ARM 内存序加固的硬件根因
-> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- ShmRingBuffer 底层的 SPSC 设计详解
-> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- CAS 无锁设计的理论基础
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- newosp 框架全景
-> - [newosp ospgen: YAML 驱动的零堆消息代码生成](/tech-notes/posts/practice/newosp_ospgen_codegen/) -- ShmRingBuffer 传输的消息类型生成
+> - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](/tech-notes/posts/performance/memory_barrier_hardware/)，ARM 内存序加固的硬件根因
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，ShmRingBuffer 底层的 SPSC 设计详解
+> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，CAS 无锁设计的理论基础
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，newosp 框架全景
+> - [newosp ospgen: YAML 驱动的零堆消息代码生成](/tech-notes/posts/practice/newosp_ospgen_codegen/)，ShmRingBuffer 传输的消息类型生成
 >
 > 参考: [C++编程：使用 cpp-ipc 实现基于共享内存的进程间发布订阅](https://blog.csdn.net/stallion5632/article/details/140881982)
 >
-> newosp 实现: [shm_transport.hpp](https://github.com/DeguiLiu/newosp) -- POSIX 共享内存 + 无锁 MPSC Ring Buffer
+> newosp 实现: [shm_transport.hpp](https://github.com/DeguiLiu/newosp)，POSIX 共享内存 + 无锁 MPSC Ring Buffer
 >
-> 对比库: [cpp-ipc](https://github.com/mutouyun/cpp-ipc) -- 跨平台共享内存 IPC 库
+> 对比库: [cpp-ipc](https://github.com/mutouyun/cpp-ipc)，跨平台共享内存 IPC 库
 
 ## 1. 为什么选择共享内存
 
@@ -80,7 +80,7 @@ $ ls -la /dev/shm/
 -rw------- 1 root root 1048576 Feb 16 10:00 osp_shm_video_ch0
 ```
 
-`shm_open` 本质上是在 `/dev/shm/` (tmpfs) 中创建一个文件。tmpfs 完全在内存中，不涉及磁盘 I/O。`mmap` 将该文件的页面映射到进程地址空间，多个进程映射同一文件即共享同一物理页。
+`shm_open` 做的事是在 `/dev/shm/` (tmpfs) 中创建一个文件。tmpfs 完全在内存中，不涉及磁盘 I/O。`mmap` 将该文件的页面映射到进程地址空间，多个进程映射同一文件即共享同一物理页。
 
 ### 2.3 生命周期管理难题
 
@@ -557,10 +557,10 @@ mmap(NULL, size, PROT_READ | PROT_WRITE,
 | 错误处理 | errno | 异常/返回值 | `expected<T, ShmError>` |
 | 适用场景 | 原型验证 | 桌面/服务器跨平台 IPC | **嵌入式实时系统** |
 
-newosp 的共享内存 IPC 遵循嵌入式系统的核心原则：**编译期确定性、零堆分配、显式内存序、RAII 生命周期**。它牺牲了 cpp-ipc 的灵活性 (动态消息大小、多消费者广播、跨平台)，换来了确定性延迟和可审计的资源占用——这正是安全关键嵌入式系统所需要的。
+newosp 的共享内存 IPC 遵循嵌入式系统的核心原则：**编译期确定性、零堆分配、显式内存序、RAII 生命周期**。它牺牲了 cpp-ipc 的灵活性 (动态消息大小、多消费者广播、跨平台)，换来了确定性延迟和可审计的资源占用，这正是安全关键嵌入式系统所需要的。
 
-> 参考实现: [newosp](https://github.com/DeguiLiu/newosp) -- MIT 协议开源，header-only
+> 参考实现: [newosp](https://github.com/DeguiLiu/newosp)，MIT 协议开源，header-only
 >
-> 对比库: [cpp-ipc](https://github.com/mutouyun/cpp-ipc) -- MIT 协议开源，跨平台
+> 对比库: [cpp-ipc](https://github.com/mutouyun/cpp-ipc)，MIT 协议开源，跨平台
 >
 > 相关文章: [C++编程：使用 cpp-ipc 实现基于共享内存的进程间发布订阅](https://blog.csdn.net/stallion5632/article/details/140881982)

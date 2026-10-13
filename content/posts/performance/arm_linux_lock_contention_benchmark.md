@@ -12,10 +12,10 @@ TocOpen: true
 > 本文通过严格的基准测试方法，对比多线程高竞争场景下三种同步策略的性能表现：自旋锁 (atomic_flag)、互斥锁 (std::mutex) 和无锁队列 (moodycamel::ConcurrentQueue)。
 >
 > 相关文章:
-> - [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/) -- 生产环境的锁竞争定位方法
-> - [嵌入式系统死锁防御: 从有序锁到无锁架构](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/) -- 从架构层面消除锁问题
-> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- 无锁数据结构的理论基础
-> - [多线程死锁与优先级反转实战](/tech-notes/posts/performance/deadlock_priority_inversion_practice/) -- 锁使用不当的典型问题
+> - [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/)，生产环境的锁竞争定位方法
+> - [嵌入式系统死锁防御: 从有序锁到无锁架构](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/)，从架构层面消除锁问题
+> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，无锁数据结构的理论基础
+> - [多线程死锁与优先级反转实战](/tech-notes/posts/performance/deadlock_priority_inversion_practice/)，锁使用不当的典型问题
 >
 > 完整测试代码: [lock-contention-benchmark](https://gitee.com/liudegui/lock-contention-benchmark)
 
@@ -29,7 +29,7 @@ TocOpen: true
 | Mutex | OS futex (Linux) | 长临界区、线程数 > 核心数 |
 | Lock-free Queue | CAS 原子操作 | MPMC 生产者-消费者模型 |
 
-一个常见的误区是将 `std::atomic_flag` 自旋锁称为"无锁"。自旋锁本质上仍然是锁 -- 它通过忙等待 (busy-wait) 获取互斥访问权，只是不经过 OS 调度器。真正的 lock-free 数据结构（如 ConcurrentQueue）保证至少一个线程能在有限步内完成操作，不存在互斥等待。
+一个常见的误区是将 `std::atomic_flag` 自旋锁称为"无锁"。自旋锁仍然是锁，它通过忙等待 (busy-wait) 获取互斥访问权，只是不经过 OS 调度器。真正的 lock-free 数据结构（如 ConcurrentQueue）保证至少一个线程能在有限步内完成操作，不存在互斥等待。
 
 ## 2. 旧测试的问题
 

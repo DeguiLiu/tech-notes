@@ -28,9 +28,9 @@ LOG(kInfo) << "value=" << 42;
 这个看似优雅的设计隐藏了严重的性能问题:
 
 1. 每次调用创建 `LogHelper` 临时对象，构造函数中检查 `isInit()` 并可能触发初始化
-2. `operator<<` 将数据写入 `std::stringstream _ss` 成员 -- 堆分配
-3. 析构函数中执行实际的日志输出 -- 又一次 `std::ostringstream` 格式化
-4. 成员变量包含 `std::string _funcName`, `std::string _fileName`, `std::string _tag` -- 三次堆分配
+2. `operator<<` 将数据写入 `std::stringstream _ss` 成员，堆分配
+3. 析构函数中执行实际的日志输出，又一次 `std::ostringstream` 格式化
+4. 成员变量包含 `std::string _funcName`, `std::string _fileName`, `std::string _tag`，三次堆分配
 
 单条日志的堆分配次数: 至少 4 次 (stringstream + 3 个 string)。
 
@@ -318,12 +318,12 @@ target_compile_definitions(loghelper INTERFACE
 
 ## 7. 经验总结
 
-1. 日志系统的热路径禁止堆分配 -- `vsnprintf` + 栈缓冲区是最优解
-2. 编译期过滤优于运行时过滤 -- 宏展开为 `((void)0)` 是真正的零开销
-3. 后端可插拔设计用编译期类型别名实现 -- 比虚函数 + 工厂模式更高效
-4. `std::regex` 不适合任何性能敏感场景 -- 构造开销在微秒级
-5. 头文件中不要定义全局变量 -- 使用 `inline` 函数内的 `static` 局部变量
-6. INI 解析不需要重量级库 -- 60 行 C 代码足够
+1. 日志系统的热路径禁止堆分配，`vsnprintf` + 栈缓冲区是最优解
+2. 编译期过滤优于运行时过滤，宏展开为 `((void)0)` 是真正的零开销
+3. 后端可插拔设计用编译期类型别名实现，比虚函数 + 工厂模式更高效
+4. `std::regex` 不适合任何性能敏感场景，构造开销在微秒级
+5. 头文件中不要定义全局变量，使用 `inline` 函数内的 `static` 局部变量
+6. INI 解析不需要重量级库，60 行 C 代码足够
 
 项目地址:
 - Gitee: https://gitee.com/liudegui/loghelper

@@ -10,9 +10,9 @@ TocOpen: true
 ---
 
 > 相关文章:
-> - [QPC 框架深度解析: Active Object 模型与层次状态机](/tech-notes/posts/practice/qpc_active_object_hsm/) -- QP/C 的 HSM 双实现策略 (QHsm/QMsm)
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- C++17 模板化 HSM 的现代实现
-> - [行为树 Tick 机制深度解析](/tech-notes/posts/practice/behavior_tree_tick_mechanism/) -- BT 与 HSM 互补的架构实践
+> - [QPC 框架深度解析: Active Object 模型与层次状态机](/tech-notes/posts/practice/qpc_active_object_hsm/)，QP/C 的 HSM 双实现策略 (QHsm/QMsm)
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，C++17 模板化 HSM 的现代实现
+> - [行为树 Tick 机制深度解析](/tech-notes/posts/practice/behavior_tree_tick_mechanism/)，BT 与 HSM 互补的架构实践
 
 状态机是嵌入式系统中最常用的设计模式之一。但随着状态数量增长和层级嵌套加深，传统的 switch-case 实现会变得难以维护。本文以 [state_machine](https://gitee.com/liudegui/state_machine) 框架为例，展示如何将过程驱动的状态机改造为数据驱动的层次状态机 (HSM)。
 
@@ -528,8 +528,8 @@ rt_err_t post_event(uint32_t id, void *ctx) {
 
 不适合:
 
-- 状态极少 (2-3 个) 且无层级需求 -- switch-case 更直接
-- 需要并发状态 (正交区域) -- 本框架不支持
+- 状态极少 (2-3 个) 且无层级需求，switch-case 更直接
+- 需要并发状态 (正交区域)，本框架不支持
 
 ## 8. 项目信息
 

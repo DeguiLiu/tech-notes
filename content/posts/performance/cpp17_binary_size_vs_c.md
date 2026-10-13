@@ -41,7 +41,7 @@ TocOpen: true
 
 用 GCC `-O2 -fno-inline` 编译（禁止内联以观察函数体本身），对比处理函数的汇编：
 
-**C++ `if constexpr` -- `process<int>()` 仅 6 条指令，无分支：**
+**C++ `if constexpr`，`process<int>()` 仅 6 条指令，无分支：**
 
 ```asm
 process<int>(int):
@@ -54,7 +54,7 @@ process<int>(int):
 float 分支**完全不存在**：无 `test/jne` 跳转，无 `movsd` 浮点加载，
 无 `"float: %f\n"` 字符串引用。
 
-**C runtime `if` -- `process()` 有 14 条指令，包含条件分支：**
+**C runtime `if`，`process()` 有 14 条指令，包含条件分支：**
 
 ```asm
 process:
@@ -276,10 +276,10 @@ constexpr 消除了初始化函数的 .text 开销和 .data 段的可写拷贝�
 
 工业嵌入式的应对策略：
 
-1. 禁用 `-fno-exceptions -fno-rtti` -- 消除运行时类型信息和展开表
-2. 避免标准库容器 -- 用 `FixedVector<T,N>` 等固定容量容器替代
-3. 不使用 iostream -- 用 `printf` 或自定义日志
-4. 控制模板实例化数量 -- 类型无关代码下沉到非模板基类
+1. 禁用 `-fno-exceptions -fno-rtti`，消除运行时类型信息和展开表
+2. 避免标准库容器，用 `FixedVector<T,N>` 等固定容量容器替代
+3. 不使用 iostream，用 `printf` 或自定义日志
+4. 控制模板实例化数量，类型无关代码下沉到非模板基类
 5. 开启 `-Os -flto -ffunction-sections -Wl,--gc-sections`
 
 ---
@@ -337,17 +337,17 @@ bloaty new.elf -- old.elf
 
 ## 六、总结
 
-1. **开启 `-fno-exceptions -fno-rtti`** -- 这是 C++ 体积与 C 持平的前提条件。
+1. **开启 `-fno-exceptions -fno-rtti`**，这是 C++ 体积与 C 持平的前提条件。
    不开启就不要比较。
 
-2. **`-Os` 而非 `-O2`** -- `-O2` 下 C++ 内联更激进，可能反而更小，
+2. **`-Os` 而非 `-O2`**，`-O2` 下 C++ 内联更激进，可能反而更小，
    但也可能因过度内联膨胀。`-Os` 让编译器主动控制体积。
 
-3. **.text 段差异在 1-4% 以内** -- 等价功能的 C/C++ 代码，在禁用 RTTI/异常后，
+3. **.text 段差异在 1-4% 以内**，等价功能的 C/C++ 代码，在禁用 RTTI/异常后，
    体积差异可忽略。选择语言时不应以体积为主要考量。
 
-4. **C++ 的体积优势在大型系统中更明显** -- `if constexpr` 剪枝、CRTP 消除 vtable、
+4. **C++ 的体积优势在大型系统中更明显**，`if constexpr` 剪枝、CRTP 消除 vtable、
    constexpr 查表等技术，在功能复杂的系统中累积的体积节省超过模板实例化的开销。
 
-5. **真正影响体积的是设计决策，不是语言** -- 是否使用 iostream、是否引入标准库容器、
+5. **影响体积的是设计决策，不是语言**，是否使用 iostream、是否引入标准库容器、
    是否控制模板实例化数量，这些设计选择的影响远大于 C vs C++ 的语言差异。

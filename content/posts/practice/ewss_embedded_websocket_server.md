@@ -301,7 +301,7 @@ EWSS 的基础类型（`expected`、`optional`、`FixedVector`、`FixedString`�
 | 4        | 66,731           | 57.8     | 84.9     |
 | 8        | 67,856           | 102.6    | 167.2    |
 
-4 客户端时总吞吐量达到 ~67K msg/s，接近单线程 poll Reactor 的上限。8 客户端时吞吐量不再增长，P99 延迟上升到 167us，这是单线程模型的固有限制——所有连接共享一个事件循环。
+4 客户端时总吞吐量达到 ~67K msg/s，接近单线程 poll Reactor 的上限。8 客户端时吞吐量不再增长，P99 延迟上升到 167us，这是单线程模型的固有限制：所有连接共享一个事件循环。
 
 ### 资源占用
 
@@ -334,7 +334,7 @@ EWSS 的基础类型（`expected`、`optional`、`FixedVector`、`FixedString`�
 
 EWSS 在单线程场景下的吞吐量（~27K msg/s 单客户端，~67K msg/s 多客户端）与 Simple-WebSocket-Server 处于同一量级，但资源占用差距显著：67KB vs 2MB 二进制，12KB vs 动态内存每连接，P50 35us / P99 55us 的确定性延迟 vs 受 GC 和堆分配影响的不确定延迟。
 
-Simple-WebSocket-Server 的优势在多核扩展：4 线程池可以线性提升吞吐量，而 EWSS 的单线程模型在 4-8 客户端后就触及上限。这正是两者的设计定位差异——EWSS 优化的是资源受限场景下的确定性，而非吞吐量天花板。
+Simple-WebSocket-Server 的优势在多核扩展：4 线程池可以线性提升吞吐量，而 EWSS 的单线程模型在 4-8 客户端后就触及上限。这正是两者的设计定位差异：EWSS 优化的是资源受限场景下的确定性，不是吞吐量天花板。
 
 ## 设计权衡
 

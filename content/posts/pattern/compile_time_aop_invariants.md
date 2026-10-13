@@ -250,7 +250,7 @@ TEST_CASE("BeatLoop bool body can stop early") {
 }
 ```
 
-用例 2 锁定"谓词为 false 时不执行 Beat"的时序语义：骨架的 `while(pred())` 在谓词失败时不进入循环体，`Beat()` 不执行，`hb.LastBeatUs()` 保持 0。该行为是看门狗计时准确性的前提：线程 Stop 后最后一轮不上报狗，看门狗能在超时阈值后按时触发告警，而不是被 Stop 路径的最后一次 Beat 推迟。
+用例 2 锁定"谓词为 false 时不执行 Beat"的时序语义：骨架的 `while(pred())` 在谓词失败时不进入循环体，`Beat()` 不执行，`hb.LastBeatUs()` 保持 0。该行为是看门狗计时准确性的前提：线程 Stop 后最后一轮不上报狗，看门狗能在超时阈值后按时触发告警，不会被 Stop 路径的最后一次 Beat 推迟。
 
 用例 4 验证 `if constexpr` 的 bool 分支：谓词恒为 true，循环由 body 返回 false 终止，`n == 4` 说明 `break` 位于骨架的 bool 分支且生效。
 

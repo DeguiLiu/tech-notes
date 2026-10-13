@@ -11,11 +11,11 @@ TocOpen: true
 
 > 本文是**实战篇**，通过可编译运行的代码示例复现死锁与优先级反转，并给出修复方案。
 >
-> **姊妹篇**: [嵌入式系统死锁防御: 从有序锁到无锁架构的工程实践](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/) -- 侧重 newosp 框架的架构级防御策略（无锁 MPSC 总线、SPSC 队列、Collect-Release-Execute 模式、LIFO 有序关停等），读者可先阅读本文理解问题场景，再阅读姊妹篇学习系统级解决方案。
+> **姊妹篇**: [嵌入式系统死锁防御: 从有序锁到无锁架构的工程实践](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/)，侧重 newosp 框架的架构级防御策略（无锁 MPSC 总线、SPSC 队列、Collect-Release-Execute 模式、LIFO 有序关停等），读者可先阅读本文理解问题场景，再阅读姊妹篇学习系统级解决方案。
 >
 > 相关文章:
-> - [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/) -- 生产环境的锁竞争量化定位
-> - [锁竞争基准测试](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/) -- Spinlock vs Mutex vs 无锁队列性能对比
+> - [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/)，生产环境的锁竞争量化定位
+> - [锁竞争基准测试](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/)，Spinlock vs Mutex vs 无锁队列性能对比
 >
 > 参考:
 > - 原文: [C++ 线程优先级反转](https://blog.csdn.net/stallion5632/article/details/143610920)
@@ -105,7 +105,7 @@ gantt
     lock(mutex_a) 阻塞...       :crit, t2a, 2, 5
 ```
 
-> Thread 1 持有 A 等待 B，Thread 2 持有 B 等待 A -- 循环等待，死锁。
+> Thread 1 持有 A 等待 B，Thread 2 持有 B 等待 A，循环等待，死锁。
 
 ### 1.2 修复方案一: 统一锁序
 
@@ -148,7 +148,7 @@ gantt
 
 > 两个线程按相同顺序 (A -> B) 获取锁，Thread 2 排队等待 Thread 1 释放 A 后再继续，不会死锁。
 
-**局限**: 当系统中有数十把锁时，维护全局锁序变得困难。新增一把锁需要确定它在全局序中的位置，并更新所有调用点。姊妹篇中介绍的 `OrderedLock_t` + `lock_multiple()` 方案通过编号自动排序解决了这个问题。
+局限：当系统中有数十把锁时，维护全局锁序变得困难。新增一把锁需要确定它在全局序中的位置，并更新所有调用点。姊妹篇中介绍的 `OrderedLock_t` + `lock_multiple()` 方案通过编号自动排序解决了这个问题。
 
 ### 1.3 修复方案二: std::scoped_lock (C++17)
 
@@ -197,7 +197,7 @@ void thread2_trylock() {
 }
 ```
 
-**关键**: `try_lock` 失败时**必须释放已持有的锁**，否则会活锁。退避时间加随机抖动可以避免两个线程同步重试。
+关键：`try_lock` 失败时**必须释放已持有的锁**，否则会活锁。退避时间加随机抖动可以避免两个线程同步重试。
 
 ---
 
@@ -656,7 +656,7 @@ std::lock_guard<PiMutex> lock(shared_resource);
 
 如果高优先级任务的数据通路可以设计为无锁，则从根本上消除优先级反转。这正是姊妹篇中 newosp `RealtimeExecutor` 的方案: **SCHED_FIFO 调度线程 + 无锁 CAS 消息总线**，整条实时路径不持有任何 mutex。
 
-详见: [嵌入式系统死锁防御 -- 第10节: 实时调度与优先级反转防御](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/)
+详见: [嵌入式系统死锁防御，第10节: 实时调度与优先级反转防御](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/)
 
 ### 4.5 修复方案三: 最小化持锁时间
 
@@ -740,7 +740,7 @@ void thread2() {
 }
 ```
 
-这里 `x` 和 `y` 不是原子变量，也没有锁保护，编译器可以自由重排。解决方案是使用 `std::atomic` 或加锁，而不是「避免 `-O3`」。
+这里 `x` 和 `y` 不是原子变量，也没有锁保护，编译器可以自由重排。解决方案是使用 `std::atomic` 或加锁，不是「避免 `-O3`」。
 
 **结论**: 如果你的程序在 `-O0` 下正常但在 `-O3` 下死锁，问题出在数据竞争或未定义行为，不是锁重排。应该用 TSan 检测数据竞争。
 
@@ -820,7 +820,7 @@ Thread 1 (LWP 12345):
 #2 thread1 () at deadlock_abba.cpp:9     <-- 等待 mutex_b
 ```
 
-两个线程都在 `__lll_lock_wait`，并且持有对方等待的锁 -- 确认死锁。
+两个线程都在 `__lll_lock_wait`，并且持有对方等待的锁，确认死锁。
 
 ---
 
@@ -888,4 +888,4 @@ RT-Thread 的 `rt_mutex_create()` 同样默认启用优先级继承。
 | 系统关停资源竞争 | 关停死锁 | LIFO 有序释放 | 姊妹篇第 8 节 |
 | 高频通信路径 | 锁竞争瓶颈 | 无锁 MPSC/SPSC | 姊妹篇第 4 节 |
 
-**核心思路**: 本文解决「如何修 bug」，姊妹篇解决「如何不出 bug」。前者是战术，后者是战略。
+核心思路：本文解决「如何修 bug」，姊妹篇解决「如何不出 bug」，一篇是战术，一篇是战略。

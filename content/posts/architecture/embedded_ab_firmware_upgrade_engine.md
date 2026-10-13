@@ -9,13 +9,13 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 配套代码: [liudegui/osp-upgrade-engine](https://gitee.com/liudegui/osp-upgrade-engine) -- C++17 header-only 固件升级引擎
+> 配套代码: [liudegui/osp-upgrade-engine](https://gitee.com/liudegui/osp-upgrade-engine)，C++17 header-only 固件升级引擎
 >
-> 依赖库: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp) -- header-only 嵌入式基础设施 (HSM, Bus, Watchdog, Process)
+> 依赖库: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)，header-only 嵌入式基础设施 (HSM, Bus, Watchdog, Process)
 >
 > 相关文章:
-> - [C 语言层次状态机框架: 从过程驱动到数据驱动的重构实践](/tech-notes/posts/pattern/c_hsm_data_driven_framework/) -- HSM 转换表设计与 LCA 算法
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- AsyncBus/HSM/SPSC 核心实现
+> - [C 语言层次状态机框架: 从过程驱动到数据驱动的重构实践](/tech-notes/posts/pattern/c_hsm_data_driven_framework/)，HSM 转换表设计与 LCA 算法
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，AsyncBus/HSM/SPSC 核心实现
 
 ## 1. 问题与方案选择
 
@@ -191,7 +191,7 @@ void SpinOnce() noexcept {
 }
 ```
 
-Writing handler 示例 -- 每次调用读取 4KB、写入分区、更新进度:
+Writing handler 示例，每次调用读取 4KB、写入分区、更新进度:
 
 ```cpp
 TransitionResult WritingHandler(UpgradeContext& ctx,
@@ -445,7 +445,7 @@ UpgradeHAL MakeSimHAL(SimContext* sim) {
 | reboot | `reboot(2)` | 设置标志位，不重启进程 |
 | Watchdog | 硬件 WDT | 软件定时器 + 回调 |
 
-仿真分区的核心实现 -- 文件模拟 eMMC 块设备:
+仿真分区的核心实现，文件模拟 eMMC 块设备:
 
 ```cpp
 struct SimPartition {
@@ -464,7 +464,7 @@ ssize_t SimWritePartition(int32_t fd, const void* buf,
 }
 ```
 
-仿真 Boot env -- 用文本文件替代 U-Boot 环境变量:
+仿真 Boot env，用文本文件替代 U-Boot 环境变量:
 
 ```cpp
 bool SimGetEnv(const char* key, char* val, uint32_t size, void* ctx) {

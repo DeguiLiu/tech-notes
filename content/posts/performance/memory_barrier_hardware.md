@@ -9,14 +9,14 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 配套代码: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp) -- header-only C++17 嵌入式基础设施库
+> 配套代码: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)，header-only C++17 嵌入式基础设施库
 >
 > 相关文章:
-> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- acquire/release 内存序在无锁队列中的应用
-> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- ARM 指令映射、FakeTSO 单核优化
-> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/) -- 跨进程场景的 ARM 内存序加固
-> - [C++ 单例模式的线程安全实现](/tech-notes/posts/performance/cpp_singleton_thread_safety_dclp/) -- DCLP 失败的内存序根因
-> - [无锁异步日志设计](/tech-notes/posts/performance/lockfree_async_log/) -- ARM 弱序模型下的日志缓冲区设计
+> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，acquire/release 内存序在无锁队列中的应用
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，ARM 指令映射、FakeTSO 单核优化
+> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/)，跨进程场景的 ARM 内存序加固
+> - [C++ 单例模式的线程安全实现](/tech-notes/posts/performance/cpp_singleton_thread_safety_dclp/)，DCLP 失败的内存序根因
+> - [无锁异步日志设计](/tech-notes/posts/performance/lockfree_async_log/)，ARM 弱序模型下的日志缓冲区设计
 >
 > CSDN 原文: [C++多线程编程中的内存屏障/内存栅栏](https://blog.csdn.net/stallion5632/article/details/141271819)
 
@@ -47,9 +47,9 @@ CPU Core 0                          CPU Core 1
 └─────────────────────────────────────────────────┘
 ```
 
-**关键问题**: Core 0 的写入暂存在 Store Buffer 中，**对 Core 1 不可见**。Core 1 从自己的 L1 Cache 中读到的仍然是旧值。这不是 bug，而是 CPU 为了性能做出的设计决策。
+问题在于，Core 0 的写入暂存在 Store Buffer 中，**对 Core 1 不可见**。Core 1 从自己的 L1 Cache 中读到的仍然是旧值。这不是 bug，而是 CPU 为了性能做出的设计决策。
 
-Store Buffer 还引入了一个微妙的行为 -- **Store Forwarding**: 当 Core 0 读取自己刚写过的地址时，会直接从 Store Buffer 中获取最新值，绕过 L1 Cache。这意味着**同一个 CPU 核心看到的写入顺序与其他核心看到的不同**。
+Store Buffer 还引入了一个微妙的行为，**Store Forwarding**: 当 Core 0 读取自己刚写过的地址时，会直接从 Store Buffer 中获取最新值，绕过 L1 Cache。这意味着**同一个 CPU 核心看到的写入顺序与其他核心看到的不同**。
 
 ### 1.2 Invalidation Queue: 读操作的延迟
 
@@ -71,7 +71,7 @@ Core 1 收到 Invalidate(addr=0x1000):
   可以从自己的 L1 Cache 读到旧值!
 ```
 
-**关键问题**: Core 1 已经回复了 Ack，Core 0 认为其他核心都已经看到了自己的写入，但 Core 1 实际上还在用旧的 cache line。这就是**过期读 (stale read)** 的硬件根源。
+问题在于，Core 1 已经回复了 Ack，Core 0 认为其他核心都已经看到了自己的写入，但 Core 1 实际上还在用旧的 cache line。这就是**过期读 (stale read)** 的硬件根源。
 
 ### 1.3 两个队列，两种乱序
 
@@ -82,7 +82,7 @@ Store Buffer 和 Invalidation Queue 分别导致了两种可见性问题:
 | Store Buffer | 写操作延迟对外可见 | 其他核心看不到最新写入 |
 | Invalidation Queue | 读操作使用过期数据 | 本核心看到的是失效前的旧值 |
 
-这两个机制的组合使得**多核系统中，内存操作的执行顺序可能与程序顺序不同**。这不是编译器优化，而是硬件行为 -- 即使你用 `volatile` 禁止编译器优化，CPU 仍然可能重排序。
+这两个机制的组合使得**多核系统中，内存操作的执行顺序可能与程序顺序不同**。这不是编译器优化，而是硬件行为，即使你用 `volatile` 禁止编译器优化，CPU 仍然可能重排序。
 
 ## 2. MESI 协议: 缓存一致性不等于内存一致性
 
@@ -136,9 +136,9 @@ Store B
 
 保证: Store A 在 Store B 之前刷出 Store Buffer，即其他核心先看到 A 的写入，再看到 B 的写入。
 
-**硬件机制**: 标记 Store Buffer 中的当前条目，后续的 Store 必须等待这些条目刷新到缓存后才能继续。
+机制上，标记 Store Buffer 中的当前条目，后续的 Store 必须等待这些条目刷新到缓存后才能继续。
 
-**典型场景**: 生产者写数据，然后写 flag 通知消费者。StoreStore 保证消费者看到 flag=1 时，数据已经可见。
+典型场景：生产者写数据，然后写 flag 通知消费者。StoreStore 保证消费者看到 flag=1 时，数据已经可见。
 
 ```cpp
 // 生产者 (Core 0)
@@ -161,9 +161,9 @@ Load B
 
 保证: Load A 完成后再执行 Load B，Load B 不会使用比 Load A 更旧的数据。
 
-**硬件机制**: 处理 Invalidation Queue 中的所有待处理失效消息，确保后续 Load 读到最新值。
+机制上，处理 Invalidation Queue 中的所有待处理失效消息，确保后续 Load 读到最新值。
 
-**典型场景**: 消费者先读 flag，再读 data。LoadLoad 保证读到 flag=1 后，读 data 不会命中过期的 cache line。
+典型场景：消费者先读 flag，再读 data。LoadLoad 保证读到 flag=1 后，读 data 不会命中过期的 cache line。
 
 ### 3.3 LoadStore Barrier
 
@@ -175,7 +175,7 @@ Store B
 
 保证: Load A 完成后再执行 Store B。防止 Store 被提前到 Load 之前执行。
 
-**使用较少**: x86 TSO 天然禁止 LoadStore 重排，ARM 弱序需要。
+用得较少：x86 TSO 天然禁止 LoadStore 重排，ARM 弱序需要。
 
 ### 3.4 StoreLoad Barrier (Full Fence)
 
@@ -187,9 +187,9 @@ Load B
 
 保证: Store A 对所有核心可见后再执行 Load B。这是**最强也是最昂贵**的屏障。
 
-**硬件机制**: 刷新 Store Buffer 中的所有条目 + 处理 Invalidation Queue 中的所有消息。相当于 StoreStore + LoadLoad + LoadStore 的组合。
+机制上，刷新 Store Buffer 中的所有条目 + 处理 Invalidation Queue 中的所有消息。相当于 StoreStore + LoadLoad + LoadStore 的组合。
 
-**为什么最贵**: Store Buffer 刷新需要等待 MESI 协议完成 (可能需要等待远端核心的 Ack)，这个延迟通常是几十到上百个时钟周期。
+它最贵的原因在于：Store Buffer 刷新需要等待 MESI 协议完成 (可能需要等待远端核心的 Ack)，这个延迟通常是几十到上百个时钟周期。
 
 ### 3.5 四种屏障与硬件机制的映射
 
@@ -241,7 +241,7 @@ std::atomic_signal_fence(std::memory_order_acq_rel);
 - `volatile`: 不被编译器消除
 - `"memory"`: 告诉编译器内存已被修改，不要跨越此点重排内存操作
 
-**适用场景**: 单核 MCU (无 CPU 乱序执行问题)，或仅需要阻止编译器优化时。`atomic_signal_fence` 用于同一线程中信号处理函数与主线程的同步。
+适用场景：单核 MCU (无 CPU 乱序执行问题)，或仅需要阻止编译器优化时。`atomic_signal_fence` 用于同一线程中信号处理函数与主线程的同步。
 
 ```cpp
 // newosp SPSC 在 FakeTSO 单核模式下:
@@ -334,9 +334,9 @@ x86 禁止的重排序:
   Load A  → Store B  (LoadStore ✓ 保序)
 ```
 
-因此，x86 上大部分 `acquire` 和 `release` 操作**不需要生成屏障指令** -- 硬件已经提供了足够的保证。只有 `seq_cst` 的 store 操作需要额外的 `MFENCE` 或 `XCHG` 指令来阻止 StoreLoad 重排。
+因此，x86 上大部分 `acquire` 和 `release` 操作**不需要生成屏障指令**，硬件已经提供了足够的保证。只有 `seq_cst` 的 store 操作需要额外的 `MFENCE` 或 `XCHG` 指令来阻止 StoreLoad 重排。
 
-这也是为什么很多并发 bug 在 x86 上不会复现，却在 ARM 上崩溃 -- x86 的 TSO 掩盖了缺失的内存屏障。
+这也是为什么很多并发 bug 在 x86 上不会复现，却在 ARM 上崩溃，x86 的 TSO 掩盖了缺失的内存屏障。
 
 ### 5.2 ARM 弱序模型
 
@@ -391,7 +391,7 @@ DMB ISHLD    ; Load 屏障: 在此之前的所有 Load 完成后, 才允许之�
 DMB ISHST    ; Store 屏障: 在此之前的所有 Store 完成后, 才允许之后的 Store
 ```
 
-**语义**: 确保 DMB 之前和之后的**数据内存访问**的顺序性。DMB 只影响内存访问指令 (Load/Store)，不影响其他指令的执行。
+它的语义是确保 DMB 之前和之后的**数据内存访问**的顺序性。DMB 只影响内存访问指令 (Load/Store)，不影响其他指令的执行。
 
 **后缀含义**:
 - `ISH` (Inner Shareable): 作用于内部共享域 (通常是所有 CPU 核心)
@@ -417,7 +417,7 @@ DSB ISH      ; 等待之前的所有内存访问完成, 且对其他核心可见
 DSB ISHST    ; 等待之前的所有 Store 完成并对其他核心可见
 ```
 
-**语义**: DSB 比 DMB 更强。DMB 只保证**顺序性** (A 在 B 之前完成)，DSB 保证**完成性** (A 已经完成，所有核心都已看到结果)。DSB 之后的**任何指令** (不仅是内存访问) 都不会执行，直到 DSB 之前的所有内存访问完成。
+与 DMB 相比，DSB 更强。DMB 只保证**顺序性** (A 在 B 之前完成)，DSB 保证**完成性** (A 已经完成，所有核心都已看到结果)。DSB 之后的**任何指令** (不仅是内存访问) 都不会执行，直到 DSB 之前的所有内存访问完成。
 
 **DMB vs DSB 的区别**:
 
@@ -433,7 +433,7 @@ DSB: "屏障之前的内存操作全部完成后，才执行屏障之后的任�
 | 阻塞后续非内存指令 | 否 | **是** |
 | 典型延迟 | 20-60 周期 | **更高** (需等待写入对所有核心可见) |
 
-**适用场景**: 修改页表、修改 MMU 配置、DMA 操作完成确认等需要确保写入**已完成** (而非仅已排序) 的场景。
+适用场景：修改页表、修改 MMU 配置、DMA 操作完成确认等需要确保写入**已完成** (而非仅已排序) 的场景。
 
 ```cpp
 // 修改页表后必须用 DSB (而非 DMB)
@@ -448,7 +448,7 @@ asm volatile("isb" ::: "memory");      // 刷新指令流水线
 ISB SY       ; 刷新指令流水线
 ```
 
-**语义**: 刷新 CPU 的指令流水线和预取缓冲。ISB 之后获取的所有指令都从缓存或内存中重新获取，确保 ISB 之前的系统寄存器修改 (如 MMU 配置、中断控制器配置) 对后续指令可见。
+它的语义是刷新 CPU 的指令流水线和预取缓冲。ISB 之后获取的所有指令都从缓存或内存中重新获取，确保 ISB 之前的系统寄存器修改 (如 MMU 配置、中断控制器配置) 对后续指令可见。
 
 **ISB 与 DMB/DSB 的本质区别**: DMB 和 DSB 作用于**数据**流 (Load/Store)，ISB 作用于**指令**流 (指令预取和解码)。
 
@@ -577,7 +577,7 @@ flag.store(1, std::memory_order_release);  // data 写入在 flag 之前可见
 
 `seq_cst` 是最强的排序保证，但也是最昂贵的。在 ARM 上，每个 `seq_cst` 操作都会生成 `DMB` 指令。如果代码中有大量 atomic 操作 (如无锁队列的 CAS 循环)，过度使用 `seq_cst` 会显著降低性能。
 
-**原则**: 分析数据流向，使用**最弱的足够**的 memory_order:
+原则：分析数据流向，使用**最弱的足够**的 memory_order:
 - 单纯的计数器/统计: `relaxed`
 - 生产者-消费者: `acquire`/`release`
 - 需要全序 (如 Dekker 互斥算法): `seq_cst`
@@ -586,14 +586,14 @@ flag.store(1, std::memory_order_release);  // data 写入在 flag 之前可见
 
 x86 的 TSO 模型天然保证了大部分排序 (只有 StoreLoad 可重排)。一段代码在 x86 上跑了一年没出问题，移植到 ARM 后可能立即出现数据竞争。
 
-**实践建议**: 使用 ThreadSanitizer (`-fsanitize=thread`) 检测数据竞争，不依赖特定架构的内存模型。
+实践建议：使用 ThreadSanitizer (`-fsanitize=thread`) 检测数据竞争，不依赖特定架构的内存模型。
 
 ## 参考资料
 
-1. [C++多线程编程中的内存屏障/内存栅栏](https://blog.csdn.net/stallion5632/article/details/141271819) -- 本文的 CSDN 原始版本
-2. [Memory Barriers: a Hardware View for Software Hackers](http://www.rdrop.com/~paulmck/scalability/paper/whymb.2010.06.07c.pdf) -- Paul McKenney 经典论文
-3. [A Tutorial Introduction to the ARM and POWER Relaxed Memory Models](https://www.cl.cam.ac.uk/~pes20/ppc-supplemental/test7.pdf) -- ARM 弱序模型形式化教程
-4. [Herb Sutter: atomic<> Weapons](https://herbsutter.com/2013/02/11/atomic-weapons-the-c-memory-model-and-modern-hardware/) -- C++ 内存模型与硬件
-5. [Jeff Preshing: Memory Barriers Are Like Source Control Operations](https://preshing.com/20120710/memory-barriers-are-like-source-control-operations/) -- 四种屏障类型的直觉解释
-6. [ARM Architecture Reference Manual](https://developer.arm.com/documentation/ddi0487/latest) -- DMB/DSB/ISB 官方规范
-7. [newosp GitHub 仓库](https://github.com/DeguiLiu/newosp) -- SPSC/MPSC 无锁实现中的内存序实战
+1. [C++多线程编程中的内存屏障/内存栅栏](https://blog.csdn.net/stallion5632/article/details/141271819)，本文的 CSDN 原始版本
+2. [Memory Barriers: a Hardware View for Software Hackers](http://www.rdrop.com/~paulmck/scalability/paper/whymb.2010.06.07c.pdf)，Paul McKenney 经典论文
+3. [A Tutorial Introduction to the ARM and POWER Relaxed Memory Models](https://www.cl.cam.ac.uk/~pes20/ppc-supplemental/test7.pdf)，ARM 弱序模型形式化教程
+4. [Herb Sutter: atomic<> Weapons](https://herbsutter.com/2013/02/11/atomic-weapons-the-c-memory-model-and-modern-hardware/)，C++ 内存模型与硬件
+5. [Jeff Preshing: Memory Barriers Are Like Source Control Operations](https://preshing.com/20120710/memory-barriers-are-like-source-control-operations/)，四种屏障类型的直觉解释
+6. [ARM Architecture Reference Manual](https://developer.arm.com/documentation/ddi0487/latest)，DMB/DSB/ISB 官方规范
+7. [newosp GitHub 仓库](https://github.com/DeguiLiu/newosp)，SPSC/MPSC 无锁实现中的内存序实战

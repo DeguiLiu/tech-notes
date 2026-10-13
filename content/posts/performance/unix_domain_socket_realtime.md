@@ -15,7 +15,7 @@ TocOpen: true
 > - [Linux Kernel: Unix Domain Sockets](https://docs.kernel.org/networking/af_unix.html)
 > - [Beej's Guide to Unix IPC](https://beej.us/guide/bgipc/)
 > - [LWN: Rethinking the design of io_uring](https://lwn.net/Articles/879724/)
-> - newosp socket 实现: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp) -- `include/osp/socket.hpp`
+> - newosp socket 实现: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)，`include/osp/socket.hpp`
 
 ## 1. UDS 内核数据路径
 
@@ -66,7 +66,7 @@ UDS 支持三种 socket 类型，选择直接影响性能和编程模型。
 | `SOCK_DGRAM` | 数据报 | 有（每个 sendto 一个消息） | 无连接 | 小消息、多对一 |
 | `SOCK_SEQPACKET` | 有序数据报 | 有（每个 send 一个消息） | 面向连接 | 帧协议、工业控制 |
 
-### 2.2 SOCK_SEQPACKET -- 被忽视的选项
+### 2.2 SOCK_SEQPACKET：被忽视的选项
 
 `SOCK_SEQPACKET` 结合了 `SOCK_STREAM` 的可靠有序传输和 `SOCK_DGRAM` 的消息边界保持。**对于嵌入式协议通信，这通常是最优选择**。
 
@@ -96,7 +96,7 @@ struct FrameHeader {
 // 接收端: recv(buf, max_size) -- 一次收到完整帧
 ```
 
-**限制**：`SOCK_SEQPACKET` 的单次消息大小受 `SO_SNDBUF` 限制（默认约 200 KB），超大数据仍需 `SOCK_STREAM`。
+限制：`SOCK_SEQPACKET` 的单次消息大小受 `SO_SNDBUF` 限制（默认约 200 KB），超大数据仍需 `SOCK_STREAM`。
 
 ## 3. 抽象命名空间
 
@@ -143,9 +143,9 @@ bind(fd, (struct sockaddr*)&addr, len);
 | 安全 | 文件权限控制 | 网络命名空间隔离 |
 | 可移植性 | POSIX 标准 | Linux 特有 |
 
-**嵌入式建议**：如果目标平台仅为 Linux（不需要移植到 QNX/VxWorks），优先使用抽象命名空间。它消除了文件管理的所有复杂性。
+嵌入式建议：如果目标平台仅为 Linux（不需要移植到 QNX/VxWorks），优先使用抽象命名空间。它消除了文件管理的所有复杂性。
 
-**ARM 注意事项**：抽象命名空间 socket 在网络命名空间（`CLONE_NEWNET`）间隔离。如果嵌入式系统使用容器（如 LXC/Docker），确保通信进程在同一网络命名空间中。
+ARM 注意事项：抽象命名空间 socket 在网络命名空间（`CLONE_NEWNET`）间隔离。如果嵌入式系统使用容器（如 LXC/Docker），确保通信进程在同一网络命名空间中。
 
 ## 4. epoll 边缘触发的正确实现
 
@@ -228,7 +228,7 @@ void HandleAcceptET(int listen_fd, int epoll_fd) {
 
 注意使用 `accept4()` 而非 `accept()`：`accept4()` 可以原子地设置 `SOCK_NONBLOCK` 和 `SOCK_CLOEXEC`，避免额外的 `fcntl()` 系统调用。
 
-### 4.4 EPOLLONESHOT -- 多线程安全
+### 4.4 EPOLLONESHOT：多线程安全
 
 如果多个工作线程共享一个 epoll 实例，ET 模式下同一个 fd 的事件可能被多个线程同时拿到。使用 `EPOLLONESHOT` 确保每次只有一个线程处理：
 
@@ -267,7 +267,7 @@ if (sched_setscheduler(0, SCHED_FIFO, &param) != 0) {
 }
 ```
 
-### 5.2 CPU 隔离 -- isolcpus
+### 5.2 CPU 隔离：isolcpus
 
 仅绑定 CPU 不够。默认情况下，内核调度器仍会将其他任务放到该 CPU 上。通过内核启动参数 `isolcpus` 将核心从通用调度器中移除：
 
@@ -291,7 +291,7 @@ CPU_SET(2, &cpuset);  // 绑定到隔离的 CPU 2
 sched_setaffinity(0, sizeof(cpuset), &cpuset);
 ```
 
-### 5.3 mlockall -- 消除缺页延迟
+### 5.3 mlockall：消除缺页延迟
 
 ```cpp
 #include <sys/mman.h>
@@ -304,7 +304,7 @@ if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
 
 防止实时线程的栈或堆内存被换出到 swap，消除缺页中断引入的毫秒级延迟。
 
-**ARM 注意事项**：嵌入式系统 RAM 有限，`MCL_FUTURE` 会锁定后续所有 `mmap` 和堆分配。确保进程的内存用量在可控范围内，否则可能耗尽物理内存导致 OOM。
+ARM 注意事项：嵌入式系统 RAM 有限，`MCL_FUTURE` 会锁定后续所有 `mmap` 和堆分配。确保进程的内存用量在可控范围内，否则可能耗尽物理内存导致 OOM。
 
 ## 6. fd 传递与零拷贝
 
@@ -360,7 +360,7 @@ int RecvFd(int uds_fd) {
 }
 ```
 
-### 6.2 memfd_create + fd 传递 -- 大数据零拷贝
+### 6.2 memfd_create + fd 传递：大数据零拷贝
 
 对于大块数据（图像帧、点云、音频缓冲），传统 `send()`/`recv()` 需要两次拷贝。使用 `memfd_create` 创建匿名共享内存，通过 UDS 传递 fd，接收端直接 `mmap` 访问，实现**零拷贝**：
 
@@ -413,11 +413,11 @@ memfd + fd 传递:
 
 大数据场景下节省了一次内核-用户空间拷贝。
 
-**适用场景**：激光雷达点云帧（数百 KB ~ 数 MB）、摄像头图像帧、大型配置文件传输。
+适用场景：激光雷达点云帧（数百 KB ~ 数 MB）、摄像头图像帧、大型配置文件传输。
 
-**ARM 注意事项**：`mmap` 在 ARM 上默认 cacheable，但跨进程写入后需要确保缓存一致性。内核会在 `mmap(MAP_SHARED)` 的页上维护一致性，但频繁的 `mmap/munmap` 有 TLB flush 开销。对于高频传输（> 1 kHz），建议预分配固定的 memfd 池循环使用。
+ARM 注意事项：`mmap` 在 ARM 上默认 cacheable，但跨进程写入后需要确保缓存一致性。内核会在 `mmap(MAP_SHARED)` 的页上维护一致性，但频繁的 `mmap/munmap` 有 TLB flush 开销。对于高频传输（> 1 kHz），建议预分配固定的 memfd 池循环使用。
 
-## 7. eventfd -- 轻量级通知
+## 7. eventfd：轻量级通知
 
 ### 7.1 UDS 通知的开销
 
@@ -563,7 +563,7 @@ int bufsize = 1;  // 内核会设为允许的最小值
 setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize));
 ```
 
-效果：`send()` 在接收端缓冲区满时立即返回 `EAGAIN`，而不是在发送端缓冲区中排队。这迫使应用层立即感知背压，有助于控制端到端延迟。
+效果：`send()` 在接收端缓冲区满时立即返回 `EAGAIN`，不会在发送端缓冲区中排队。这迫使应用层立即感知背压，有助于控制端到端延迟。
 
 ## 10. io_uring 异步路径
 

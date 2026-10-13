@@ -11,7 +11,7 @@ TocOpen: true
 
 > 参考文章:
 >
-> - [嵌入式配置数据持久化方案对比 -- 自定义 TLV vs nanopb](https://blog.csdn.net/stallion5632/article/details/150866044)
+> - [嵌入式配置数据持久化方案对比，自定义 TLV vs nanopb](https://blog.csdn.net/stallion5632/article/details/150866044)
 >
 > nanopb 官方: [github.com/nanopb/nanopb](https://github.com/nanopb/nanopb) |
 > c-capnproto 仓库: [github.com/opensourcerouting/c-capnproto](https://github.com/opensourcerouting/c-capnproto)
@@ -103,7 +103,7 @@ typedef struct __attribute__((packed)) {
 // 每增加一个版本，迁移代码就多一条分支
 ```
 
-裸 struct 适合字段固定、永不变更的场景 (如硬件寄存器映射)。一旦配置需要跨版本演进，就需要自描述格式 -- 这正是 TLV 的起点。
+裸 struct 适合字段固定、永不变更的场景 (如硬件寄存器映射)。一旦配置需要跨版本演进，就需要自描述格式，这正是 TLV 的起点。
 
 ## 3. 自定义 TLV: 轻量与直接
 
@@ -209,7 +209,7 @@ size_t tlv_write(uint8_t *buf, size_t buf_size,
 
 **缺点:**
 
-- **维护成本高 (命令式开发)**: 每新增一个字段需手动修改**三处代码** -- 枚举定义、解析逻辑、序列化逻辑
+- **维护成本高 (命令式开发)**: 每新增一个字段需手动修改**三处代码**，枚举定义、解析逻辑、序列化逻辑
 - **无编译期类型检查**: memcpy 不会验证字段类型和长度匹配，错误只能在运行时发现
 - **原地更新的局限性**: 字段长度变化时原地更新失效，会覆盖后续数据
 - **缺少默认值机制**: 旧数据中不存在的新字段，需要手动填充默认值
@@ -309,7 +309,7 @@ printf("scan_rate = %u\n", loaded.scan_rate_hz);
 printf("filtering = %d\n", loaded.enable_filtering);
 ```
 
-**关键细节**: `LidarConfig_init_default` 宏会将所有 optional 字段初始化为 `.proto` 中定义的默认值。解码旧数据时，旧数据中不存在的新字段保持默认值 -- 这是向前兼容的核心机制。
+**关键细节**: `LidarConfig_init_default` 宏会将所有 optional 字段初始化为 `.proto` 中定义的默认值。解码旧数据时，旧数据中不存在的新字段保持默认值，这是向前兼容的核心机制。
 
 ### 4.4 静态分配 vs 回调分配
 
@@ -682,7 +682,7 @@ c-capnproto:
 | 多点更新 | 读-擦-写**多个**扇区 | 读-擦-写整个文件 **(一次)** |
 | 原子性 | 难以实现，易产生中间态 | 可结合双区存储保证原子性 |
 
-**关键结论**: 当配置文件小于一个扇区 (4KB，绝大多数嵌入式配置的情况) 时，TLV 的原地更新和整体重写在 Flash 层面的实际开销相同 -- 都是读-擦-写一个扇区。当需要更新分散在多个扇区的字段时，整体重写反而更高效。TLV 的"原地更新"优势仅存在于理论上。
+**关键结论**: 当配置文件小于一个扇区 (4KB，绝大多数嵌入式配置的情况) 时，TLV 的原地更新和整体重写在 Flash 层面的实际开销相同，都是读-擦-写一个扇区。当需要更新分散在多个扇区的字段时，整体重写反而更高效。TLV 的"原地更新"优势仅存在于理论上。
 
 这一事实支持 c-capnproto 的选型: 既然 Flash 层面开销相同，那么整体重写带来的简洁性、原子性和版本兼容性就是净收益。
 
@@ -801,25 +801,25 @@ laserPower @5 :UInt32 = 100;
 
 | 决策点 | 推荐方案 |
 |--------|----------|
-| 配置字段固定、永不变更 | **裸 struct** -- 最简最快 |
-| 配置简单 (< 10 字段)、偶尔变更 | **自定义 TLV** -- 零依赖 |
-| 配置复杂、迭代频繁、多端共享 | **nanopb** -- varint 紧凑 + 跨语言 |
-| 配置加载后频繁随机访问字段 | **c-capnproto** -- 零拷贝 O(1) |
+| 配置字段固定、永不变更 | **裸 struct**，最简最快 |
+| 配置简单 (< 10 字段)、偶尔变更 | **自定义 TLV**，零依赖 |
+| 配置复杂、迭代频繁、多端共享 | **nanopb**，varint 紧凑 + 跨语言 |
+| 配置加载后频繁随机访问字段 | **c-capnproto**，零拷贝 O(1) |
 | 断电保护 | CRC-32 + 双区存储 (四者通用) |
 | 数据来源不可信 | nanopb (有基本校验) + 外部 CRC |
 | 频繁写入场景 | LittleFS 等磨损均衡文件系统 |
-| 长期可维护性 | **nanopb** 或 **c-capnproto** -- 声明式演进 |
+| 长期可维护性 | **nanopb** 或 **c-capnproto**，声明式演进 |
 
 四种方案各有定位:
 
 - **裸 struct**: 零开销基线。适合字段固定、永不变更的场景。一旦需要版本兼容，代价急剧上升。
 - **自定义 TLV**: 零依赖的轻量方案。适合字段少且稳定的简单配置。维护成本随字段数量线性增长。
-- **nanopb**: 声明式演进 + varint 紧凑编码 + 跨语言生态。是综合推荐方案 -- 维护成本最低、protobuf 生态最成熟。
+- **nanopb**: 声明式演进 + varint 紧凑编码 + 跨语言生态。是综合推荐方案，维护成本最低、protobuf 生态最成熟。
 - **c-capnproto**: 零拷贝读取 + O(1) 随机访问。在"加载一次、频繁读取"的场景有独特性能优势。Flash 扇区擦除特性决定了整体重写并非性能瓶颈，这使得 c-capnproto 的 write-once 设计不构成实际劣势。
 
 ## 参考资料
 
-1. [嵌入式配置数据持久化方案对比 -- 自定义 TLV vs nanopb](https://blog.csdn.net/stallion5632/article/details/150866044)
+1. [嵌入式配置数据持久化方案对比，自定义 TLV vs nanopb](https://blog.csdn.net/stallion5632/article/details/150866044)
 2. [nanopb 官方文档](https://jpa.kapsi.fi/nanopb/)
 3. [nanopb GitHub](https://github.com/nanopb/nanopb)
 4. [c-capnproto GitHub](https://github.com/opensourcerouting/c-capnproto)

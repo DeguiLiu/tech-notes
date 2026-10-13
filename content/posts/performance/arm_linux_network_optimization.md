@@ -85,7 +85,7 @@ echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
 
 因此，**对于非电池供电的嵌入式设备，`performance` 调速器是网络密集场景的推荐选项**。
 
-**副作用**：电池供电设备需要评估功耗影响。可折中使用 `ondemand` 并设置 `io_is_busy=1`：
+副作用：电池供电设备需要评估功耗影响。可折中使用 `ondemand` 并设置 `io_is_busy=1`：
 
 ```bash
 echo 1 > /sys/devices/system/cpu/cpufreq/ondemand/io_is_busy
@@ -118,7 +118,7 @@ ethtool -C eth0 adaptive-rx on
 | `rx-frames` | 64-256 | 1-16 |
 | `adaptive-rx` | on | off |
 
-**ARM 注意事项**：ARM SoC 上的以太网控制器（如 Marvell mvneta、Allwinner EMAC）通常只有一个 RX 队列，中断合并对这类设备尤为重要。关闭自适应模式（AIC）在某些场景下反而能提供更稳定的性能。
+ARM 注意事项：ARM SoC 上的以太网控制器（如 Marvell mvneta、Allwinner EMAC）通常只有一个 RX 队列，中断合并对这些设备尤为重要。关闭自适应模式（AIC）在某些场景下反而能提供更稳定的性能。
 
 ### 3.2 中断亲和性（IRQ Affinity）
 
@@ -208,7 +208,7 @@ sysctl -w net.core.netdev_budget_usecs=4000
 # 需要在驱动代码中修改，或通过驱动模块参数设置
 ```
 
-**ARM 注意事项**：ARM 处理器的单核性能通常低于 x86，SoftIRQ 处理速度较慢。适当增大 `netdev_budget` 可以让每次轮询处理更多包，但不能过大，否则会饿死其他 SoftIRQ（如定时器）。建议从 300 开始逐步增加到 600-1200 进行测试。
+ARM 注意事项：ARM 处理器的单核性能通常低于 x86，SoftIRQ 处理速度较慢。适当增大 `netdev_budget` 可以让每次轮询处理更多包，但不能过大，否则会饿死其他 SoftIRQ（如定时器）。建议从 300 开始逐步增加到 600-1200 进行测试。
 
 ### 4.2 Busy Polling（低延迟模式）
 
@@ -236,7 +236,7 @@ setsockopt(fd, SOL_SOCKET, SO_BUSY_POLL, &val, sizeof(val));
 
 约 **3x 平均延迟改善**。
 
-**副作用**：CPU 核心在等待数据期间持续占用（忙等待），功耗显著增加。适用于延迟敏感型应用（如工业控制 UDP 响应），不适用于电池供电场景。
+副作用：CPU 核心在等待数据期间持续占用（忙等待），功耗显著增加。适用于延迟敏感型应用（如工业控制 UDP 响应），不适用于电池供电场景。
 
 **ARM 嵌入式实测**：在 DE0-Nano-SoC（ARM Cortex-A9）上，基础 Linux UDP 延迟为 0.5 ms，通过 Busy Polling + CPU 绑定可降至 0.1 ms 以内。
 
@@ -266,7 +266,7 @@ cat /proc/net/softnet_stat
 # 第一列: 处理包数 第二列: 丢包数 第三列: time_squeeze（budget 用尽次数）
 ```
 
-**权衡**：大 Ring Buffer 增加吞吐量但也增加最大延迟（更多包在队列中等待）。低延迟场景应使用较小的 Ring Buffer 配合更频繁的中断。
+权衡：大 Ring Buffer 增加吞吐量但也增加最大延迟（更多包在队列中等待）。低延迟场景应使用较小的 Ring Buffer 配合更频繁的中断。
 
 ### 5.2 Backlog 队列
 
@@ -296,7 +296,7 @@ sysctl -w net.ipv4.tcp_rmem="4096 1048576 16777216"
 sysctl -w net.ipv4.tcp_wmem="4096 1048576 16777216"
 ```
 
-**ARM 注意事项**：嵌入式设备 RAM 有限（通常 256 MB - 2 GB），不应盲目套用服务器级参数。建议：
+ARM 注意事项：嵌入式设备 RAM 有限（通常 256 MB - 2 GB），不应盲目套用服务器级参数。建议：
 
 | 设备 RAM | rmem_max 建议值 | 说明 |
 |----------|----------------|------|
@@ -461,7 +461,7 @@ XDP 适合的 ARM 嵌入式场景：
 - **数据包转发**：XDP_TX 直接从 NIC 重新发出，绕过整个协议栈
 - **流量采样**：XDP_REDIRECT 到 AF_XDP socket 的零拷贝接收
 
-**副作用**：需要内核编译支持 eBPF 和 XDP；Generic XDP 的性能优势有限。
+副作用：需要内核编译支持 eBPF 和 XDP；Generic XDP 的性能优势有限。
 
 ## 10. 实时调度与内存锁定
 
@@ -730,4 +730,4 @@ ARM-Linux 网络性能优化是一个多维度的工程问题，需要从硬件�
 12. PREEMPT_RT 内核
 13. XDP 快速数据路径
 
-**核心原则**：永远先诊断再优化。使用 `ethtool -S`、`/proc/net/softnet_stat`、`mpstat` 定位实际瓶颈，然后针对性地应用上述优化。盲目套用参数可能适得其反。
+核心原则：永远先诊断再优化。使用 `ethtool -S`、`/proc/net/softnet_stat`、`mpstat` 定位实际瓶颈，然后针对性地应用上述优化。盲目套用参数可能适得其反。

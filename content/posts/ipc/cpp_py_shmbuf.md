@@ -489,6 +489,6 @@ TCP socket (loopback) 方案:
 | 推荐场景 | SPSC 实时 | 通用共享内存 | MPMC 实时 | 远程通信 |
 
 **相关技术参考**:
-- [ringbuffer 设计](https://gitee.com/liudegui/ringbuffer) -- 单调递增索引、power-of-2 mask
-- [激光雷达 Pipeline](/tech-notes/posts/architecture/lidar_pipeline_newosp/) -- 真零拷贝的 Handle 传递
-- [newosp 并发架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- AsyncBus MPSC 消息总线
+- [ringbuffer 设计](https://gitee.com/liudegui/ringbuffer)，单调递增索引、power-of-2 mask
+- [激光雷达 Pipeline](/tech-notes/posts/architecture/lidar_pipeline_newosp/)，真零拷贝的 Handle 传递
+- [newosp 并发架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，AsyncBus MPSC 消息总线

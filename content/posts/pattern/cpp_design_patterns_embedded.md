@@ -10,7 +10,7 @@ TocOpen: true
 ---
 
 >
-> 参考实现: [newosp](https://github.com/DeguiLiu/newosp) v0.2.0 -- 工业嵌入式 C++17 Header-Only 基础设施库
+> 参考实现: [newosp](https://github.com/DeguiLiu/newosp) v0.2.0，工业嵌入式 C++17 Header-Only 基础设施库
 
 ## 1. 为什么嵌入式需要重新审视设计模式
 
@@ -179,7 +179,7 @@ void ProcessFile() {
 
 ### 4.1 问题
 
-在泛型容器（环形缓冲区、容器 push/pop）中，trivially copyable 类型可以用 `memcpy` 高效拷贝，而非 trivially copyable 类型必须逐元素 move。传统做法是运行时 `if` 判断或模板特化，前者有分支代价，后者代码膨胀。
+在泛型容器（环形缓冲区、容器 push/pop）中，trivially copyable 类型可以用 `memcpy` 高效拷贝，而非 trivially copyable 类型必须逐元素 move。传统做法是运行时 `if` 判断或模板特化：运行时判断有分支代价，模板特化会带来代码膨胀。
 
 ### 4.2 newosp 的 SpscRingbuffer 中的 if constexpr
 
@@ -654,4 +654,4 @@ static void CpuRelax() noexcept {
 4. **编译期安全**：`static_assert` 在编译时捕获尺寸/对齐/类型错误
 5. **可测试**：979 个 Catch2 测试用例 + ASan/UBSan/TSan 全绿
 
-参考实现: [newosp](https://github.com/DeguiLiu/newosp) -- MIT 协议开源，header-only，可直接在嵌入式项目中使用。
+参考实现: [newosp](https://github.com/DeguiLiu/newosp)，MIT 协议开源，header-only，可直接在嵌入式项目中使用。

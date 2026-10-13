@@ -59,7 +59,7 @@ TocOpen: true
 
 本 Pipeline 采用 **数据面与控制面分离** 架构。控制面/数据面分离的通用设计原理、AsyncBus MPSC 消息总线、ShmChannel 零拷贝通道、RealtimeExecutor 实时调度等基础设施的详细介绍参见 [工业嵌入式流式数据处理架构设计](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)。本节聚焦激光雷达 Pipeline 的具体拓扑设计。
 
-**核心原则**: Pipeline 每个 stage 的 producer/consumer 关系是 1:1，MPSC 的 CAS 竞争在此场景下是多余开销。数据面用 SPSC 直连 (~5 ns)，控制面用 AsyncBus 处理诊断和扇入/扇出场景。
+核心原则：Pipeline 每个 stage 的 producer/consumer 关系是 1:1，MPSC 的 CAS 竞争在此场景下是多余开销。数据面用 SPSC 直连 (~5 ns)，控制面用 AsyncBus 处理诊断和扇入/扇出场景。
 
 ### 2.1 Pipeline 架构图
 
@@ -256,11 +256,11 @@ SPSC vs MPSC Bus 性能对比 (Cortex-A53 @ 1.2 GHz, Handle 传递):
 | Bus (variant Publish) | ~30 ns | CAS + variant visit + callback | 扇入/扇出/控制面 |
 | Bus (ProcessBatchWith) | ~2 ns/msg (批量均摊) | 同上，batch=256 均摊 | 高吞吐广播 |
 
-> 性能数据测试条件: Cortex-A53 1.2 GHz, GCC 12 -O2, 单线程 benchmark, 10M 次迭代取中位数。SPSC 传递 6B FrameHandle; Bus 传递 8B variant (最小 payload)。实际 payload 越大差距越大。
+> 性能数据测试条件: Cortex-A53 1.2 GHz, GCC 12 -O2，单线程 benchmark, 10M 次迭代取中位数。SPSC 传递 6B FrameHandle; Bus 传递 8B variant (最小 payload)。实际 payload 越大差距越大。
 
 ### 4.2 AsyncBus: 控制面与扇入/扇出
 
-AsyncBus 不用于线性 Pipeline 数据面，但在多传感器扇入和诊断命令注入场景不可替代。AsyncBus 的 Lock-free MPSC 设计、零堆分配机制、优先级准入控制的完整介绍参见 [工业嵌入式流式数据处理架构设计 -- AsyncBus](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)。
+AsyncBus 不用于线性 Pipeline 数据面，但在多传感器扇入和诊断命令注入场景不可替代。AsyncBus 的 Lock-free MPSC 设计、零堆分配机制、优先级准入控制的完整介绍参见 [工业嵌入式流式数据处理架构设计，AsyncBus](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)。
 
 在激光雷达 Pipeline 中，AsyncBus 的典型用法:
 
@@ -269,7 +269,7 @@ AsyncBus 不用于线性 Pipeline 数据面，但在多传感器扇入和诊断�
 
 ### 4.3 层次状态机: 有状态 Stage 的管理
 
-并非所有 stage 都是无状态的逐点处理。串扰去除需要维护校准状态，故障恢复需要重试逻辑。HSM 的通用设计 (LCA 转换、Guard 条件、Entry/Exit) 和 HSM + BT 组合模式参见 [工业嵌入式流式数据处理架构设计 -- 状态管理](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)。
+并非所有 stage 都是无状态的逐点处理。串扰去除需要维护校准状态，故障恢复需要重试逻辑。HSM 的通用设计 (LCA 转换、Guard 条件、Entry/Exit) 和 HSM + BT 组合模式参见 [工业嵌入式流式数据处理架构设计，状态管理](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)。
 
 在激光雷达串扰去除 stage 中，HSM 的具体应用:
 
@@ -340,7 +340,7 @@ pool.Destroy(&pool[handle.pool_index]);  // O(1), placement delete
 
 ### 4.5 实时调度与看门狗
 
-RealtimeExecutor 的 SCHED_FIFO + isolcpus + mlockall 设计详见 [工业嵌入式流式数据处理架构设计 -- 调度层](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)。以下是激光雷达 Pipeline 的具体线程分配:
+RealtimeExecutor 的 SCHED_FIFO + isolcpus + mlockall 设计详见 [工业嵌入式流式数据处理架构设计，调度层](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)。以下是激光雷达 Pipeline 的具体线程分配:
 
 ```cpp
 // Stage 线程分配 (4 核 Cortex-A53)
@@ -433,9 +433,9 @@ osp::shell_cmd::RegisterPool(pool, "frame_pool");
 13 个内置诊断命令覆盖: 看门狗、故障、总线统计、工作线程池、传输层、串口、HSM 节点、服务、发现、生命周期、QoS、内存池。
 
 三种后端:
-- **DebugShell**: TCP telnet (远程调试, `#if OSP_HAS_NETWORK`)
-- **ConsoleShell**: stdin/stdout (本地终端, 始终可用)
-- **UartShell**: 串口 (工业现场, 始终可用)
+- **DebugShell**: TCP telnet (远程调试，`#if OSP_HAS_NETWORK`)
+- **ConsoleShell**: stdin/stdout (本地终端，始终可用)
+- **UartShell**: 串口 (工业现场，始终可用)
 
 ### 6.2 全链路追踪
 
@@ -466,12 +466,12 @@ struct StageMetrics {
 | 维度 | 纯 C / QPC | newosp C++17 (本文方案) |
 |------|-----------|------------------------|
 | **数据面通信** | void* 事件队列 (MPSC) | SPSC 直连 + Handle (1:1 专用) |
-| **控制面通信** | 同上 (混用) | AsyncBus (MPSC, 仅扇入/扇出/诊断) |
-| **零拷贝** | 手写引用计数 | Handle 传递 (6B), 数据原地读写 |
-| **数据布局** | AoS | SoA (NEON 友好, alignas(16)) |
+| **控制面通信** | 同上 (混用) | AsyncBus (MPSC，仅扇入/扇出/诊断) |
+| **零拷贝** | 手写引用计数 | Handle 传递 (6B)，数据原地读写 |
+| **数据布局** | AoS | SoA (NEON 友好，alignas(16)) |
 | **类型安全** | void* 强转 | std::variant + visitor (控制面) |
 | **内存管理** | 手动 alloc/free | ObjectPool RAII (O(1) 固定块) |
-| **状态机** | switch-case (扁平) | LCA HSM (层次, guard, entry/exit) |
+| **状态机** | switch-case (扁平) | LCA HSM (层次，guard, entry/exit) |
 | **编译期配置** | #define 宏 | 模板参数 (QueueDepth, MaxStates) |
 | **流水线并行** | 手动 pthread | Stage-per-thread + CPU 绑核 |
 | **测试** | 手写断言 | Catch2 (1153 tests) |
@@ -594,8 +594,8 @@ int main() {
 
 ## 参考
 
-- [工业嵌入式流式数据处理架构设计](/tech-notes/posts/architecture/embedded_streaming_data_architecture/) -- 控制面/数据面分离、AsyncBus、ShmChannel、RealtimeExecutor、HSM+BT 通用架构设计
-- [newosp GitHub](https://github.com/DeguiLiu/newosp) -- C++17 header-only 嵌入式基础设施库
-- [newosp 设计文档](https://github.com/DeguiLiu/newosp/blob/main/docs/design_zh.md) -- 完整架构设计
-- QP/C Framework -- 量子平台 C 事件驱动框架
-- CyberRT / ROS2 -- 机器人中间件参考架构
+- [工业嵌入式流式数据处理架构设计](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)，控制面/数据面分离、AsyncBus、ShmChannel、RealtimeExecutor、HSM+BT 通用架构设计
+- [newosp GitHub](https://github.com/DeguiLiu/newosp)，C++17 header-only 嵌入式基础设施库
+- [newosp 设计文档](https://github.com/DeguiLiu/newosp/blob/main/docs/design_zh.md)，完整架构设计
+- QP/C Framework，量子平台 C 事件驱动框架
+- CyberRT / ROS2，机器人中间件参考架构

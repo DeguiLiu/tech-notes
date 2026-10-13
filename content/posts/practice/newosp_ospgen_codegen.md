@@ -9,14 +9,14 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 配套代码: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp) -- header-only C++17 嵌入式基础设施库
+> 配套代码: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)，header-only C++17 嵌入式基础设施库
 >
 > 设计文档: [design_codegen_zh.md](https://github.com/DeguiLiu/newosp/blob/main/docs/design_codegen_zh.md)
 >
 > 相关文章:
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- AsyncBus/Node 如何使用 ospgen 生成的消息类型
-> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/) -- ShmRingBuffer 为什么需要 trivially_copyable 保证
-> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- 消息队列对 trivially_copyable 的需求来源
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，AsyncBus/Node 如何使用 ospgen 生成的消息类型
+> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/)，ShmRingBuffer 为什么需要 trivially_copyable 保证
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，消息队列对 trivially_copyable 的需求来源
 >
 > CSDN 原文: [newosp ospgen: YAML 驱动的嵌入式 C++17 零堆消息代码生成](https://blog.csdn.net/stallion5632)
 
@@ -47,7 +47,7 @@ nanopb     → 纯 C，不支持 std::variant / enum class / 模板
 
 newosp 需要的是: **比 Protobuf 轻、比手写安全、比 nanopb 更 C++17**。
 
-## 2. 方案: ospgen -- 200 行 Python 的 YAML→C++ 生成器
+## 2. 方案: ospgen：200 行 Python 的 YAML→C++ 生成器
 
 ospgen 的设计哲学: **只做嵌入式 C++ 真正需要的事，一行多余代码都不写**。
 
@@ -186,7 +186,7 @@ registrar.Subscribe<protocol::RegisterRequest>(
     });
 ```
 
-**为什么必须代码生成**: `std::variant` 的类型列表必须完整包含所有消息类型。手写时每新增一个消息，要同时修改 variant 定义、event enum、Subscribe 调用三处。ospgen 保证 YAML 增加一条 message 定义，variant 自动更新。
+先说类型列表的完整性。`std::variant` 的类型列表必须完整包含所有消息类型。手写时每新增一个消息，要同时修改 variant 定义、event enum、Subscribe 调用三处。ospgen 保证 YAML 增加一条 message 定义，variant 自动更新。
 
 ### 3.2 场景二: 共享内存 IPC (ShmRingBuffer)
 
@@ -197,7 +197,7 @@ newosp 的 `ShmRingBuffer` 用 `memcpy` 在进程间传输消息。**只有 `tri
 std::memcpy(slot_ptr, data, size);  // data 必须是 trivially_copyable
 ```
 
-**为什么必须代码生成**: 如果某个 struct 含有 `std::string`、虚函数、或非平凡析构，`memcpy` 后行为未定义。ospgen 为每个消息自动生成 `static_assert(std::is_trivially_copyable<T>::value)`，编译期拦截。
+再看平凡可拷贝的约束：如果某个 struct 含有 `std::string`、虚函数、或非平凡析构，`memcpy` 后行为未定义。ospgen 为每个消息自动生成 `static_assert(std::is_trivially_copyable<T>::value)`，编译期拦截。
 
 ### 3.3 场景三: 跨进程协议 (Transport)
 
@@ -212,7 +212,7 @@ RegisterRequest msg;
 transport.Recv(&msg, sizeof(RegisterRequest));  // sizeof 必须两端一致
 ```
 
-**为什么必须代码生成**: 编译器 padding 策略因平台而异。ARM 上 `uint8_t` 后跟 `uint32_t` 可能插入 3 字节 padding，x86 可能不同。`expected_size` + `static_assert` 确保跨平台 sizeof 一致，编译期发现不匹配:
+跨平台的布局一致性也要靠生成：编译器 padding 策略因平台而异。ARM 上 `uint8_t` 后跟 `uint32_t` 可能插入 3 字节 padding，x86 可能不同。`expected_size` + `static_assert` 确保跨平台 sizeof 一致，编译期发现不匹配:
 
 ```cpp
 // 编译器 padding 导致 sizeof 变化时，立即报错
@@ -234,7 +234,7 @@ using MsgType = protocol::EventMessage<protocol::kProtocolRegister>::type;
 // MsgType == RegisterRequest，零运行时开销
 ```
 
-**为什么必须代码生成**: event-message 绑定是模板特化，手写容易漏、容易错。YAML 中一行 `event: REGISTER` 自动生成正反两个映射 + constexpr 辅助函数。
+事件与消息的绑定同样是手写容易漏的地方：event-message 绑定是模板特化，手写容易漏、容易错。YAML 中一行 `event: REGISTER` 自动生成正反两个映射 + constexpr 辅助函数。
 
 ### 3.5 场景五: 协议演进与多人协作
 
@@ -335,9 +335,9 @@ const char* media = (cmd.media_type == 0) ? "video"          // 魔数
 
 改造只需三步:
 
-1. **删除** `messages.hpp` -- 5 个手写 struct 已在 `defs/protocol_messages.yaml` 中定义
-2. **替换引用** -- `#include "messages.hpp"` → `#include "osp/protocol_messages.hpp"` + `#include "osp/topology.hpp"`
-3. **使用生成能力** -- 在业务逻辑中调用 `Validate()`、`Dump()`、枚举类型、拓扑常量
+1. **删除** `messages.hpp`，5 个手写 struct 已在 `defs/protocol_messages.yaml` 中定义
+2. **替换引用**，`#include "messages.hpp"` → `#include "osp/protocol_messages.hpp"` + `#include "osp/topology.hpp"`
+3. **使用生成能力**，在业务逻辑中调用 `Validate()`、`Dump()`、枚举类型、拓扑常量
 
 改造后的 handler:
 
@@ -427,11 +427,11 @@ osp::Node<Payload> client(kNodeName_client, kNodeId_client);
 | trivially_copyable | 无保护 | `static_assert` 编译期 |
 | 新增消息同步 | 手动改 3+ 处 | 改 YAML 一处，自动生成 |
 
-核心价值: 手写 `messages.hpp` 只是 "能用"，ospgen 生成的代码是 "安全地用"。差别不在于功能，而在于**把嵌入式通信中容易犯的错误变成编译错误**。
+核心价值：手写 `messages.hpp` 只是“能用”，ospgen 生成的代码是“安全地用”。两者功能相同，差别在于**把嵌入式通信中容易犯的错误变成编译错误**。
 
 ## 6. 设计决策与权衡
 
-### 6.1 为什么用 YAML 而不是 .proto 或自定义 DSL?
+### 6.1 数据格式选 YAML 的理由
 
 | 选项 | 优点 | 缺点 |
 |------|------|------|
@@ -441,13 +441,13 @@ osp::Node<Payload> client(kNodeName_client, kNodeId_client);
 
 YAML 的"缺点"(无类型系统) 在这里反而是优点: 字段类型直接写 C++ 类型名 (`uint32_t`, `"char[32]"`)，无需 proto 到 C++ 的类型映射表。
 
-### 6.2 为什么用 Jinja2 而不是直接 string format?
+### 6.2 生成用 Jinja2 模板的理由
 
 - Jinja2 的 `{% for %}` / `{% if %}` 让模板逻辑清晰，vs `"\n".join([...])` 的可读性地狱
 - Jinja2 的 filter/global 机制让命名转换 (`snake_to_camel`) 可在模板中直接使用
 - 新增生成能力只需修改 `.j2` 模板，不改 Python 代码
 
-### 6.3 为什么不支持 nested messages 和 oneof?
+### 6.3 不支持嵌套消息与 oneof 的理由
 
 嵌入式消息的典型特征:
 
@@ -457,27 +457,27 @@ YAML 的"缺点"(无类型系统) 在这里反而是优点: 字段类型直接�
 
 nested messages 和 oneof 会引入指针或变长字段，破坏 `trivially_copyable` 约束。这是有意为之的限制，不是遗漏。
 
-### 6.4 为什么 Dump() 用 snprintf 而不是 std::ostringstream?
+### 6.4 Dump() 选 snprintf 的理由
 
 - `std::ostringstream` 需要堆分配，嵌入式热路径不可接受
 - `snprintf` 零堆分配，写入调用方提供的栈缓冲区
 - 生成器自动将 C++ 类型映射到 printf 格式符 (`uint32_t` → `%u` + `static_cast<unsigned>`)
 - `-fno-exceptions` 环境下 `ostringstream` 可能不可用
 
-### 6.5 为什么 Validate() 不抛异常?
+### 6.5 Validate() 用返回值报告错误
 
 newosp 编译选项包含 `-fno-exceptions`。`Validate()` 返回 `bool`，调用方决定如何处理。这比异常更适合嵌入式:
 
 ```cpp
 if (!msg.Validate()) {
     OSP_LOG_WARN("proto", "invalid message, dropping");
-    return;  // 而不是 try-catch
+    return;  // 提前返回，不起 try-catch
 }
 ```
 
 ## 7. 总结
 
-ospgen 的核心价值不在于 "YAML + Jinja2 生成 C++" 这个技术本身 -- 这在 Web/DevOps 领域早已普及。它的价值在于**将这个模式精确适配到嵌入式 C++17 的约束集**:
+ospgen 的核心价值不在于 "YAML + Jinja2 生成 C++" 这个技术本身，这在 Web/DevOps 领域早已普及。它的价值在于**将这个模式精确适配到嵌入式 C++17 的约束集**:
 
 | 嵌入式约束 | ospgen 的回答 |
 |-----------|-------------|

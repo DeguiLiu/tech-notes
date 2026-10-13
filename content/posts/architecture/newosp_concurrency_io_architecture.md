@@ -9,13 +9,13 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 配套代码: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp) -- header-only C++17 嵌入式基础设施库
+> 配套代码: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)，header-only C++17 嵌入式基础设施库
 >
 > 相关文章:
-> - [工业传感器数据流水线: newosp C++17 零堆分配事件驱动架构实战](/tech-notes/posts/architecture/newosp_event_driven_architecture/) -- AsyncBus/HSM/SPSC 核心实现 + 流水线案例
-> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) -- WorkerPool 内部的 SPSC 队列
-> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- CAS/MPSC/SPSC 原理
-> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/) -- ShmRingBuffer I/O 集成
+> - [工业传感器数据流水线: newosp C++17 零堆分配事件驱动架构实战](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，AsyncBus/HSM/SPSC 核心实现 + 流水线案例
+> - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，WorkerPool 内部的 SPSC 队列
+> - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，CAS/MPSC/SPSC 原理
+> - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/)，ShmRingBuffer I/O 集成
 >
 > CSDN 原文:
 > - [C++ 多线程与协程优化阻塞型任务](https://blog.csdn.net/stallion5632/article/details/143887766)
@@ -33,7 +33,7 @@ newosp 的回答是三层解耦:
 
 ### 为什么不用协程
 
-state-threads 实验 (1000x1000 矩阵乘法 + 1us 阻塞) 显示协程在阻塞密集场景下比纯多线程快 4.5 倍 (3.3s vs 14.9s)。但工业嵌入式有两个硬伤: **栈内存不可控** -- 有栈协程需要 4-64KB/协程，1000 协程 = 4-64MB，在 32-256MB 系统中无法接受，且栈深度编译期无法预测; **`-fno-exceptions` 冲突** -- Boost.Fiber/Coroutine2 不兼容，兼容的 state-threads/libco 是纯 C 库，与 C++17 类型系统 (variant, optional, constexpr) 没有集成。
+state-threads 实验 (1000x1000 矩阵乘法 + 1us 阻塞) 显示协程在阻塞密集场景下比纯多线程快 4.5 倍 (3.3s vs 14.9s)。但工业嵌入式有两个硬伤: **栈内存不可控**，有栈协程需要 4-64KB/协程，1000 协程 = 4-64MB，在 32-256MB 系统中无法接受，且栈深度编译期无法预测; **`-fno-exceptions` 冲突**，Boost.Fiber/Coroutine2 不兼容，兼容的 state-threads/libco 是纯 C 库，与 C++17 类型系统 (variant, optional, constexpr) 没有集成。
 
 ### 为什么不直接用 epoll
 
@@ -530,11 +530,11 @@ IoPoller.Wait() → recv → SensorReading → bus.Publish()
 | 可测试性 | 线程竞态难测 | 依赖 fd mock | Node 纯消息测试 |
 | 延迟 (P50) | ~1-5 us | ~100-500 ns | ~2 ns (StaticNode) |
 
-核心差异: 传统方案的 `std::mutex` futex slow path 和 `std::queue` 堆分配是热路径上的两个主要不确定性来源。newosp 用 CAS 环形缓冲消除了前者，用 variant 值语义消除了后者。
+核心差异: 传统方案的 `std::mutex` futex slow path 和 `std::queue` 堆分配是热路径上的两个主要不确定性来源。newosp 用 CAS 环形缓冲消除了 futex 慢路径，用 variant 值语义消除了堆分配。
 
 ## 参考资料
 
-1. [newosp GitHub 仓库](https://github.com/DeguiLiu/newosp) -- C++17 header-only 嵌入式基础设施库
-2. [C++ 多线程与协程优化阻塞型任务](https://blog.csdn.net/stallion5632/article/details/143887766) -- state-threads 实验
-3. [Linux I/O 多路复用与异步 I/O 对比](https://blog.csdn.net/stallion5632/article/details/143675999) -- 五种 I/O 模型
-4. [Cyber RT 协程实现](https://zhuanlan.zhihu.com/p/365838048) -- Baidu Apollo 协程架构
+1. [newosp GitHub 仓库](https://github.com/DeguiLiu/newosp)，C++17 header-only 嵌入式基础设施库
+2. [C++ 多线程与协程优化阻塞型任务](https://blog.csdn.net/stallion5632/article/details/143887766)，state-threads 实验
+3. [Linux I/O 多路复用与异步 I/O 对比](https://blog.csdn.net/stallion5632/article/details/143675999)，五种 I/O 模型
+4. [Cyber RT 协程实现](https://zhuanlan.zhihu.com/p/365838048)，Baidu Apollo 协程架构

@@ -10,10 +10,10 @@ TocOpen: true
 ---
 
 > 相关文章:
-> - [嵌入式系统死锁防御: 从有序锁到无锁架构的工程实践](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/) -- 架构层面如何避免锁问题
-> - [多线程死锁与优先级反转实战](/tech-notes/posts/performance/deadlock_priority_inversion_practice/) -- 死锁与优先级反转的代码级修复
-> - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/) -- 三种同步策略的性能实测
-> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/) -- 从有锁迁移到无锁的理论基础
+> - [嵌入式系统死锁防御: 从有序锁到无锁架构的工程实践](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/)，架构层面如何避免锁问题
+> - [多线程死锁与优先级反转实战](/tech-notes/posts/performance/deadlock_priority_inversion_practice/)，死锁与优先级反转的代码级修复
+> - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/)，三种同步策略的性能实测
+> - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，从有锁迁移到无锁的理论基础
 >
 > 参考:
 > - 原文: [perf lock 诊断锁竞争](https://blog.csdn.net/stallion5632/article/details/143665002)
@@ -57,19 +57,19 @@ graph TD
     style F fill:#ffcdd2
 ```
 
-### Fast Path -- 无竞争
+### Fast Path：无竞争
 
 锁空闲时，`pthread_mutex_lock` 通过一次用户空间的 CAS（Compare-And-Swap）原子操作直接获取锁。**不进入内核、不触发系统调用**。延迟约 **10-25 ns**。
 
 这是绝大多数锁操作应该走的路径。如果你的程序设计良好（锁粒度足够细、线程不会同时竞争同一把锁），几乎所有锁操作都走 fast path。
 
-### Mid Path -- 自适应自旋
+### Mid Path：自适应自旋
 
 锁被持有时，如果持有者仍在某个 CPU 上运行（没被调度走），当前线程会在用户空间**短暂自旋**等待。理由是: 持有者很快会释放锁，自旋几微秒比进入内核休眠再唤醒更快。
 
 glibc 的 `PTHREAD_MUTEX_ADAPTIVE_NP` 类型或内核 mutex 的 optimistic spinning 都实现了这一策略。
 
-### Slow Path -- 内核休眠
+### Slow Path：内核休眠
 
 自旋等不到锁释放时，线程调用 `futex(FUTEX_WAIT)` 陷入内核，进入休眠队列。锁释放者调用 `futex(FUTEX_WAKE)` 唤醒等待者。
 
@@ -88,7 +88,7 @@ glibc 的 `PTHREAD_MUTEX_ADAPTIVE_NP` 类型或内核 mutex 的 optimistic spinn
 | Mid Path | 0.1-10 us | 自旋消耗 CPU | 不可见（未进入内核） |
 | Slow Path | 1-100+ us | 上下文切换 | **可见**（contention 事件） |
 
-这意味着 `perf lock` 报告的 `contended` 次数是**保守下界** -- 实际竞争可能更多，但通过 mid path 自旋解决了，没有进入内核。
+这意味着 `perf lock` 报告的 `contended` 次数是**保守下界**，实际竞争可能更多，但通过 mid path 自旋解决了，没有进入内核。
 
 ---
 
@@ -161,7 +161,7 @@ ls /sys/kernel/debug/tracing/events/lock/
 | 字段 | 含义 | 重要性 |
 |------|------|--------|
 | **contended** | 进入 slow path 的次数（即 futex_wait 发生的次数） | 竞争频率 |
-| **total wait** | 所有竞争等待时间之和 | **最关键** -- 直接反映性能损失 |
+| **total wait** | 所有竞争等待时间之和 | **最关键**，直接反映性能损失 |
 | **max wait** | 单次最大等待时间 | 影响尾延迟（P99/P999） |
 | **avg wait** | 平均每次等待时间 | 反映临界区长度 |
 | **type** | 锁类型: mutex / spinlock / rwlock / rwsem | 指导优化方向 |
@@ -184,7 +184,7 @@ ls /sys/kernel/debug/tracing/events/lock/
 
 ## 5. 进阶: 调用栈与锁持有者分析
 
-### 5.1 调用栈 -- 谁在等锁
+### 5.1 调用栈：谁在等锁
 
 ```bash
 # 显示竞争的调用栈 (默认 8 层)
@@ -208,12 +208,12 @@ sudo perf lock contention -ab --max-stack=16 -- sleep 10
 
 这告诉你:
 
-- **86% 的等待**（4.12s / 4.77s）来自 `futex_wait` -- 线程真的休眠了
-- **14% 的等待**（658ms）来自 `futex_wake` -- 唤醒路径本身的竞争
+- **86% 的等待**（4.12s / 4.77s）来自 `futex_wait`，线程真的休眠了
+- **14% 的等待**（658ms）来自 `futex_wake`，唤醒路径本身的竞争
 
-`futex_wake` 路径出现竞争意味着**内核 futex hash bucket 的自旋锁也在打架** -- 这是高竞争 mutex 的二阶效应，说明竞争已经非常严重。
+`futex_wake` 路径出现竞争意味着**内核 futex hash bucket 的自旋锁也在打架**，这是高竞争 mutex 的二阶效应，说明竞争已经非常严重。
 
-### 5.2 锁持有者 -- 谁在持锁
+### 5.2 锁持有者：谁在持锁
 
 `-o` 选项（内核 6.2+）可以显示**锁的持有者**，而非等待者:
 
@@ -310,7 +310,7 @@ sudo perf lock contention -ab --max-stack=12 -p $(pidof ipc_server) -- sleep 10
                                                     wake_up_q
 ```
 
-`futex_wake` 路径占 14% -- 唤醒本身也在竞争，说明 futex hash bucket 拥挤。
+`futex_wake` 路径占 14%，唤醒本身也在竞争，说明 futex hash bucket 拥挤。
 
 ### 6.4 Step 3: 锁持有者分析
 
@@ -327,7 +327,7 @@ sudo perf lock contention -abo -p $(pidof ipc_server) -- sleep 10
                                     snprintf+0x45
 ```
 
-**根因**: `format_log` 在持有 mutex 的临界区内调用了 `snprintf` 格式化日志。`snprintf` 延迟 1-3 us，直接拉长了临界区。
+根因：`format_log` 在持有 mutex 的临界区内调用了 `snprintf` 格式化日志。`snprintf` 延迟 1-3 us，直接拉长了临界区。
 
 ### 6.5 Step 4: 修复
 
@@ -412,7 +412,7 @@ flamegraph.pl --color=io --title="Off-CPU" --countname=us \
     stacks.txt > offcpu.svg
 ```
 
-Off-CPU 火焰图中 `futex_wait` 越宽，说明锁等待消耗的时间越多 -- 与 `perf lock` 的 `total wait` 相互印证。
+Off-CPU 火焰图中 `futex_wait` 越宽，说明锁等待消耗的时间越多，与 `perf lock` 的 `total wait` 相互印证。
 
 ---
 

@@ -66,7 +66,7 @@ uart.Start();
 优点: 多后端、Tab 补全、线程安全注册。
 局限: 与 newosp 耦合 (依赖 platform.hpp + vocabulary.hpp)，无认证，无方向键历史，命令签名无 context 指针。
 
-### 2.3 方案 C: embsh -- 独立的嵌入式 Shell 库 (推荐)
+### 2.3 方案 C: embsh：独立的嵌入式 Shell 库 (推荐)
 
 [embsh](https://github.com/DeguiLiu/embsh) 融合了 newosp shell (多后端) 和 telsh (IAC + 认证 + 历史) 的优点:
 
