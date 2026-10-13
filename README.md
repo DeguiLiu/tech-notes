@@ -94,7 +94,7 @@ misc/               -- 杂项 (13 篇)
 | 文件 | 标题 | 日期 |
 |------|------|------|
 | [display_pipeline_atomic_reconfigure.md](practice/display_pipeline_atomic_reconfigure.md) | 运行期重配输出链路: 哪些状态要一起改、失败了怎么退 *(草稿)* | 2026-10-12T10:00:00 |
-| [mcu_periodic_service_concurrency.md](practice/mcu_periodic_service_concurrency.md) | MCU 周期服务的并发三件套: RMW、RTC 与 AOP | 2026-09-22T08:00:00 |
+| [mcu_periodic_service_concurrency.md](practice/mcu_periodic_service_concurrency.md) | MCU 周期服务的共享状态: 读改写原子性、拒绝重入与锁的位置 | 2026-09-22T08:00:00 |
 | [usb_uvc_enumeration_and_negotiation.md](practice/usb_uvc_enumeration_and_negotiation.md) | USB 视频设备枚举与能力协商: 描述符、Probe 与 Commit | 2026-09-18T08:00:00 |
 | [serial_dtr_rts_timing_pitfall.md](practice/serial_dtr_rts_timing_pitfall.md) | 串口控制线时序陷阱: DTR 与 RTS 导致的偶发复位 | 2026-09-12T08:00:00 |
 | [nginx_webrtc_low_latency.md](practice/nginx_webrtc_low_latency.md) | Nginx 内实现 RTMP 转 WebRTC: 亚秒级低延迟直播 | 2026-09-10T08:00:00 |
