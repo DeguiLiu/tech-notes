@@ -17,7 +17,7 @@ TocOpen: true
 
 ---
 
-## 1. 结论前置
+## 1. 概述
 
 newosp 的调试 Shell 模块在一个 header-only 文件中提供完整的嵌入式调试能力:
 

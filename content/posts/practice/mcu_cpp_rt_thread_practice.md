@@ -9,7 +9,7 @@ ShowToc: true
 TocOpen: true
 ---
 
-> **结论前置**：RT-Thread/MCU 上可以安全使用 C++，但必须满足三个前提：
+> **概述**：RT-Thread/MCU 上可以安全使用 C++，但必须满足三个前提：
 > 1. 强制编译开关 `-fno-exceptions -fno-rtti`
 > 2. 禁止运行时堆分配，用固定大小容器替代 STL 动态容器
 > 3. 运行时多态改为编译期多态（模板 / CRTP / 函数指针表）

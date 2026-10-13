@@ -9,7 +9,7 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 结论先行：一台嵌入式设备通过 USB 同时输出两路视频流，并不是变成了两个 USB 设备。设备借助复合设备描述符与 IAD（Interface Association Descriptor，接口关联描述符），让 Windows 在摄像头列表里注册为两个条目。两路数据的同步靠两件事：固件为每帧打上的 PTS（Presentation Time Stamp，显示时间戳），以及硬件内部的 3 帧环形缓冲区。
+> 概述：一台嵌入式设备通过 USB 同时输出两路视频流，并不是变成了两个 USB 设备。设备借助复合设备描述符与 IAD（Interface Association Descriptor，接口关联描述符），让 Windows 在摄像头列表里注册为两个条目。两路数据的同步靠两件事：固件为每帧打上的 PTS（Presentation Time Stamp，显示时间戳），以及硬件内部的 3 帧环形缓冲区。
 
 本文讨论的对象是工业相机、行车记录仪这类**单芯片嵌入式设备**：SoC 直接接 USB 控制器，运行 RTOS，对外只通过 USB 供电并传视频。它的硬件资源有限、实时性要求高，与 PC、服务器上的多摄像头场景并不一样。
 

@@ -9,7 +9,7 @@ ShowToc: true
 TocOpen: true
 ---
 
-## 1. 结论前置
+## 1. 概述
 
 LMDB (Lightning Memory-Mapped Database) 在嵌入式 Linux 中的定位：**读密集、崩溃安全的 KV 持久化存储**，用于替代以下传统方案：
 

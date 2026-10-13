@@ -9,7 +9,7 @@ ShowToc: true
 TocOpen: true
 ---
 
-结论先行：UVC 与 CSI-2 可以承载同一份 ISP 输出像素，但不是可互换的接口。UVC 用描述符和 endpoint 把视频交给 PC，CSI-2 用 data type 和 VC 把视频交给板级接收端；目的地不同，决定了封装、物理层和带宽取舍。
+概述：UVC 与 CSI-2 可以承载同一份 ISP 输出像素，但不是可互换的接口。UVC 用描述符和 endpoint 把视频交给 PC，CSI-2 用 data type 和 VC 把视频交给板级接收端；目的地不同，决定了封装、物理层和带宽取舍。
 
 ## 同源像素为何分成两条输出通路
 
