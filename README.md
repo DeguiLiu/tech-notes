@@ -30,7 +30,7 @@ misc/               -- 杂项 (13 篇)
 | [dma_devmem_and_fpga_ringbuffer.md](architecture/dma_devmem_and_fpga_ringbuffer.md) | DMA 物理内存映射与 FPGA 环形缓冲: 零拷贝通路与无锁读写 | 2026-10-06T08:00:00 |
 | [embedded_sd_boot_load_flow.md](architecture/embedded_sd_boot_load_flow.md) | 嵌入式 SD 卡上电加载: 从卡检测到文件系统挂载 | 2026-09-20T08:00:00 |
 | [embedded_usb_dual_video_output.md](architecture/embedded_usb_dual_video_output.md) | 嵌入式双路 USB 视频输出: 一个设备、两个摄像头的同步原理 | 2026-09-20T08:00:00 |
-| [onchip_camera_rtsp_service.md](architecture/onchip_camera_rtsp_service.md) | 单芯片相机 RTSP 服务架构: 画面通路、时间安排与方案取舍 | 2026-09-20T08:00:00 |
+| [onchip_camera_rtsp_service.md](architecture/onchip_camera_rtsp_service.md) | 单芯片相机上的 RTSP 服务: 一帧画面怎么送到播放器 | 2026-09-20T08:00:00 |
 | [embedded_block_device_write_path.md](architecture/embedded_block_device_write_path.md) | 嵌入式块设备写入路径: 从文件系统到 SD 卡的四层地址翻译 | 2026-09-18T08:00:00 |
 | [mcu_thread_heartbeat_liveness.md](architecture/mcu_thread_heartbeat_liveness.md) | MCU 任务活性监控: 心跳判定、链路进展与硬件看门狗 | 2026-09-14T08:00:00 |
 | [event_loop_internals_and_rtthread_port.md](architecture/event_loop_internals_and_rtthread_port.md) | 单线程事件循环的内核设计: 机制、移植与适用边界 | 2026-09-08T08:00:00 |
