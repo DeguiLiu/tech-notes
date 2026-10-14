@@ -9,10 +9,10 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 筛选标准: 只保留 C11 在**语言层面无法实现**的能力。
+> 筛选标准: 只保留 C11 在语言层面无法实现的能力。
 > 条件编译、`_Alignas`、`_Static_assert(常量表达式)`、`atomic_signal_fence`、栈上固定数组等 C11 同样能做到的内容不在讨论范围。
 
-> 姊妹篇: [newosp 源码中的 C++17 实践]({{< ref "cpp17_claims_in_newosp" >}})，这些语言能力在工业嵌入式库中的具体落地位置与工程决策。
+> 姊妹篇: [newosp 源码中的 C++17 实践]({{< ref "cpp17_claims_in_newosp" >}})，这些语言能力在工业嵌入式库中的具体落地位置与工程决策。仓库: [github.com/DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)
 
 ---
 
@@ -137,7 +137,7 @@ C 可以用宏做简单常量折叠 (`#define MAKE_IID(a,b) ((a)<<16|(b))`)，�
 
 C 的 `#ifdef` 只能基于宏开关，无法检测类型属性。C 的运行时 `if` 在函数未内联时无法消除死分支。
 
-**(a) 按 trivially copyable 选择拷贝策略:**
+(a) 按 trivially copyable 选择拷贝策略:
 
 ```cpp
 if constexpr (std::is_trivially_copyable_v<T>) {
@@ -150,7 +150,7 @@ if constexpr (std::is_trivially_copyable_v<T>) {
 // 编译后只保留命中的分支，另一条完全不存在于二进制中
 ```
 
-**(b) 按回调返回类型选择控制流:**
+(b) 按回调返回类型选择控制流:
 
 ```cpp
 if constexpr (std::is_same_v<decltype(fn(entry)), bool>) {
@@ -160,7 +160,7 @@ if constexpr (std::is_same_v<decltype(fn(entry)), bool>) {
 }
 ```
 
-**(c) 编译期递归展开多后端分派:**
+(c) 编译期递归展开多后端分派:
 
 ```cpp
 template <typename First, typename... Rest>
@@ -195,7 +195,7 @@ SpscRingbuffer<MotorCmd, 64>    motor_rb;    // 版本 B
 
 C 的通用函数接收 `void*`，`index % depth` 变成运行时除法。
 
-同一机制还可做**编译期字面量长度检查**:
+同一机制还可做编译期字面量长度检查:
 
 ```cpp
 template <uint32_t Capacity>
@@ -257,7 +257,7 @@ bool Unsubscribe(const Handle& handle) noexcept {
 
 C 没有语言级所有权转移，也无法禁止结构体赋值。
 
-**Move 语义**：零拷贝所有权转移
+Move 语义: 零拷贝所有权转移
 
 ```cpp
 auto socket = TcpSocket::Connect("host", 8080);
@@ -272,7 +272,7 @@ close(fd);              // 关闭后 fd2 变成悬空句柄
 write(fd2, data, len);  // 写入已关闭的 fd -> 未定义行为
 ```
 
-**拷贝删除**：禁止危险的复制
+拷贝删除: 禁止危险的复制
 
 ```cpp
 Bus(const Bus&) = delete;
@@ -280,7 +280,7 @@ Bus& operator=(const Bus&) = delete;
 // C: struct Bus b2 = b1; 编译通过，两份指向同一资源
 ```
 
-**expected 错误处理**：编译器强制检查
+expected 错误处理: 编译器强制检查
 
 ```cpp
 auto result = pool.CreateChecked(args...);

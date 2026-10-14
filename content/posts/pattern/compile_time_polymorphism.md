@@ -150,9 +150,11 @@ flowchart TB
 
 骨架的好处是顺序只写一次。跨多个实现共有的错误处理、超时检查和统计也能放进骨架，各实现只关心自己那一步。
 
+开源实现里，[coact](https://github.com/DeguiLiu/coact) 的 `Hsm<Context>` 用的是同一思路：状态表与转移表是编译期常量，`entry/exit/guard/action` 四类钩子由静态函数指针承载，签名在实例化时与具体 Context 绑定。
+
 ## 4. 差异只是一个算法时，用策略模板
 
-有些差异不是“一组步骤”，而是一个可以整体替换的算法，例如队列在多核下的同步方式。这时用无状态的策略结构体，比继承更贴切：
+有些差异来自一个可以整体替换的算法，队列在多核下的同步方式就是一例。这类差异用无状态的策略结构体比继承更贴切：
 
 ```cpp
 struct IrqMaskSync {                       // 单核：屏蔽中断
@@ -190,6 +192,8 @@ public:
 `if constexpr` 只实例化被选中的分支，`RingQueue<IrqMaskSync>` 不会为多核路径生成代码。策略结构与 `std::allocator`、`std::hash` 的定制方式一致：没有状态，只提供静态成员，调用点由模板参数决定。
 
 如果策略需要保存运行期状态，它就不再适合这种写法，应该换成普通类或骨架加钩子。
+
+[coact](https://github.com/DeguiLiu/coact) 的事件池就是这种结构：单核后端在中断屏蔽临界区里更新索引，多核后端换成带标签头的 CAS，切换后端只改一个模板实参。
 
 ## 5. 编译期属性用 Traits 注入
 
@@ -402,6 +406,13 @@ arm-none-eabi-size --format=SysV build/app.elf
 | 编译时间 | 可接受，且改动后未显著变差 | 头文件依赖与实例化数量 |
 
 编译器还能给出更细的信息：GCC 用 `-ftime-report`，Clang 用 `-ftime-trace` 查看哪个模板实例化耗时最多。测量运行时收益时，用周期计数或高分辨率计时器对比两种实现，并且要在优化开启的条件下测，未优化的模板代码没有参考价值。
+
+## 参考实现
+
+文中几类手段在开源项目里都有落地代码可以对照：
+
+- [coact](https://github.com/DeguiLiu/coact)：面向 RT-Thread 单核 MCU 的 header-first C++17 事件框架，状态机骨架用模板参数加静态钩子表绑定，事件池用两个无状态策略切换单核与多核同步后端，容量与优先级由配置模板和 Traits 注入。
+- [newosp](https://github.com/DeguiLiu/newosp)：面向嵌入式 Linux 的 C++17 header-only 基础库，`StaticNode` 把消息处理绑定到编译期，消息总线与线程看门狗在热路径上不使用虚调用。
 
 ## 总结
 

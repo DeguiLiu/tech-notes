@@ -4,22 +4,23 @@ date: 2026-02-15T08:20:00
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "CRC", "DMA", "LiDAR", "RTOS", "heterogeneous", "lock-free", "logging", "message-bus", "newosp", "performance", "scheduler", "serial", "state-machine", "zero-copy"]
-summary: "RK3506J 集成三核 Cortex-A7 (1.0 GHz) + Cortex-M0，支持 Linux + RTOS 异构部署。本文分析 AMP 架构下的核间通信 (RPMsg/共享内存)、实时性保障 (硬件定时器 + 中断隔离)、资源分区策略，面向激光雷达和工业控制器的部署方案。"
+summary: "三核 ARM SoC (3x Cortex-A7 @ 1.2 GHz) + Cortex-M0 支持 Linux + RTOS 异构部署。面向激光雷达和工业控制器，分析 AMP 核间通信 (Mailbox/共享内存)、实时性保障 (硬件定时器 + 中断隔离) 与资源分区策略。"
 ShowToc: true
 TocOpen: true
 ---
 
 >
-> 参考: [RK3506 Datasheet](https://www.rock-chips.com/uploads/pdf/RK3506.pdf)，
-> [newosp](https://github.com/DeguiLiu/newosp) v0.2.0
+> 参考: [newosp](https://github.com/DeguiLiu/newosp) v0.2.0
 >
 > 适用场景: 激光雷达、工业视觉、机器人控制器、边缘传感器融合
+>
+> 状态机与核间事件派发的对应实现见 [coact](https://github.com/DeguiLiu/coact)：面向 RT-Thread 单核 MCU 的 header-first C++17 事件框架。
 
 ---
 
 ## 1. 设计目标
 
-RK3506J 提供 3 个 Cortex-A7 (1.2 GHz) + 1 个 Cortex-M0 (200 MHz) 的异构多核硬件。本文给出面向工业传感器产品 (激光雷达、工业相机) 的两种部署方案概要设计，并给出选型建议。
+目标硬件提供 3 个 Cortex-A7 (1.2 GHz) + 1 个 Cortex-M0 (200 MHz) 的异构多核。面向工业传感器产品 (激光雷达、工业相机)，下面给出两套部署方案的概要设计和选型建议。
 
 ### 1.1 量化目标
 
@@ -49,7 +50,7 @@ RK3506J 提供 3 个 Cortex-A7 (1.2 GHz) + 1 个 Cortex-M0 (200 MHz) 的异构�
 
 ### 2.1 异构多核职责划分
 
-RK3506J 的异构设计天然适合 "硬实时 + 高算力" 场景:
+这种异构多核设计适合硬实时与高算力并存的场景:
 
 ```mermaid
 flowchart TB
@@ -72,16 +73,22 @@ flowchart TB
 
     M0 <-->|"Mailbox + SRAM"| IPC
     IPC <-->|"DDR 共享区"| A7
+    classDef mcore fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef acore fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef ipc fill:#dcfce7,stroke:#16a34a,color:#14532d
+    class MOTOR,SAFETY,TRIGGER mcore
+    class A7_0,A7_1,A7_2 acore
+    class MBOX,SHMEM ipc
 ```
 
 ### 2.2 核心分工
 
 | 核心 | 职责 | 实时性要求 | 典型任务 |
 |------|------|:----------:|----------|
-| **M0** | 硬实时控制 | < 10 us | 电机 PWM、编码器读取、安全保护、采集触发 |
-| **A7-0** | 系统服务 | 非实时 | Linux 内核、网络协议栈、日志、串口诊断 |
-| **A7-1** | 数据采集 | 软实时 | SPI/LVDS 接收、DMA 管理、数据校验 |
-| **A7-2** | 算法处理 | 软实时 | 点云滤波、坐标变换、NEON 加速 |
+| M0 | 硬实时控制 | < 10 us | 电机 PWM、编码器读取、安全保护、采集触发 |
+| A7-0 | 系统服务 | 非实时 | Linux 内核、网络协议栈、日志、串口诊断 |
+| A7-1 | 数据采集 | 软实时 | SPI/LVDS 接收、DMA 管理、数据校验 |
+| A7-2 | 算法处理 | 软实时 | 点云滤波、坐标变换、NEON 加速 |
 
 ---
 
@@ -115,6 +122,10 @@ flowchart LR
     ACQ -->|"ShmChannel\nSPSC 零拷贝"| ALGO
     ALGO -->|"AsyncBus\n控制消息"| NET
     CTRL -->|"AsyncBus"| ACQ
+    classDef mcore fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef acore fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    class M_MOTOR,M_SAFE,M_IPC mcore
+    class NET,LOG,CTRL,ACQ,ALGO acore
 ```
 
 ### 3.2 newosp 模块映射
@@ -141,7 +152,7 @@ M0 与 A7 之间通过 Hardware Mailbox + 共享 SRAM 通信:
 | Mailbox CH2 | M0 -> A7 | 安全告警 | 8B (告警码 + 时间戳) |
 | Mailbox CH3 | A7 -> M0 | 采集触发同步 | 4B (触发计数) |
 
-**协议约定**:
+协议约定:
 - Mailbox 中断触发，非轮询
 - 共享 SRAM 区域存放详细数据，Mailbox 仅传递通知和索引
 - M0 侧使用原子操作 + memory barrier, A7 侧使用 `acquire/release` 语义
@@ -170,7 +181,7 @@ M0 与 A7 之间通过 Hardware Mailbox + 共享 SRAM 通信:
 
 ---
 
-## 4. 方案二: 全 RTOS 部署 (极致实时)
+## 4. 方案二: 全 RTOS 部署 (实时优先)
 
 ### 4.1 系统架构
 
@@ -200,6 +211,10 @@ flowchart LR
     R_ACQ -->|"SPSC Ring\n无锁"| R_PROC
     R_PROC -->|"SPSC Ring"| R_PUB
     R_PUB -->|"结果队列"| R_NET
+    classDef mcore fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef acore fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    class M2_MOTOR,M2_IPC mcore
+    class R_CTRL,R_NET,R_LOG,R_ACQ,R_PROC,R_PUB acore
 ```
 
 ### 4.2 任务部署矩阵
@@ -247,7 +262,7 @@ A7 核间采用 SPSC 无锁 Ring Buffer 传递数据 (所有权转移模型):
 | 启动时间 | 10% | 5 | 9 |
 | 内存效率 | 10% | 5 | 9 |
 | 维护成本 | 10% | 8 | 4 |
-| **加权总分** | **100%** | **7.15** | **6.75** |
+| 加权总分 | 100% | 7.15 | 6.75 |
 
 ### 5.1 推荐路径
 
@@ -257,13 +272,17 @@ flowchart LR
     P2 -->|"达标"| SHIP["交付\n方案一"]
     P2 -->|"不达标"| P3["Phase 3\n热点迁移\n关键路径迁至 RT-Thread"]
     P3 --> P4["Phase 4\n全 RTOS 部署\n方案二"]
+    classDef plan fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef done fill:#dcfce7,stroke:#16a34a,color:#14532d
+    class P1,P2,P3,P4 plan
+    class SHIP done
 ```
 
-**建议**:
+建议:
 
-1. **首选方案一** (Linux + M0 RTOS)，开发效率高，生态成熟，适合快速原型和首版交付
-2. **方案二作为演进目标**，当方案一无法满足延迟/抖动要求时，逐步将热点迁移到 RT-Thread SMP
-3. **渐进式迁移**，先在 Linux 上用 newosp RealtimeExecutor (isolcpus + SCHED_FIFO) 尝试优化，若仍不足再考虑全 RTOS
+1. 首选方案一 (Linux + M0 RTOS)，开发效率高，生态成熟，适合快速原型和首版交付
+2. 方案二作为演进目标，当方案一无法满足延迟/抖动要求时，逐步将热点迁移到 RT-Thread SMP
+3. 渐进式迁移，先在 Linux 上用 newosp RealtimeExecutor (isolcpus + SCHED_FIFO) 尝试优化，若仍不足再考虑全 RTOS
 
 ---
 
@@ -291,10 +310,10 @@ flowchart LR
 
 核心设计决策:
 
-1. **M0 专责硬实时**: 电机控制、安全保护等微秒级响应任务固定在 M0，与应用层完全隔离
-2. **Hardware Mailbox 核间通信**: 中断驱动、低延迟，共享 SRAM 传递详细数据
-3. **方案一优先**: 利用 Linux 生态快速交付，newosp 的 RealtimeExecutor + ShmChannel 在用户态提供软实时保障
-4. **渐进式演进**: 通过量化验证 (延迟/抖动/吞吐) 驱动方案选择，避免过度设计
+1. M0 专责硬实时: 电机控制、安全保护等微秒级响应任务固定在 M0，与应用层完全隔离
+2. Hardware Mailbox 核间通信: 中断驱动、低延迟，共享 SRAM 传递详细数据
+3. 方案一优先: 利用 Linux 生态快速交付，newosp 的 RealtimeExecutor + ShmChannel 在用户态提供软实时保障
+4. 渐进式演进: 通过量化验证 (延迟/抖动/吞吐) 驱动方案选择，避免过度设计
 
 ---
 

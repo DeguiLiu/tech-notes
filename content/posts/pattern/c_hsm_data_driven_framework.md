@@ -11,12 +11,12 @@ TocOpen: true
 
 > 相关文章:
 > - [QPC 框架深度解析: Active Object 模型与层次状态机](/tech-notes/posts/practice/qpc_active_object_hsm/)，QP/C 的 HSM 双实现策略 (QHsm/QMsm)
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，C++17 模板化 HSM 的现代实现
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，C++17 模板化 HSM 的现代实现（源码: [github.com/DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)）
 > - [行为树 Tick 机制深度解析](/tech-notes/posts/practice/behavior_tree_tick_mechanism/)，BT 与 HSM 互补的架构实践
 
 状态机是嵌入式系统中最常用的设计模式之一。但随着状态数量增长和层级嵌套加深，传统的 switch-case 实现会变得难以维护。本文以 [state_machine](https://gitee.com/liudegui/state_machine) 框架为例，展示如何将过程驱动的状态机改造为数据驱动的层次状态机 (HSM)。
 
-原始版本来自 [misje/stateMachine](https://github.com/misje/stateMachine)，RT-Thread 社区有一个维护版本。本文基于对两者的重构，重点在于**数据驱动设计**和 **MISRA C:2012 合规**。
+原始版本来自 [misje/stateMachine](https://github.com/misje/stateMachine)，RT-Thread 社区有一个维护版本。本文基于对两者的重构，重点在数据驱动设计和 MISRA C:2012 合规。
 
 ## 1. 过程驱动 vs 数据驱动
 
@@ -56,7 +56,7 @@ void state_idle_handler(sm_t *sm, event_t evt) {
 
 ### 1.2 数据驱动的设计
 
-数据驱动的核心思想: **用数据 (转换表) 描述状态机行为，用通用引擎执行转换逻辑**。
+数据驱动的核心思想: 用数据 (转换表) 描述状态机行为，用通用引擎执行转换逻辑。
 
 ```c
 // 数据驱动: 转换表集中描述所有规则
@@ -270,7 +270,7 @@ LCA 为 root (NULL)，exit 路径: Running -> On，entry 路径: Off。
 
 原始版本的 entry 动作通过递归调用实现 (从 LCA 递归到目标状态)。在深层级嵌套时存在栈溢出风险。
 
-重构方案: 用 `entryPathBuffer` 数组记录 entry 路径，然后**迭代**执行:
+重构方案: 用 `entryPathBuffer` 数组记录 entry 路径，然后逐级迭代执行:
 
 ```c
 // 先记录路径 (逆序): target -> ... -> LCA 的下一级
@@ -521,10 +521,10 @@ rt_err_t post_event(uint32_t id, void *ctx) {
 
 ## 7. 适用场景
 
-- **设备生命周期管理**: 电源状态 (Off/Standby/Active)、初始化序列
-- **通信协议栈**: 连接状态 (Disconnected/Connecting/Connected/Error)
-- **业务流程**: 订单状态、审批流程
-- **需要层级抽象的场合**: 用父状态封装公共行为，子状态只关注差异
+- 设备生命周期管理: 电源状态 (Off/Standby/Active)、初始化序列
+- 通信协议栈: 连接状态 (Disconnected/Connecting/Connected/Error)
+- 业务流程: 订单状态、审批流程
+- 需要层级抽象的场合: 用父状态封装公共行为，子状态只关注差异
 
 不适合:
 

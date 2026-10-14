@@ -4,17 +4,17 @@ date: 2026-02-16T09:00:00
 draft: false
 categories: ["pattern"]
 tags: ["C++17", "CRTP", "MISRA", "RAII", "SBO", "constexpr", "design-pattern", "embedded", "lock-free", "newosp", "template", "type-erasure", "zero-allocation"]
-summary: "传统设计模式依赖虚函数和动态分配，在嵌入式系统中代价过高。本文基于 newosp 库的真实代码，展示 8 种编译期设计模式的实现：类型擦除替代 std::function、ScopeGuard 替代虚析构、if constexpr 编译期分发、Tag Dispatch 构造控制、强类型包装、Pub/Sub 零堆回调、Visitor 直接分发、以及 CRTP 编译期 Handler 绑定。所有模式在 -fno-exceptions -fno-rtti 下可用，热路径零堆分配。"
+summary: "传统设计模式依赖虚函数和动态分配，在嵌入式系统中代价偏高。本文以 newosp 真实代码为例，给出 8 种编译期替代手法，覆盖类型擦除、RAII、编译期分发、Tag Dispatch、强类型包装、零堆 Pub/Sub、Visitor 与 CRTP。"
 ShowToc: true
 TocOpen: true
 ---
 
 >
-> 参考实现: [newosp](https://github.com/DeguiLiu/newosp) v0.2.0，工业嵌入式 C++17 Header-Only 基础设施库
+> 参考实现: [newosp](https://github.com/DeguiLiu/newosp) v0.2.0，面向嵌入式 Linux 的 C++17 header-only 基础库
 
 ## 1. 为什么嵌入式需要重新审视设计模式
 
-经典设计模式（GoF）的实现通常依赖三个 C++ 特性：**虚函数**、**动态内存分配**、**异常处理**。这三者在嵌入式系统中都有显著的代价：
+经典设计模式（GoF）的实现通常依赖三个 C++ 特性：虚函数、动态内存分配、异常处理。这三者在嵌入式系统中都有显著的代价：
 
 | 特性 | 代价 | MISRA C++ 约束 |
 |------|------|----------------|
@@ -25,7 +25,7 @@ TocOpen: true
 
 C++17 提供了足够的编译期工具来替代这些运行时机制：`if constexpr`、折叠表达式、`std::variant` + `std::visit`、结构化绑定、`constexpr` 函数等。
 
-本文基于 [newosp](https://github.com/DeguiLiu/newosp) 库中的真实代码，展示在 `-fno-exceptions -fno-rtti` 约束下如何实现零虚函数、零堆分配的设计模式。这些不是教科书示例，而是经过 979 个测试用例和 ASan/UBSan/TSan 验证的产品级实现。
+本文基于 [newosp](https://github.com/DeguiLiu/newosp) 库中的真实代码，展示在 `-fno-exceptions -fno-rtti` 约束下如何实现零虚函数、零堆分配的设计模式。这些代码来自产品实现，已通过 979 个测试用例和 ASan/UBSan/TSan 验证。
 
 ## 2. 类型擦除：FixedFunction 替代 std::function
 
@@ -88,13 +88,13 @@ class FixedFunction<Ret(Args...), BufferSize> final {
 
 ### 2.3 设计要点
 
-**类型擦除的核心**：`invoker_` 和 `destroyer_` 是普通函数指针（非虚函数），由无状态 lambda 在构造时生成。编译器会将这些 lambda 内联为直接的函数指针，没有 vtable 开销。
+类型擦除的核心: `invoker_` 和 `destroyer_` 是普通函数指针（非虚函数），由无状态 lambda 在构造时生成。编译器会将这些 lambda 内联为直接的函数指针，没有 vtable 开销。
 
-**const-qualified `operator()`**：`std::function::operator()` 是 non-const 的，这在 const 上下文中无法使用。`FixedFunction` 的 `operator()` 标记为 `const`，使其可以在 const 引用和 const 成员函数中调用。
+const-qualified `operator()`: `std::function::operator()` 是 non-const 的，这在 const 上下文中无法使用。`FixedFunction` 的 `operator()` 标记为 `const`，使其可以在 const 引用和 const 成员函数中调用。
 
-**`nullptr_t` 支持**：可以通过 `callback = nullptr` 清除回调，语义与原生指针一致。
+`nullptr_t` 支持: 可以通过 `callback = nullptr` 清除回调，语义与原生指针一致。
 
-**编译期安全**：如果 callable 体积超过 `BufferSize`（默认 16 字节），编译直接失败。不存在"静默退化到堆分配"的行为。
+编译期安全: 如果 callable 体积超过 `BufferSize`（默认 16 字节），编译直接失败。不存在"静默退化到堆分配"的行为。
 
 ### 2.4 对比
 
@@ -171,9 +171,9 @@ void ProcessFile() {
 
 ### 3.3 设计要点
 
-- **零虚函数**：清理逻辑通过 FixedFunction 捕获，析构函数直接调用，无 vtable 查表
-- **`release()` 机制**：在成功路径上调用 `release()` 取消清理，实现"仅在失败时清理"的语义
-- **`__LINE__` 宏**：每行生成唯一变量名，支持同一作用域内多个 ScopeGuard
+- 零虚函数: 清理逻辑通过 FixedFunction 捕获，析构函数直接调用，无 vtable 查表
+- `release()` 机制: 在成功路径上调用 `release()` 取消清理，实现"仅在失败时清理"的语义
+- `__LINE__` 宏: 每行生成唯一变量名，支持同一作用域内多个 ScopeGuard
 
 ## 4. 编译期分发：if constexpr 替代运行时分支
 
@@ -305,7 +305,7 @@ FixedString<8> b(TruncateToCapacity, runtime_str);   // 允许截断
 
 ### 5.3 设计要点
 
-Tag Dispatch 的核心是**用类型区分语义，而非用值区分语义**。`TruncateToCapacity_t` 是一个空结构体，不占运行时空间，仅参与重载决议。这比布尔参数 `bool truncate = false` 更安全：布尔参数容易传错，而 Tag 类型在调用点必须显式写出，意图一目了然。
+Tag Dispatch 的核心在于用类型区分语义，值本身不承载语义。`TruncateToCapacity_t` 是一个空结构体，不占运行时空间，仅参与重载决议。这比布尔参数 `bool truncate = false` 更安全：布尔参数容易传错，而 Tag 类型在调用点必须显式写出，意图一目了然。
 
 ## 6. 强类型包装：NewType 防止 ID 混用
 
@@ -583,11 +583,11 @@ class StaticNode {
 
 ### 10.3 设计要点
 
-**Handler 模板参数化**：`Handler` 不是基类指针，而是模板参数。编译器在实例化 `StaticNode<PayloadVariant, MyHandler>` 时，可以看到 `MyHandler::operator()` 的完整定义，因此可以内联到消息处理的热路径中。
+Handler 模板参数化: `Handler` 以模板参数的身份传入，具体类型在编译期确定。编译器在实例化 `StaticNode<PayloadVariant, MyHandler>` 时，能看到 `MyHandler::operator()` 的完整定义，因此可以内联到消息处理的热路径中。
 
-**`std::index_sequence` + 折叠表达式**：`SubscribeAll` 在编译期展开为 N 次 `SubscribeOne<0>() && SubscribeOne<1>() && ...`，N 是 `PayloadVariant` 中的类型数量。这是编译期循环的标准技术。
+`std::index_sequence` 与折叠表达式: `SubscribeAll` 在编译期展开为 N 次 `SubscribeOne<0>() && SubscribeOne<1>() && ...`，N 是 `PayloadVariant` 中的类型数量。这是编译期循环的标准技术。
 
-**双模式分发**：`SpinOnce()` 根据是否调用过 `Start()` 选择分发路径。直接分发模式（`ProcessBatchWith`）跳过回调表，让 `std::visit` 直接将事件分发给 Handler，最大化内联机会。
+双模式分发: `SpinOnce()` 根据是否调用过 `Start()` 选择分发路径。直接分发模式（`ProcessBatchWith`）跳过回调表，让 `std::visit` 直接将事件分发给 Handler，最大化内联机会。
 
 ## 11. 策略模式：编译期内存序选择
 
@@ -648,10 +648,10 @@ static void CpuRelax() noexcept {
 
 这些模式的共同特征：
 
-1. **零虚函数**：所有分发在编译期确定或通过函数指针完成
-2. **零堆分配**：`FixedFunction`、`FixedString`、`FixedVector`、`expected` 全部栈分配
-3. **`-fno-exceptions -fno-rtti` 兼容**：不依赖异常和运行时类型信息
-4. **编译期安全**：`static_assert` 在编译时捕获尺寸/对齐/类型错误
-5. **可测试**：979 个 Catch2 测试用例 + ASan/UBSan/TSan 全绿
+1. 零虚函数: 所有分发在编译期确定或通过函数指针完成
+2. 零堆分配: `FixedFunction`、`FixedString`、`FixedVector`、`expected` 全部栈分配
+3. `-fno-exceptions -fno-rtti` 兼容: 不依赖异常和运行时类型信息
+4. 编译期安全: `static_assert` 在编译时捕获尺寸/对齐/类型错误
+5. 可测试: 979 个 Catch2 测试用例 + ASan/UBSan/TSan 全绿
 
 参考实现: [newosp](https://github.com/DeguiLiu/newosp)，MIT 协议开源，header-only，可直接在嵌入式项目中使用。

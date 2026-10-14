@@ -4,23 +4,23 @@ date: 2026-02-15T08:10:00
 draft: false
 categories: ["architecture"]
 tags: ["ARM", "CRC", "DMA", "FPGA", "LiDAR", "lock-free", "logging", "message-bus", "newosp", "performance", "scheduler", "serial", "state-machine", "zero-copy"]
-summary: "在 Zynq-7000 (双核 Cortex-A9 @ 667 MHz) 上处理 30 万点/秒激光雷达数据流。PL (FPGA) 负责传感器接口和 DMA 搬运，PS (ARM) 运行 Linux 处理点云算法和网络输出，目标端到端延迟 P99 < 5 ms。"
+summary: "在 FPGA + ARM 双核 SoC (双核 Cortex-A9 @ 667 MHz) 上处理 30 万点/秒激光雷达数据流。PL (FPGA) 负责传感器接口和 DMA 搬运，PS (ARM) 运行 Linux 处理点云算法和网络输出，目标端到端延迟 P99 < 5 ms。"
 ShowToc: true
 TocOpen: true
 ---
 
 >
-> 参考: [UG585 - Zynq-7000 SoC TRM](https://docs.amd.com/r/en-US/ug585-zynq-7000-SoC-TRM)，
-> [newosp](https://github.com/DeguiLiu/newosp) v0.2.0,
-> newosp 激光雷达性能评估
+> 参考: [newosp](https://github.com/DeguiLiu/newosp) v0.2.0，newosp 激光雷达性能评估
 >
 > 适用场景: 30 万点/秒激光雷达数据采集与处理
+>
+> HSM 与事件派发的对应实现见 [coact](https://github.com/DeguiLiu/coact)：面向 RT-Thread 单核 MCU 的 header-first C++17 事件框架。
 
 ---
 
 ## 1. 设计目标
 
-Zynq-7000 (双核 Cortex-A9 @ 667 MHz) 上运行 Linux，处理激光雷达 30 万点/秒数据流。PL (FPGA) 负责传感器接口和 DMA 搬运，PS (ARM) 负责点云算法处理和网络输出。
+FPGA + ARM 双核 SoC 上运行 Linux，处理激光雷达 30 万点/秒数据流。PL (FPGA) 负责传感器接口和 DMA 搬运，PS (ARM) 负责点云算法处理和网络输出。
 
 ### 1.1 量化目标
 
@@ -38,7 +38,7 @@ Zynq-7000 (双核 Cortex-A9 @ 667 MHz) 上运行 Linux，处理激光雷达 30 �
 | 项目 | 配置 |
 |------|------|
 | PS | 双核 Cortex-A9 @ 667 MHz, NEON VFPv3, 32 KB L1 I/D, 512 KB L2 |
-| PL | Artix-7 逻辑，AXI DMA (SG 模式)，150 MHz 数据通路 |
+| PL | FPGA 逻辑，AXI DMA (SG 模式)，150 MHz 数据通路 |
 | 内存 | 512 MB DDR3, 256 KB OCM |
 | 互联 | AXI HP0 (64-bit, 150 MHz，峰值 1.2 GB/s)，ACP (Snoop 端口) |
 | 数据格式 | 每点 16 B (x/y/z int16 + intensity + ring_id + timestamp) |
@@ -70,8 +70,8 @@ Zynq-7000 (双核 Cortex-A9 @ 667 MHz) 上运行 Linux，处理激光雷达 30 �
 | 帧拼接 | ~0.5 ms | 1.25% | Core 1 |
 | 网络发送 | ~1 ms | 2.5% | Core 0 |
 | 系统服务 + 日志 | -- | ~10% | Core 0 |
-| **Core 1 总计** | | **~10%** | 裕度充足 |
-| **Core 0 总计** | | **~12.5%** | 裕度充足 |
+| Core 1 总计 | | ~10% | 裕度充足 |
+| Core 0 总计 | | ~12.5% | 裕度充足 |
 
 > 即使点云处理耗时翻倍，CPU 负载仍低于 30%, 为 100 万点/秒 (64 线雷达) 留出余量。
 
@@ -109,6 +109,12 @@ flowchart LR
     ACQ --> FILTER --> FUSE
     FUSE -->|"ShmChannel"| NET
     CTRL -->|"AsyncBus\n控制消息"| ACQ
+    classDef pl fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef mem fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef ps fill:#dcfce7,stroke:#16a34a,color:#14532d
+    class LIDAR,PACK,DMA pl
+    class RING mem
+    class NET,LOG,CTRL,ACQ,FILTER,FUSE ps
 ```
 
 ### 3.2 控制面 / 数据面分离
@@ -118,7 +124,7 @@ flowchart LR
 | 数据面 | ShmChannel (SPSC) | 点云 PointBlock (1 KB/块) | 25 Hz | 零拷贝，Wait-free |
 | 控制面 | AsyncBus (MPSC) | 启停/模式/参数 (< 256 B) | < 100 msg/s | 优先级准入 |
 
-newosp 实测: AsyncBus 控制消息吞吐 5.9 M msg/s (x86)，ARM 估算 0.5-1.0 M msg/s，相对激光雷达 < 100 msg/s 的控制消息需求有 **5000x 以上裕度**。
+newosp 实测: AsyncBus 控制消息吞吐 5.9 M msg/s (x86)，ARM 估算 0.5-1.0 M msg/s，相对激光雷达 < 100 msg/s 的控制消息需求有 5000 倍以上裕度。
 
 ---
 
@@ -126,16 +132,22 @@ newosp 实测: AsyncBus 控制消息吞吐 5.9 M msg/s (x86)，ARM 估算 0.5-1.
 
 ### 4.1 PL-PS 共享环形缓冲
 
-利用 Zynq 的 AXI HP 端口，PL DMA 直接写入 DDR 中预分配的 ShmRingBuffer, CPU 通过指针直接访问:
+利用该 SoC 的 AXI HP 端口，PL DMA 直接写入 DDR 中预分配的 ShmRingBuffer, CPU 通过指针直接访问:
 
 ```mermaid
 flowchart LR
     DMA["AXI DMA\n(生产者)"] -->|"写 slot payload"| RING["ShmRingBuffer\nNon-cacheable 区域\n64 slots"]
     RING -->|"const PointBlock*\n直接读取"| CPU["算法任务\n(消费者)"]
     CPU -->|"更新 tail"| RING
+    classDef dma fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef buf fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef cpu fill:#dcfce7,stroke:#16a34a,color:#14532d
+    class DMA dma
+    class RING buf
+    class CPU cpu
 ```
 
-**单 slot 结构** (1 KB, cache line 对齐):
+单 slot 结构 (1 KB, cache line 对齐):
 
 | 字段 | 大小 | 说明 |
 |------|------|------|
@@ -144,16 +156,16 @@ flowchart LR
 | count + crc16 | 4 B | 点数 + CRC 校验 |
 | points[62] | 992 B | 62 点 x 16 B (int16 x/y/z + intensity + ring_id) |
 
-**内存占用**: 64 slots x 1 KB = 64 KB
+内存占用: 64 slots x 1 KB = 64 KB
 
 ### 4.2 AXI 端口选择
 
 | 端口 | 特点 | 选择理由 |
 |------|------|----------|
-| **AXI HP0** (推荐) | 64-bit, Non-cacheable，不干扰 CPU Cache | 数据量小，带宽裕度 > 800x，简单可靠 |
+| AXI HP0 (推荐) | 64-bit, Non-cacheable，不干扰 CPU Cache | 数据量小，带宽裕度 > 800x，简单可靠 |
 | AXI ACP | 硬件 Snoop, Cache Coherent | Snoop 流量干扰 CPU Cache，低速场景收益不大 |
 
-选择 HP0 + Non-cacheable 映射: 用 800x 带宽裕度换取零 cache 一致性代码，与 Zynq-7000 双核 SMP 概要设计一致。
+选择 HP0 + Non-cacheable 映射: 用 800x 带宽裕度换取零 cache 一致性代码，与该双核 SoC 的 SMP 概要设计一致。
 
 ---
 
@@ -195,7 +207,7 @@ Cortex-A9 的 NEON VFPv3 是提升点云处理吞吐的关键:
 | 方案 | 数据类型 | NEON 并行度 | 精度 | 推荐 |
 |------|----------|:----------:|------|:----:|
 | 浮点 | float32 | 4 路 | 无限制 | 否 |
-| **定点** | **int16** | **8 路** | +/- 327.67 m, 1 cm | **是** |
+| 定点 | int16 | 8 路 | +/- 327.67 m, 1 cm | 是 |
 
 激光雷达量程通常 < 200 m，精度需求 1 cm, int16 (范围 +/- 327.67 m) 完全满足。NEON 并行度从 4 路 (float32) 提升到 8 路 (int16)，理论算力翻倍。
 
@@ -206,7 +218,7 @@ Cortex-A9 的 NEON VFPv3 是提升点云处理吞吐的关键:
 | AoS (Array of Structs) | `{x,y,z,i}, {x,y,z,i}, ...` | 需 `vld4` 解交织 | DMA 写入默认格式 |
 | SoA (Struct of Arrays) | `{x,x,x,...}, {y,y,y,...}` | 连续加载，效率最高 | PL 可配置输出格式 |
 
-**建议**: 若 PL 逻辑可修改，优先输出 SoA 格式；否则在 CPU 侧使用 `vld4.16` 解交织，开销约 10%。
+建议: 若 PL 逻辑可修改，优先输出 SoA 格式；否则在 CPU 侧使用 `vld4.16` 解交织，开销约 10%。
 
 ---
 
@@ -240,7 +252,7 @@ stateDiagram-v2
 
 ## 8. 资源预算
 
-以 Zynq-7020 (512 MB DDR3) 为例:
+以 512 MB DDR3 的双核 ARM SoC 为例:
 
 | 资源 | newosp 框架 | 点云缓冲 | 算法 | Linux 系统 | 总计 |
 |------|:-----------:|:--------:|:----:|:----------:|:----:|
@@ -261,7 +273,7 @@ stateDiagram-v2
 | newosp 控制消息 | < 100 msg/s vs 500K msg/s (ARM) | > 5000x |
 | 内存占用 | < 90 MB vs 512 MB | > 5x |
 
-**结论**: Zynq-7000 + newosp 方案在所有维度上均满足 30 万点/秒激光雷达需求，且有充足裕度。通过 NEON 定点化和 SoA 数据布局优化，可进一步支持 100 万点/秒 (64 线雷达) 场景。
+结论: FPGA + ARM 双核 SoC + newosp 方案在所有维度上均满足 30 万点/秒激光雷达需求，且有充足裕度。通过 NEON 定点化和 SoA 数据布局优化，可进一步支持 100 万点/秒 (64 线雷达) 场景。
 
 ---
 

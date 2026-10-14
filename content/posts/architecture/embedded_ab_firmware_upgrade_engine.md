@@ -4,7 +4,7 @@ date: 2026-02-17T08:00:00
 draft: false
 categories: ["architecture"]
 tags: ["newosp", "C++17", "HSM", "firmware-upgrade", "A/B-partition", "power-loss-safety", "OTA", "embedded", "ARM-Linux", "zero-allocation", "Ed25519", "mbedtls", "U-Boot", "state-machine"]
-summary: "面向 4 核 ARM-Linux (32-256MB RAM) 的工业级固件升级引擎设计与实现。以 osp::StateMachine 驱动 8 状态升级流程，通过 raw 分区状态持久化 + U-Boot 冗余 env + bootcount 自动回滚三层保护实现任意时刻掉电安全，升级路径全程零堆分配 (~73KB 栈/静态)。本文从与 SWUpdate/RAUC 的差异出发，详解 128 字节二进制包头、CRC-32 + SHA-256 + Ed25519 三层校验、函数指针表 HAL 抽象、x86 仿真层设计，附完整代码和演示输出。"
+summary: "面向 4 核 ARM-Linux (32-256MB RAM) 的工业级 A/B 分区固件升级引擎。osp::StateMachine 驱动 8 状态流程，raw 分区状态持久化、U-Boot 冗余 env 切换与 bootcount 回滚三层保护保证掉电安全，全程零堆分配。"
 ShowToc: true
 TocOpen: true
 ---
@@ -16,10 +16,11 @@ TocOpen: true
 > 相关文章:
 > - [C 语言层次状态机框架: 从过程驱动到数据驱动的重构实践](/tech-notes/posts/pattern/c_hsm_data_driven_framework/)，HSM 转换表设计与 LCA 算法
 > - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，AsyncBus/HSM/SPSC 核心实现
+> - [coact](https://github.com/DeguiLiu/coact)，面向 RT-Thread 单核 MCU 的 header-first C++17 事件框架，可作为单核 MCU 侧 HSM 的对照实现
 
 ## 1. 问题与方案选择
 
-工业嵌入式设备 (激光雷达、机器人、边缘计算) 的固件升级有三个硬约束: **掉电安全** (现场无人值守，任意时刻断电不能变砖)、**资源受限** (32-256MB RAM，不能跑 D-Bus + systemd)、**可验证** (升级后必须自检确认，失败自动回滚)。
+工业嵌入式设备 (激光雷达、机器人、边缘计算) 的固件升级有三个硬约束: 掉电安全、资源受限、可验证。掉电安全指现场无人值守时任意时刻断电都不能变砖；资源受限指 32-256MB RAM 跑不动 D-Bus + systemd；可验证指升级后必须自检确认，失败自动回滚。
 
 传统 Linux OTA 方案 (SWUpdate、RAUC) 面向通用 Linux 发行版，依赖链较重:
 
@@ -36,10 +37,10 @@ osp-upgrade-engine 不替代 SWUpdate 的全部功能 (Lua 脚本灵活性、HTT
 
 ### 核心设计选择
 
-- **HSM 驱动**: 复用 `osp::StateMachine` 管理 8 阶段升级流程，每次状态转换前持久化到 raw 分区
-- **函数指针表 HAL**: 不用 virtual，函数指针 + void* ctx 实现硬件抽象，零间接调用开销
-- **三层掉电保护**: raw 分区状态持久化 + U-Boot 冗余 env 原子切换 + bootcount 超限自动回滚
-- **零堆分配**: PackageHeader 128B 栈解析，SHA-256 流式计算，PartitionWriter 4KB 栈缓冲
+- HSM 驱动: 复用 `osp::StateMachine` 管理 8 阶段升级流程，每次状态转换前持久化到 raw 分区
+- 函数指针表 HAL: 不用 virtual，函数指针 + void* ctx 实现硬件抽象，零间接调用开销
+- 三层掉电保护: raw 分区状态持久化 + U-Boot 冗余 env 原子切换 + bootcount 超限自动回滚
+- 零堆分配: PackageHeader 128B 栈解析，SHA-256 流式计算，PartitionWriter 4KB 栈缓冲
 
 ## 2. 架构设计
 
@@ -60,7 +61,7 @@ osp-upgrade-engine 不替代 SWUpdate 的全部功能 (Lua 脚本灵活性、HTT
 +------------------+----------+----------+-------------------------------+
 ```
 
-A/B 分区交替使用: 当前活跃分区运行系统，非活跃分区接收新固件。升级完成后通过 U-Boot env **原子切换**启动槽位。upgrade_state 是独立 raw 分区，不挂载文件系统，升级引擎直接 `pwrite/pread/fsync`，避免文件系统日志开销。
+A/B 分区交替使用: 当前活跃分区运行系统，非活跃分区接收新固件。升级完成后通过 U-Boot env 原子切换启动槽位。upgrade_state 是独立 raw 分区，不挂载文件系统，升级引擎直接 `pwrite/pread/fsync`，避免文件系统日志开销。
 
 ### 2.2 组件关系
 
@@ -361,9 +362,9 @@ Offset  Size  Field
 
 设计要点:
 
-- **二进制而非 JSON**: 读取 128 字节后立即校验 (magic + CRC-32 + 版本兼容)，无解析器，无堆分配
-- **hw_compat_mask**: bitmask 替代数组，`(mask & (1u << local_hw_id))` 一次位运算完成兼容检查
-- **fw_version 编码**: `(major << 24) | (minor << 16) | patch`，直接用 `>` 比较，无需字符串解析
+- 二进制格式: 读取 128 字节后立即校验 (magic + CRC-32 + 版本兼容)，无解析器，无堆分配
+- hw_compat_mask: bitmask 替代数组，`(mask & (1u << local_hw_id))` 一次位运算完成兼容检查
+- fw_version 编码: `(major << 24) | (minor << 16) | patch`，直接用 `>` 比较，无需字符串解析
 
 ```cpp
 static_assert(sizeof(PackageHeader) == 128, "PackageHeader must be 128 bytes");
@@ -561,7 +562,7 @@ int main() {
 | 读回校验缓冲 | 4 KB | 0 | PartitionWriter 栈分配 |
 | CRC-32 查找表 | 1 KB | 0 | constexpr 编译期生成 |
 | SHA-256 上下文 | ~128 B | 0 | mbedtls 嵌入 Context |
-| **合计** | **~10 KB** | **0** | **热路径零堆分配** |
+| 合计 | ~10 KB | 0 | 热路径零堆分配 |
 
 ### 9.2 I/O 开销
 
@@ -670,10 +671,10 @@ bool ForceTransition(int32_t target) noexcept {
 
 osp-upgrade-engine 用 ~3000 行 C++17 header-only 代码实现了工业级 A/B 分区固件升级。几个关键数字:
 
-- **8 个 HSM 状态**: 覆盖从空闲到回滚的完整生命周期
-- **128 字节包头**: CRC-32 + SHA-256 + Ed25519 三层校验
-- **64 字节状态记录**: raw 分区持久化，支持任意时刻掉电恢复
-- **~10KB 栈/静态内存**: 零堆分配，适合 32MB RAM 设备
-- **0 个额外线程**: SpinOnce 轮询模式，不增加线程预算
+- 8 个 HSM 状态: 覆盖从空闲到回滚的完整生命周期
+- 128 字节包头: CRC-32 + SHA-256 + Ed25519 三层校验
+- 64 字节状态记录: raw 分区持久化，支持任意时刻掉电恢复
+- ~10KB 栈/静态内存: 零堆分配，适合 32MB RAM 设备
+- 0 个额外线程: SpinOnce 轮询模式，不增加线程预算
 
 三层掉电保护 (状态持久化 + U-Boot 冗余 env + bootcount 回滚) 确保了在工业现场无人值守环境下的可靠性。函数指针表 HAL 和 x86 仿真层使得完整的升级流程可以在开发机上验证，包括掉电场景。

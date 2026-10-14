@@ -4,14 +4,14 @@ date: 2026-02-16T08:10:00
 draft: false
 categories: ["architecture"]
 tags: ["newosp", "C++17", "event-driven", "HSM", "lock-free", "MPSC", "SPSC", "zero-allocation", "state-machine", "ARM-Linux", "embedded", "pipeline", "sensor", "lidar"]
-summary: "以激光雷达点云处理流水线为主线，展示 newosp C++17 事件驱动架构如何解决工业传感器系统的三大工程难题: 零堆分配消息传递 (CAS 无锁 MPSC + variant 值语义)、可建模的状态管理 (层次状态机 LCA + Guard)、以及微秒级确定性调度。从端到端数据流切入，逐层拆解 AsyncBus、HSM、SPSC 如何协同支撑一条完整的工业数据处理流水线。"
+summary: "以激光雷达点云流水线为主线，展示 newosp C++17 事件驱动架构如何解决工业传感器系统的三个问题: 零堆分配消息传递 (CAS 无锁 MPSC + variant 值语义)、可建模的状态管理 (层次状态机 LCA + Guard)、微秒级确定性调度。"
 ShowToc: true
 TocOpen: true
 ---
 
 > newosp GitHub: [DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)
 >
-> 本文基于 newosp v0.2.0，1114 test cases (26085 assertions)，ASan/TSan/UBSan 全部通过。
+> 基于 newosp v0.2.0，1114 test cases (26085 assertions)，ASan/TSan/UBSan 全部通过。
 >
 > 相关文章:
 > - [嵌入式并发的第四条路: 为什么多线程、协程和 epoll 都不够用](/tech-notes/posts/architecture/newosp_concurrency_io_architecture/)，三条并发路径的局限与事件驱动方案
@@ -28,11 +28,11 @@ TocOpen: true
 
 工业传感器系统 (激光雷达、深度相机、工业视觉) 面临三个相互矛盾的工程需求:
 
-**确定性**: 1kHz+ 采样率要求热路径微秒级延迟，一次 `malloc` 或 `mutex` slow path 就可能导致帧丢失。
+确定性: 1kHz+ 采样率要求热路径微秒级延迟，一次 `malloc` 或 `mutex` slow path 就可能导致帧丢失。
 
-**安全性**: 传感器有复杂的硬件状态 (初始化、采集中、校准、异常恢复)。if-else 嵌套到第三层就无法维护，需要可建模、可测试的状态管理。
+安全性: 传感器有复杂的硬件状态 (初始化、采集中、校准、异常恢复)。if-else 嵌套到第三层就无法维护，需要可建模、可测试的状态管理。
 
-**可组合性**: 数据从 DMA 采集到最终输出要经过 5-6 个处理阶段，每个阶段可能由不同开发者负责。阶段之间需要解耦，同时不能引入共享状态和锁竞争。
+可组合性: 数据从 DMA 采集到最终输出要经过 5-6 个处理阶段，每个阶段可能由不同开发者负责。阶段之间需要解耦，同时不能引入共享状态和锁竞争。
 
 传统方案的选择:
 
@@ -42,7 +42,7 @@ TocOpen: true
 | 回调链 + `std::function` | SBO 溢出时堆分配，回调嵌套难以测试 |
 | 手写 enum + switch 状态机 | 状态数增长时 O(n^2) 转换，无法继承默认行为 |
 
-newosp 是面向 ARM-Linux 嵌入式平台的 C++17 header-only 基础设施库 ([GitHub](https://github.com/DeguiLiu/newosp))，41 个模块覆盖从消息总线到状态机的全栈需求。本文以**激光雷达点云处理流水线**为主线，展示这些模块如何协同工作。
+newosp 是面向嵌入式 Linux 的 C++17 header-only 基础库 ([GitHub](https://github.com/DeguiLiu/newosp))，41 个模块覆盖从消息总线到状态机的需求。下面以激光雷达点云处理流水线为主线，展示这些模块如何协同工作。
 
 ## 2. 流水线全景: 从 DMA 到输出
 
@@ -54,7 +54,7 @@ DMA/ISR ──> Acquisition ──> Preprocess ──> Compute ──> Filter �
             HSM 管理       去串扰/鬼影    深度转换    噪声消除   帧聚合
 ```
 
-每个阶段是一个 `StaticNode` (编译期绑定 Handler)，阶段间通过共享的 `AsyncBus` 通信。数据以 `std::variant` 值语义在 Bus 的环形缓冲中传递，**全程零堆分配**。
+每个阶段是一个 `StaticNode` (编译期绑定 Handler)，阶段间通过共享的 `AsyncBus` 通信。数据以 `std::variant` 值语义在 Bus 的环形缓冲中传递，全程零堆分配。
 
 ### 2.2 消息类型
 
@@ -98,7 +98,7 @@ static_assert(std::is_trivially_copyable_v<RawFrame>);
 static_assert(std::is_trivially_copyable_v<ComputedFrame>);
 ```
 
-**variant 值语义与 `shared_ptr` 的取舍**: `shared_ptr<Frame>` 的 control block 需要堆分配，引用计数的原子操作在 ARM 上也有可观开销。variant 将帧数据 (固定大小 POD) 直接嵌入 Bus 的 Envelope 中，一次 `memcpy` 完成发布，`sizeof` 编译期确定。
+variant 值语义与 `shared_ptr` 的取舍: `shared_ptr<Frame>` 的 control block 需要堆分配，引用计数的原子操作在 ARM 上也有可观开销。variant 将帧数据 (固定大小 POD) 直接嵌入 Bus 的 Envelope 中，一次 `memcpy` 完成发布，`sizeof` 编译期确定。
 
 ### 2.3 流水线装配
 
@@ -188,7 +188,7 @@ template <typename PayloadVariant,
 class AsyncBus;
 ```
 
-消息以**信封** (header + variant payload) 存储在缓存行对齐的环形缓冲中:
+消息以信封 (header + variant payload) 存储在缓存行对齐的环形缓冲中:
 
 ```cpp
 struct MessageHeader {
@@ -237,12 +237,12 @@ newosp 提供两种消费模式:
 
 | 模式 | 机制 | ns/msg (P50) |
 |------|------|---:|
-| **StaticNode** (编译期) | `std::visit` 跳转表 | ~2 |
+| StaticNode (编译期) | `std::visit` 跳转表 | ~2 |
 | Node (运行时) | FixedFunction 回调表 | ~30 |
 
 StaticNode 的 Handler 在编译期确定，编译器为每个 variant alternative 生成直接调用，无 FixedFunction 间接调用、无 SharedSpinLock、无回调表遍历。流水线的 5 个处理阶段全部使用 StaticNode。
 
-**FixedFunction**: 需要运行时动态订阅的场景使用 Node 模式，回调存储在 `FixedFunction<void(const Envelope&), 32>` 中，32 字节 SBO 缓冲，编译期 `static_assert` 拒绝超限 lambda，**杜绝 `std::function` 的隐式堆分配**。
+FixedFunction: 需要运行时动态订阅的场景使用 Node 模式，回调存储在 `FixedFunction<void(const Envelope&), 32>` 中，32 字节 SBO 缓冲，编译期 `static_assert` 拒绝超限 lambda，杜绝 `std::function` 的隐式堆分配。
 
 ## 4. HSM: 采集阶段的状态管理
 
@@ -262,7 +262,7 @@ Acquisition HSM (6 个状态)
 └── Error            ← 硬件异常 (DMA 超时/CRC 错误)
 ```
 
-子状态未处理的事件自动**冒泡**到父状态。Active 父状态只需定义一次 Deactivate 处理:
+子状态未处理的事件自动冒泡到父状态。Active 父状态只需定义一次 Deactivate 处理:
 
 ```cpp
 // Active 父状态: 一次定义，三个子状态 (Idle/Acquiring/Validating) 共享
@@ -276,7 +276,7 @@ inline osp::TransitionResult HandleActive(AcqContext& ctx, osp::Event& e) {
 
 ### 4.2 LCA 转换算法
 
-状态转换的核心是**最近公共祖先 (LCA)** 计算: 从源状态到 LCA 依次执行 Exit 动作，再从 LCA 到目标状态依次执行 Entry 动作。newosp 使用**深度归一化**实现:
+状态转换的核心是最近公共祖先 (LCA) 计算: 从源状态到 LCA 依次执行 Exit 动作，再从 LCA 到目标状态依次执行 Entry 动作。newosp 用深度归一化实现:
 
 1. 计算源和目标的深度
 2. 将较深的状态上移到同一层
@@ -300,7 +300,7 @@ struct StateConfig {
 };
 ```
 
-这使得"仅在特定条件下才处理事件"可以声明式表达，而非在 handler 内部硬编码 if 判断。
+这使得"仅在特定条件下才处理事件"可以声明式表达，不必在 handler 内部硬编码 if 判断。
 
 ### 4.4 采集 HSM 与 Handler 的集成
 
@@ -321,7 +321,7 @@ struct AcquisitionHandler {
 };
 ```
 
-HSM 内部的状态处理函数在适当时机通过 `bus->Publish()` 发布 RawFrame，驱动下游流水线。**消息总线和状态机各司其职**: Bus 负责阶段间解耦通信，HSM 负责阶段内状态管理。
+HSM 内部的状态处理函数在适当时机通过 `bus->Publish()` 发布 RawFrame，驱动下游流水线。消息总线和状态机各司其职: Bus 负责阶段间解耦通信，HSM 负责阶段内状态管理。
 
 ### 4.5 零堆分配保证
 
@@ -413,7 +413,7 @@ bool PushFromCallback(Callable&& callback) {
 
 ### 6.1 LifecycleNode: 16 状态 HSM 驱动
 
-newosp 的 `LifecycleNode` 内置了一个 **16 状态的层次状态机**，将节点生命周期本身建模为 HSM:
+newosp 的 `LifecycleNode` 内置一个 16 状态的层次状态机，把节点生命周期本身建模为 HSM:
 
 ```
 Alive (根状态)
@@ -436,7 +436,7 @@ LifecycleNode 继承自 Node，支持粗粒度 (4 状态) 和细粒度 (16 状�
 | SingleThread | 阻塞调用线程 | 调试、单核 |
 | Static | 后台线程 + 休眠策略 | 通用场景 |
 | Pinned | CPU 绑核 | 确定性调度 |
-| **Realtime** | SCHED_FIFO + mlockall + CPU affinity | 工业实时 |
+| Realtime | SCHED_FIFO + mlockall + CPU affinity | 工业实时 |
 
 RealtimeExecutor 初始化序列: `mlockall()` → CPU affinity → SCHED_FIFO → 自定义栈 → 进入 ProcessBatch 循环。高精度休眠使用 `clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME)` 实现亚毫秒级精度。
 
@@ -470,8 +470,8 @@ RealtimeExecutor 初始化序列: `mlockall()` → CPU affinity → SCHED_FIFO �
 
 newosp 的 Watchdog 和 FaultCollector 职责正交:
 
-- **Watchdog**: 检测问题 (线程心跳超时)
-- **FaultCollector**: 处理问题 (分级上报 + hook 决策: kHandled / kEscalate / kDefer / kShutdown)
+- Watchdog: 检测问题 (线程心跳超时)
+- FaultCollector: 处理问题 (分级上报 + hook 决策: kHandled / kEscalate / kDefer / kShutdown)
 
 两者通过应用层 wiring 组合，没有内部依赖。流水线的 Acquisition HSM 通过 FaultReporter 向 FaultCollector 上报硬件异常 (DMA 超时、CRC 错误)。
 
@@ -502,20 +502,23 @@ newosp 核心模块保持 POSIX API 边界清晰:
 
 | 原则 | 实现手段 |
 |------|---------|
-| **零全局状态** | Bus 依赖注入，非全局单例 |
-| **栈优先，零堆分配** | FixedFunction SBO / FixedVector / FixedString / variant 值语义 |
-| **无锁/最小锁** | CAS MPSC + wait-free SPSC + SharedSpinLock |
-| **编译期分发** | 模板参数化 + `if constexpr` + `std::visit` 跳转表 |
-| **类型安全** | `std::variant` + `expected<V,E>` + `static_assert` trivially_copyable |
-| **`-fno-exceptions -fno-rtti`** | 全代码库兼容，`Validate()` 返回 bool 而非抛异常 |
+| 零全局状态 | Bus 依赖注入，非全局单例 |
+| 栈优先，零堆分配 | FixedFunction SBO / FixedVector / FixedString / variant 值语义 |
+| 无锁/最小锁 | CAS MPSC + wait-free SPSC + SharedSpinLock |
+| 编译期分发 | 模板参数化 + `if constexpr` + `std::visit` 跳转表 |
+| 类型安全 | `std::variant` + `expected<V,E>` + `static_assert` trivially_copyable |
+| `-fno-exceptions -fno-rtti` | 全代码库兼容，`Validate()` 返回 bool 而非抛异常 |
 
-**为什么不用对象池**。避免热路径 `malloc` 的另一种常见方案是对象池 (`mutex` + `queue<shared_ptr>`)。对象池确实比裸分配快约 60%，但在 newosp 的场景中仍有三个代价: mutex 在每次 acquire/release 上引入 futex 开销 (~20-40ns)，`shared_ptr` 原子引用计数在单向数据流中完全多余，`std::queue` 动态增长破坏编译期内存预算。newosp 用预分配环形缓冲 (slot 覆写，零 malloc) + variant 值语义 (无引用计数) + CAS/wait-free (无 mutex) 彻底消除了这三项开销。对象池适合生命周期不确定的共享对象 (连接池、线程池)，不适合单向流动的消息通道。详见 [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) 和 [对象池在嵌入式热路径上的三个隐性成本](/tech-notes/posts/performance/object_pool_hidden_costs/)。
+为什么不用对象池。避免热路径 `malloc` 的另一种常见方案是对象池 (`mutex` + `queue<shared_ptr>`)。对象池确实比裸分配快约 60%，但在 newosp 的场景中仍有三个代价: mutex 在每次 acquire/release 上引入 futex 开销 (~20-40ns)，`shared_ptr` 原子引用计数在单向数据流中完全多余，`std::queue` 动态增长破坏编译期内存预算。
+
+newosp 用预分配环形缓冲 (slot 覆写，零 malloc) + variant 值语义 (无引用计数) + CAS/wait-free (无 mutex) 消除了这三项开销。对象池适合生命周期不确定的共享对象 (连接池、线程池)，不适合单向流动的消息通道。详见 [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/) 和 [对象池在嵌入式热路径上的三个隐性成本](/tech-notes/posts/performance/object_pool_hidden_costs/)。
 
 这些原则贯穿整条传感器流水线: variant 保证消息类型安全，CAS 保证并发发布安全，HSM 保证状态转换安全，`static_assert` 保证跨平台 sizeof 一致。每个"安全"都是编译期或硬件级保证，不是运行时约定。
 
 ## 参考资料
 
 1. [newosp GitHub 仓库](https://github.com/DeguiLiu/newosp)，C++17 header-only 嵌入式基础设施库
-2. [ROS2 Lifecycle Node Design](https://design.ros2.org/articles/node_lifecycle.html)
-3. [事件驱动架构的嵌入式激光雷达点云数据处理](https://blog.csdn.net/stallion5632/article/details/150624229)
-4. Miro Samek, *Practical UML Statecharts in C/C++*, 2nd Edition
+2. [coact](https://github.com/DeguiLiu/coact)，面向 RT-Thread 单核 MCU 的 header-first C++17 事件框架，单核 MCU 侧的事件派发对照实现
+3. [ROS2 Lifecycle Node Design](https://design.ros2.org/articles/node_lifecycle.html)
+4. [事件驱动架构的嵌入式激光雷达点云数据处理](https://blog.csdn.net/stallion5632/article/details/150624229)
+5. Miro Samek, *Practical UML Statecharts in C/C++*, 2nd Edition

@@ -12,6 +12,8 @@ TocOpen: true
 > 版本: v3.0 | 基础设施库: [newosp](https://github.com/DeguiLiu/newosp) v0.4.3
 > 目标平台: ARM-Linux (Cortex-A53/A72/A7) | C++17, Header-only
 > 适用场景: 激光雷达、工业视觉、机器人、边缘传感器融合
+>
+> 单核 MCU 侧的对应实现见 [coact](https://github.com/DeguiLiu/coact)：面向 RT-Thread 单核 MCU 的 header-first C++17 事件框架。
 
 ---
 
@@ -21,10 +23,10 @@ TocOpen: true
 
 工业嵌入式传感器系统（激光雷达、工业相机、惯导）的数据处理链路具有以下特征:
 
-- **数据流**: 传感器以 10-100 Hz 产生大块数据（单帧 100 KB - 5 MB），经过多级处理后输出
-- **控制流**: 启停、模式切换、参数下发、故障上报等低频但高可靠性要求的消息
-- **实时性**: 端到端延迟要求 us 级（控制消息）到 ms 级（数据帧）
-- **可靠性**: 7x24 不间断运行，零堆分配避免内存碎片化
+- 数据流: 传感器以 10-100 Hz 产生大块数据 (单帧 100 KB - 5 MB)，经过多级处理后输出
+- 控制流: 启停、模式切换、参数下发、故障上报等低频但高可靠性要求的消息
+- 实时性: 端到端延迟要求 us 级 (控制消息) 到 ms 级 (数据帧)
+- 可靠性: 7x24 不间断运行，零堆分配避免内存碎片化
 
 传统方案的典型问题:
 
@@ -57,7 +59,7 @@ TocOpen: true
 
 ### 2.1 控制面 / 数据面分离
 
-本架构的核心设计原则是 **控制面与数据面分离**:
+架构的核心设计原则是控制面与数据面分离:
 
 ```mermaid
 flowchart TB
@@ -92,6 +94,13 @@ flowchart TB
     APP -->|"数据帧 > 1KB"| DP
     CP --> SCHED
     DP --> SCHED
+    classDef ctrl fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef data fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef sched fill:#fef3c7,stroke:#d97706,color:#78350f
+    class BUS,NODE,HSM_CP ctrl
+    class SHM,MEM data
+    class RT,WP,TMR sched
+    class SENSOR,PREPROC,ALGO,OUTPUT ctrl
 ```
 
 | 平面 | 通道 | 消息大小 | 频率 | 同步机制 | 零拷贝 |
@@ -99,7 +108,7 @@ flowchart TB
 | 控制面 | AsyncBus + Node | < 256 B | < 1K msg/s | Lock-free MPSC (CAS) | N/A (值语义) |
 | 数据面 | ShmChannel | 256 B - 5 MB | 10-100 Hz | Wait-free SPSC | 是 (指针传递) |
 
-**为什么分离?** newosp 实测数据显示，当 AsyncBus 的 variant 包含 8 KB 类型时，Envelope sizeof 从 ~300 B 膨胀到 8232 B，吞吐从 5.9 M/s 降至 0.6 M/s。控制消息走 Bus（轻量 variant），数据帧走 ShmChannel（零拷贝），是架构层面的设计选择。
+分离的原因: newosp 实测数据显示，当 AsyncBus 的 variant 包含 8 KB 类型时，Envelope sizeof 从 ~300 B 膨胀到 8232 B，吞吐从 5.9 M/s 降至 0.6 M/s。因此控制消息走 Bus (轻量 variant)，数据帧走 ShmChannel (零拷贝)。
 
 ### 2.2 newosp 模块架构
 
@@ -134,13 +143,20 @@ flowchart TB
     end
 
     L4 --> L3 --> L2 --> L1
+    classDef api fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef comm fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef base fill:#fef3c7,stroke:#d97706,color:#78350f
+    class APP_L,POST_L,LIFE_L api
+    class NODE_L,SVC_L,DISC_L,BUS_L,SHM_L,EXEC_L,TRANS_L comm
+    class VOCAB,SPSC,HSM_L,BT_L,POOL,TIMER base
 ```
 
-**关键特征**:
-- **43 个头文件**, Header-only INTERFACE 库
-- **1153 个测试**, ASan + UBSan + TSan 全通过
-- **零 std::function**: 全部使用 `FixedFunction<64>` (SBO 回调，无堆分配)
-- **零 std::string**: 使用 `FixedString<N>` 替代
+关键特征:
+
+- 43 个头文件，Header-only INTERFACE 库
+- 1153 个测试，ASan + UBSan + TSan 全通过
+- 零 std::function: 全部使用 `FixedFunction<64>` (SBO 回调，无堆分配)
+- 零 std::string: 使用 `FixedString<N>` 替代
 
 ---
 
@@ -148,7 +164,7 @@ flowchart TB
 
 ### 3.1 架构设计
 
-AsyncBus 是 newosp 的核心通信组件，采用 **Lock-free MPSC (多生产者单消费者) Ring Buffer** 设计:
+AsyncBus 是 newosp 的核心通信组件，采用无锁 MPSC (多生产者单消费者) 环形缓冲设计:
 
 ```mermaid
 flowchart LR
@@ -158,6 +174,12 @@ flowchart LR
     RB -->|批量出队| DISP["Dispatcher\n编译期类型索引\n固定回调表"]
     DISP --> CB1["Callback 1\nFixedFunction SBO"]
     DISP --> CB2["Callback 2"]
+    classDef pub fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef buf fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef cb fill:#dcfce7,stroke:#16a34a,color:#14532d
+    class P1,P2,P3 pub
+    class RB,DISP buf
+    class CB1,CB2 cb
 ```
 
 ### 3.2 零堆分配设计
@@ -183,19 +205,25 @@ flowchart TB
     CHK -->|"60-80%"| DROP_L["丢弃 LOW"]
     CHK -->|"80-99%"| DROP_M["丢弃 LOW + MEDIUM"]
     CHK -->|">= 99%"| DROP_H["全部丢弃"]
+    classDef msg fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef ok fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef drop fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+    class MSG,CHK msg
+    class ACC ok
+    class DROP_L,DROP_M,DROP_H drop
 ```
 
-**实测验证** (突发 150,000 条消息，超过队列容量 131,072):
+实测验证 (突发 150,000 条消息，超过队列容量 131,072):
 
 | 优先级 | 发送 | 成功 | 丢弃率 | 设计预期 |
 |--------|:----:|:----:|:------:|----------|
-| HIGH | 30,000 | 30,000 | **0.0%** | 完全保护 (阈值 99%) |
+| HIGH | 30,000 | 30,000 | 0.0% | 完全保护 (阈值 99%) |
 | MEDIUM | 39,321 | 33,642 | 12.6% | 次级保护 (阈值 80%) |
 | LOW | 39,320 | 3,640 | 47.6% | 优先丢弃 (阈值 60%) |
 
 ### 3.4 性能数据
 
-**newosp AsyncBus 实测** (Ubuntu 24.04, GCC 13.3, `-O3 -march=native`, 10 轮统计):
+newosp AsyncBus 实测 (Ubuntu 24.04, GCC 13.3, `-O3 -march=native`, 10 轮统计):
 
 | 指标 | 数值 | 说明 |
 |------|------|------|
@@ -206,7 +234,7 @@ flowchart TB
 | 热路径堆分配 | 0 次 | Envelope 内嵌 + FixedFunction |
 | 框架 RAM (AsyncBus) | ~520 KB | 可通过 QueueDepth 宏缩小 |
 
-**与 eventpp + Active Object 对比**:
+与 eventpp + Active Object 对比:
 
 | 维度 | newosp AsyncBus | eventpp + AO (优化后) | 差距 |
 |------|:--------------:|:--------------------:|:----:|
@@ -226,16 +254,22 @@ flowchart TB
 
 ### 4.1 设计原理
 
-数据面处理大块传感器数据（点云、图像），核心需求是 **零拷贝** 和 **低延迟**:
+数据面处理大块传感器数据 (点云、图像)，核心需求是零拷贝和低延迟:
 
 ```mermaid
 flowchart LR
     DMA["DMA 写入"] --> RING["ShmRingBuffer\nSPSC Wait-free"]
     RING -->|"直接指针访问\n零拷贝"| ALGO["算法模块"]
     ALGO -->|"Commit\n释放 slot"| RING
+    classDef src fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef buf fill:#fef3c7,stroke:#d97706,color:#78350f
+    classDef sink fill:#dcfce7,stroke:#16a34a,color:#14532d
+    class DMA src
+    class RING buf
+    class ALGO sink
 ```
 
-**传统架构 vs 零拷贝**:
+传统架构与零拷贝的对比:
 
 | 架构 | 拷贝次数 | 内存带宽浪费 (1MB x 100Hz) |
 |------|:--------:|:--------------------------:|
@@ -250,7 +284,7 @@ flowchart LR
 | SPSC 吞吐 (4KB payload) | 2.9 M ops/s | 0.3-0.6 M ops/s |
 | 同步机制 | Wait-free (无 CAS) | 显式 acquire/release |
 
-**Cache Line 拐点**: ShmRingBuffer 在 payload 1 KB 处出现吞吐拐点（L1 Cache 边界）。建议数据面分包大小 <= 512 B 以获得最佳 SPSC 吞吐。
+Cache Line 拐点: ShmRingBuffer 在 payload 1 KB 处出现吞吐拐点 (L1 Cache 边界)。建议数据面分包大小 <= 512 B，以获得最佳 SPSC 吞吐。
 
 ### 4.3 Cache 一致性策略
 
@@ -258,7 +292,7 @@ flowchart LR
 |------|----------|------|------|----------|
 | Uncached 映射 | `dma_alloc_coherent` | 简单，无维护代码 | 访问延迟高 (~80ns) | 低频，简单系统 |
 | Cached + 手动维护 | `dma_sync_single_for_cpu/device` | 高性能 | 需严格维护 | 高频，性能敏感 |
-| **newosp 方案** | Cache line 对齐 + 显式 fence | 兼顾性能与安全 | 需理解 ARM 内存序 | 推荐 |
+| newosp 方案 | Cache line 对齐 + 显式 fence | 兼顾性能与安全 | 需理解 ARM 内存序 | 推荐 |
 
 newosp ShmRingBuffer 的 ARM 适配:
 - 64B cache line padding 隔离 head/tail，消除 false sharing
@@ -277,7 +311,7 @@ newosp 提供多种 Executor 适配不同实时性需求:
 |--------------|----------|---------|----------|
 | SingleExecutor | 单线程顺序执行 | 不绑核 | 调试、低频任务 |
 | PinnedExecutor | 单线程 + 绑核 | 指定核 | 中等实时性 |
-| **RealtimeExecutor** | SCHED_FIFO + mlockall + 绑核 | 隔离核 | **硬实时数据处理** |
+| RealtimeExecutor | SCHED_FIFO + mlockall + 绑核 | 隔离核 | 硬实时数据处理 |
 | WorkerPool | 多线程 + AdaptiveBackoff | 不绑核 | 并行计算、网络 I/O |
 
 ### 5.2 RealtimeExecutor 抗干扰设计
@@ -296,9 +330,13 @@ flowchart LR
 
     RT --> TASK
     CORE1 -.->|"内核不调度\nisolcpus=1"| CORE0
+    classDef rt fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef sys fill:#e5e7eb,stroke:#6b7280,color:#111827
+    class RT,TASK rt
+    class SYS,NET sys
 ```
 
-**关键措施**:
+关键措施:
 
 | 措施 | 作用 |
 |------|------|
@@ -352,7 +390,7 @@ stateDiagram-v2
     Shutdown --> [*]
 ```
 
-**HSM 在 newosp 中的多场景应用**:
+HSM 在 newosp 中的多场景应用:
 
 | 模块 | 状态机用途 | 状态数 |
 |------|----------|:------:|
@@ -390,20 +428,24 @@ flowchart TB
 
     HSM_LAYER -.->|"onEntry(Init)"| BT_INIT
     HSM_LAYER -.->|"onEntry(Fault)"| BT_RECOVER
+    classDef hsm fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef bt fill:#dcfce7,stroke:#16a34a,color:#14532d
+    class INIT,READY,ACTIVE,FAULT hsm
+    class SEQ,CHK_HW,CHK_MEM,CHK_DMA,CHK_NET,SEL,RST_DMA,RST_FULL bt
 ```
 
-**BT 节点类型及其在自检中的应用**:
+BT 节点类型及其在自检中的应用:
 
 | 节点类型 | 行为 | 自检应用示例 |
 |----------|------|------------|
-| **Sequence** | 依次执行子节点，任一失败则整体失败 | 上电自检: 硬件 -> 内存 -> DMA -> 网络 |
-| **Selector** | 依次尝试子节点，任一成功则整体成功 | 故障恢复: 软复位 -> 硬复位 -> 降级运行 |
-| **Decorator (Retry)** | 失败时重试 N 次 | DMA 初始化最多重试 3 次 |
-| **Decorator (Timeout)** | 超时则返回失败 | 校准流程 5 秒超时 |
-| **Action** | 执行具体操作 | 检查传感器、预分配缓冲池 |
-| **Condition** | 检查条件 | 温度 < 85 C、电压正常 |
+| Sequence | 依次执行子节点，任一失败则整体失败 | 上电自检: 硬件 -> 内存 -> DMA -> 网络 |
+| Selector | 依次尝试子节点，任一成功则整体成功 | 故障恢复: 软复位 -> 硬复位 -> 降级运行 |
+| Decorator (Retry) | 失败时重试 N 次 | DMA 初始化最多重试 3 次 |
+| Decorator (Timeout) | 超时则返回失败 | 校准流程 5 秒超时 |
+| Action | 执行具体操作 | 检查传感器、预分配缓冲池 |
+| Condition | 检查条件 | 温度 < 85 C、电压正常 |
 
-**newosp BT 设计特点**:
+newosp BT 设计特点:
 - 扁平数组存储 (非指针树)，缓存友好
 - 索引引用子节点，零堆分配
 - 与 HSM 通过 AsyncBus 事件交互: BT 完成 -> 发布 `SelfTestPassed` -> HSM 转换到 Ready
@@ -412,7 +454,7 @@ flowchart TB
 
 ## 7. 典型部署: 激光雷达数据处理
 
-> 本节展示架构在激光雷达场景的部署概览。完整的 Pipeline DAG 设计、Stage 融合优化、SoA 数据布局与 NEON 向量化详见 [激光雷达高吞吐数据处理 Pipeline](/tech-notes/posts/architecture/lidar_pipeline_newosp/)。
+> 架构在激光雷达场景的部署概览如下。完整的 Pipeline DAG 设计、Stage 融合优化、SoA 数据布局与 NEON 向量化详见 [激光雷达高吞吐数据处理 Pipeline](/tech-notes/posts/architecture/lidar_pipeline_newosp/)。
 
 ### 7.1 系统架构
 
@@ -442,6 +484,12 @@ flowchart LR
 
     HSM_D -->|"AsyncBus\n控制消息"| ACQ & FILTER & FUSE & OUT
     DIAG <-->|"串口"| HOST["上位机"]
+    classDef sensor fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef proc fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef ctrl fill:#fef3c7,stroke:#d97706,color:#78350f
+    class LIDAR,IMU sensor
+    class ACQ,FILTER,FUSE,OUT proc
+    class HSM_D,DIAG,TIMER_D,HOST ctrl
 ```
 
 ### 7.2 模块选型与通道划分
@@ -503,12 +551,12 @@ flowchart LR
 
 ## 10. 总结
 
-本流式架构基于 newosp 基础设施库，通过 **控制面/数据面分离** 解决工业嵌入式传感器系统的核心矛盾:
+该流式架构基于 newosp 基础设施库，用控制面/数据面分离解决工业嵌入式传感器系统的核心矛盾:
 
-1. **控制面 (AsyncBus)**: Lock-free MPSC，零堆分配，三级优先级保护，P99 < 500 ns
-2. **数据面 (ShmChannel)**: SPSC wait-free 零拷贝，避免大帧数据阻塞控制消息
-3. **调度层 (RealtimeExecutor)**: SCHED_FIFO + isolcpus + mlockall，确定性调度
-4. **状态管理 (HSM + BT)**: HSM 管理设备状态，BT 驱动启动自检和故障恢复流程，零堆分配
+1. 控制面 (AsyncBus): Lock-free MPSC，零堆分配，三级优先级保护，P99 < 500 ns
+2. 数据面 (ShmChannel): SPSC wait-free 零拷贝，避免大帧数据阻塞控制消息
+3. 调度层 (RealtimeExecutor): SCHED_FIFO + isolcpus + mlockall，确定性调度
+4. 状态管理 (HSM + BT): HSM 管理设备状态，BT 驱动启动自检和故障恢复流程，零堆分配
 
 newosp 的 Header-only 设计、零运行时依赖、编译期可配置的特性，使其特别适合资源受限的嵌入式 ARM-Linux 平台。所有性能数据均可通过源码复现（1153 个测试，ASan/TSan clean）。
 

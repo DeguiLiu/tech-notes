@@ -4,7 +4,7 @@ date: 2026-02-17T10:30:00
 draft: false
 categories: ["architecture"]
 tags: ["newosp", "C++17", "HSM", "firmware-upgrade", "A/B-partition", "power-loss-safety", "OTA", "embedded", "ARM-Linux", "zero-allocation", "Ed25519", "state-machine", "U-Boot"]
-summary: "面向工业嵌入式的固件 A/B 分区升级引擎设计与实现。以 osp::StateMachine 驱动 8 阶段升级流程，通过 raw 分区状态持久化 + U-Boot 冗余环境变量原子切换 + bootcount 自动回滚三层保护实现任意时刻掉电安全。不同于 SWUpdate/RAUC 的重依赖设计，本引擎全程零堆分配 (~10KB 栈/静态)，适合 32-256MB RAM 的资源受限嵌入式系统。"
+summary: "面向工业嵌入式的 A/B 分区固件升级引擎。osp::StateMachine 驱动 8 阶段流程，raw 分区状态持久化、U-Boot 冗余环境变量切换与 bootcount 回滚三层保护实现掉电安全，全程零堆分配 (~10KB 栈/静态)，适合 32-256MB RAM 设备。"
 ShowToc: true
 TocOpen: true
 ---
@@ -13,6 +13,8 @@ TocOpen: true
 > 依赖库: [newosp](https://github.com/DeguiLiu/newosp) (1153 tests, ASan/TSan/UBSan clean)
 > 目标平台: ARM-Linux (Cortex-A53/A72) | 32-256 MB RAM | C++17
 > 适用场景: 激光雷达固件升级、机器人 OTA、边缘计算设备、工业现场无人值守环境
+>
+> 状态机与事件派发的对应实现见 [coact](https://github.com/DeguiLiu/coact)：面向 RT-Thread 单核 MCU 的 header-first C++17 事件框架。
 
 ---
 
@@ -24,26 +26,26 @@ TocOpen: true
 
 | 约束 | 典型指标 | 技术影响 |
 |------|----------|--------|
-| **掉电安全** | 任意时刻断电不能变砖 | 需要 3+ 层持久化保护 |
-| **资源受限** | 32-256 MB RAM, 无 D-Bus | 禁止外部重依赖框架 |
-| **可验证性** | 升级后必须自检确认 | 新固件启动失败自动回滚 |
+| 掉电安全 | 任意时刻断电不能变砖 | 需要 3+ 层持久化保护 |
+| 资源受限 | 32-256 MB RAM, 无 D-Bus | 禁止外部重依赖框架 |
+| 可验证性 | 升级后必须自检确认 | 新固件启动失败自动回滚 |
 
 传统 Linux OTA 方案 (SWUpdate、RAUC) 依赖链重，不适用:
 
 | 方案 | 依赖 | 内存占用 | 进程模型 | 掉电保护 |
 |------|------|---------|--------|--------|
-| **SWUpdate/RAUC** | D-Bus, systemd, GLib, libcurl | ~10-50 MB | 独立 daemon | update_state 文件 |
-| **osp-upgrade-engine** | newosp (header-only) | < 73 KB | 嵌入应用进程 | raw 分区 + U-Boot env + bootcount |
+| SWUpdate/RAUC | D-Bus, systemd, GLib, libcurl | ~10-50 MB | 独立 daemon | update_state 文件 |
+| osp-upgrade-engine | newosp (header-only) | < 73 KB | 嵌入应用进程 | raw 分区 + U-Boot env + bootcount |
 
 ### 1.2 设计决策的工程权衡
 
-**选择 HSM 而非事件循环**: 固件升级流程严格线性 (Idle → Verifying → Writing → Switching → Rebooting → BootVerify → Rollback → Idle)，状态转换有明确的前后依赖。HSM 的显式状态定义和 LCA 转换机制使掉电恢复的状态跳转更容易推导。
+状态机: 固件升级流程严格线性 (Idle → Verifying → Writing → Switching → Rebooting → BootVerify → Rollback → Idle)，状态转换有明确的前后依赖。HSM 的显式状态定义和 LCA 转换机制让掉电恢复的状态跳转更容易推导。
 
-**选择函数指针表而非虚函数**: 遵循项目规范 (编译期分发优先)，零间接调用开销，同一份代码可轻松切换生产环境 (POSIX HAL) 和仿真环境 (SimHAL)。
+HAL 抽象: 用函数指针表实现编译期分发，零间接调用开销，同一份代码可在生产环境 (POSIX HAL) 和仿真环境 (SimHAL) 之间切换。
 
-**选择 raw 分区而非文件系统**: 避免文件系统日志和日志 commit 的不确定性，每次状态转换前原子写入 64B 记录到固定偏移，确定性掉电安全。
+状态持久化: 选 raw 分区，每次状态转换前原子写入 64B 记录到固定偏移，避开文件系统日志和日志 commit 的不确定性。
 
-**选择 SpinOnce 轮询而非额外线程**: 不增加线程预算，升级在应用进程内执行，每次处理 4KB chunk，主循环可在 SpinOnce 间隙处理其他任务。
+驱动方式: 用 SpinOnce 轮询，不增加线程预算；升级在应用进程内执行，每次处理 4KB chunk，主循环可在间隙处理其他任务。
 
 ---
 
@@ -101,9 +103,9 @@ stateDiagram-v2
 ```
 
 核心设计:
-- **扁平结构** (parent_index = -1): 无层级嵌套，线性流程不需要 LCA 跨层转换
-- **持久化边界**: 每个黑色箭头转换前都 fsync 状态到 raw 分区
-- **掉电恢复路径**: 启动时读取持久化状态，用 `ForceTransition()` 直接跳转到中断点
+- 扁平结构 (parent_index = -1): 无层级嵌套，线性流程不需要 LCA 跨层转换
+- 持久化边界: 每个黑色箭头转换前都 fsync 状态到 raw 分区
+- 掉电恢复路径: 启动时读取持久化状态，用 `ForceTransition()` 直接跳转到中断点
 
 ### 2.3 存储布局
 
@@ -120,7 +122,7 @@ mmcblk0p7  data             剩余     用户数据 + 升级包暂存
 mmcblk0p8  upgrade_state     64 KB   升级状态 (raw, 无 FS)
 ```
 
-**upgrade_state 的设计权衡**: raw 分区直接 pwrite/fsync，避免文件系统日志的不确定性。每次转换前的 fsync 确保掉电时已持久化的状态被硬件保证写入。
+upgrade_state 的设计权衡: raw 分区直接 pwrite/fsync，避免文件系统日志的不确定性。每次转换前的 fsync 确保掉电时已持久化的状态被硬件保证写入。
 
 ---
 
@@ -143,7 +145,7 @@ mmcblk0p8  upgrade_state     64 KB   升级状态 (raw, 无 FS)
 124    4      header_crc32      前 124 字节的 CRC-32
 ```
 
-**设计要点**:
+设计要点:
 
 | 特性 | 与 JSON 对比 | 优势 |
 |------|-------------|------|
@@ -186,7 +188,7 @@ struct UpgradeHAL {
 };
 ```
 
-**vs 虚函数对比**:
+与虚函数对比:
 
 | 维度 | virtual 基类 | 函数指针表 |
 |------|-------------|-----------|
@@ -295,7 +297,7 @@ void RecoverFromPersistentState() noexcept {
 [安全点 5] PersistState(Rebooting) + reboot(2)
 ```
 
-**安全分析**:
+安全分析:
 - 点 1-3 之间掉电: 分区 A 未动，系统启动后重新开始升级
 - 点 4 掉电: U-Boot 已原子切换或未切换，启动后恢复到 BootVerify 继续自检
 - 点 5 掉电: 新固件启动失败 3 次后 U-Boot bootcount 机制自动回滚
@@ -346,7 +348,7 @@ osp-upgrade-engine 通过 FetchContent 复用 newosp 核心组件:
 | osp::expected | 错误处理 | StartUpgrade() 返回值 |
 | osp::Sha256Calculator | 流式 SHA-256 | Verifying 状态 |
 
-**唯一修改**: newosp HSM 新增 `ForceTransition()` API，用于掉电恢复时从外部跳转状态:
+唯一改动: newosp HSM 新增 `ForceTransition()` API，用于掉电恢复时从外部跳转状态:
 
 ```cpp
 bool ForceTransition(int32_t target) noexcept {
@@ -375,7 +377,7 @@ bool ForceTransition(int32_t target) noexcept {
 | 读回校验缓冲 | 4 KB | 0 | PartitionWriter 栈分配 |
 | CRC-32 表 | 1 KB | 0 | constexpr 编译期 |
 | SHA-256 上下文 | 128 B | 0 | mbedtls 嵌入 |
-| **合计** | **~10 KB** | **0** | **全程零堆分配** |
+| 合计 | ~10 KB | 0 | 全程零堆分配 |
 
 ### 7.2 时间开销
 
@@ -394,15 +396,15 @@ bool ForceTransition(int32_t target) noexcept {
 
 osp-upgrade-engine 用 ~3000 行 C++17 header-only 代码实现了工业级固件升级，核心数字:
 
-- **8 个 HSM 状态**: 从 Idle 到 Rollback 的完整生命周期
-- **128 字节包头**: CRC-32 + SHA-256 + Ed25519 三层校验
-- **64 字节持久化**: raw 分区记录，支持任意时刻掉电恢复
-- **~10 KB 内存**: 零堆分配，32MB RAM 设备可用
-- **0 个额外线程**: SpinOnce 轮询，不增加线程预算
+- 8 个 HSM 状态: 从 Idle 到 Rollback 的完整生命周期
+- 128 字节包头: CRC-32 + SHA-256 + Ed25519 三层校验
+- 64 字节持久化: raw 分区记录，支持任意时刻掉电恢复
+- ~10 KB 内存: 零堆分配，32MB RAM 设备可用
+- 0 个额外线程: SpinOnce 轮询，不增加线程预算
 
-**三层掉电保护** (状态持久化 + U-Boot 冗余 env + bootcount 回滚) 确保了工业现场无人值守环境下的可靠性。**函数指针表 HAL** 和 **x86 仿真层** 使得完整升级流程可在开发机上验证，包括掉电场景。
+三层掉电保护 (状态持久化 + U-Boot 冗余 env + bootcount 回滚) 保证了工业现场无人值守环境下的可靠性。函数指针表 HAL 和 x86 仿真层让完整的升级流程可以在开发机上验证，包括掉电场景。
 
-**相关设计参考**:
+相关设计参考:
 - [C 语言层次状态机框架](/tech-notes/posts/pattern/c_hsm_data_driven_framework/)，HSM 转换表与 LCA 算法
 - [激光雷达高吞吐数据处理 Pipeline](/tech-notes/posts/architecture/lidar_pipeline_newosp/)，零拷贝 + SpinOnce 驱动模式
 - [newosp 事件驱动架构深度解析](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，AsyncBus 与 HSM 核心实现

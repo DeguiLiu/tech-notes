@@ -4,7 +4,7 @@ date: 2026-02-17T08:20:00
 draft: false
 categories: ["architecture"]
 tags: ["C++17", "ARM", "embedded", "lock-free", "zero-copy", "pipeline", "lidar", "state-machine", "SPSC", "NEON", "SoA"]
-summary: "本文展示如何用 newosp C++17 header-only 基础设施库构建激光雷达等高吞吐传感器的 DAG 数据处理 Pipeline。数据面采用 SPSC 直连 + Handle 传递实现真零拷贝，控制面用 AsyncBus 处理诊断和扇入/扇出场景，结合 SoA 数据布局、多级流水线并行和 Stage 融合，在 ARM Cortex-A53 上达到 100 Hz 实时处理目标。"
+summary: "用 newosp C++17 基础设施库构建激光雷达等传感器的 DAG 处理 Pipeline：数据面用 SPSC 直连和 Handle 传递实现零拷贝，控制面用 AsyncBus 处理诊断与扇入/扇出，配合 SoA 布局和 Stage 融合，在 ARM Cortex-A53 上达到 100 Hz。"
 ShowToc: true
 TocOpen: true
 ---
@@ -47,17 +47,17 @@ TocOpen: true
 
 这种方案在 MCU 裸机上运行良好，但迁移到 ARM-Linux 后暴露多个问题:
 
-1. **类型安全缺失**: `void*` 事件指针无编译期类型检查，强制转换错误只能在运行时发现
-2. **手动生命周期管理**: 引用计数依赖人工维护，忘记释放导致泄漏，多释放导致 crash
-3. **状态机维护困难**: 5+ 状态的 switch-case 随着需求增长变成数百行意大利面条代码
-4. **测试基础设施薄弱**: 断言宏散落各处，无统一测试框架
-5. **代码复用率低**: 每个项目重新实现环形缓冲、内存池、状态机
+1. 类型安全缺失: `void*` 事件指针无编译期类型检查，强制转换错误只能在运行时发现
+2. 手动生命周期管理: 引用计数依赖人工维护，忘记释放导致泄漏，多释放导致 crash
+3. 状态机维护困难: 5+ 状态的 switch-case 随着需求增长变成数百行意大利面条代码
+4. 测试基础设施薄弱: 断言宏散落各处，无统一测试框架
+5. 代码复用率低: 每个项目重新实现环形缓冲、内存池、状态机
 
 ---
 
 ## 2. 架构总览: 数据面与控制面分离
 
-本 Pipeline 采用 **数据面与控制面分离** 架构。控制面/数据面分离的通用设计原理、AsyncBus MPSC 消息总线、ShmChannel 零拷贝通道、RealtimeExecutor 实时调度等基础设施的详细介绍参见 [工业嵌入式流式数据处理架构设计](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)。本节聚焦激光雷达 Pipeline 的具体拓扑设计。
+Pipeline 采用数据面与控制面分离的架构。控制面/数据面分离的通用设计原理、AsyncBus MPSC 消息总线、ShmChannel 零拷贝通道、RealtimeExecutor 实时调度等基础设施，参见 [工业嵌入式流式数据处理架构设计](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)。下面聚焦激光雷达 Pipeline 的拓扑设计。
 
 核心原则：Pipeline 每个 stage 的 producer/consumer 关系是 1:1，MPSC 的 CAS 竞争在此场景下是多余开销。数据面用 SPSC 直连 (~5 ns)，控制面用 AsyncBus 处理诊断和扇入/扇出场景。
 
@@ -65,15 +65,15 @@ TocOpen: true
 
 ```mermaid
 flowchart TB
-    subgraph "Data Plane -- SPSC Direct Connect"
-        ACQ[采集<br/>DMA + Pool] -->|"SPSC&lt;Handle&gt;"| PRECALC[预处理+距离计算<br/>融合 Stage]
-        PRECALC -->|"SPSC&lt;Handle&gt;"| XTALK[串扰去除<br/>HSM 状态管理]
-        XTALK -->|"SPSC&lt;Handle&gt;"| GHOST[鬼影消除<br/>多帧历史]
-        GHOST -->|"SPSC&lt;Handle&gt;"| FILTSEG[滤波+分割<br/>融合 Stage]
-        FILTSEG -->|"SPSC&lt;Handle&gt;"| PKG[封装输出<br/>Transport]
+    subgraph "Data Plane: SPSC Direct Connect"
+        ACQ[采集<br/>DMA + Pool] -->|"SPSC Handle"| PRECALC[预处理+距离计算<br/>融合 Stage]
+        PRECALC -->|"SPSC Handle"| XTALK[串扰去除<br/>HSM 状态管理]
+        XTALK -->|"SPSC Handle"| GHOST[鬼影消除<br/>多帧历史]
+        GHOST -->|"SPSC Handle"| FILTSEG[滤波+分割<br/>融合 Stage]
+        FILTSEG -->|"SPSC Handle"| PKG[封装输出<br/>Transport]
     end
 
-    subgraph "Control Plane -- AsyncBus"
+    subgraph "Control Plane: AsyncBus"
         BUS[AsyncBus<br/>诊断/控制/扇入扇出]
         SHELL[Shell 诊断<br/>Console/UART/Telnet]
         WDG[ThreadWatchdog<br/>故障检测]
@@ -82,13 +82,19 @@ flowchart TB
     BUS -.->|统计查询| ACQ & PRECALC & XTALK & GHOST & FILTSEG
     SHELL -.->|命令注入| BUS
     WDG -.->|心跳监控| ACQ & PRECALC & XTALK & GHOST & FILTSEG
+    classDef stage fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef ctrl fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef watch fill:#fef3c7,stroke:#d97706,color:#78350f
+    class ACQ,PRECALC,XTALK,GHOST,FILTSEG,PKG stage
+    class BUS,SHELL ctrl
+    class WDG watch
 ```
 
-原始 8 个 stage 经过**融合优化**减至 5 个:
-- **PreCalc**: 预处理 + 距离计算 (连续数学运算，无状态切换)
-- **FilterSeg**: 噪声滤波 + 数据分割 (都是逐点操作)
-- **XTalk**: 串扰去除 (需 HSM 状态管理，独立)
-- **Ghost**: 鬼影消除 (需多帧历史缓冲，独立)
+原始 8 个 stage 经融合优化减至 5 个:
+- PreCalc: 预处理 + 距离计算 (连续数学运算，无状态切换)
+- FilterSeg: 噪声滤波 + 数据分割 (都是逐点操作)
+- XTalk: 串扰去除 (需 HSM 状态管理，独立)
+- Ghost: 鬼影消除 (需多帧历史缓冲，独立)
 
 ### 2.2 数据流: Handle 传递实现真零拷贝
 
@@ -97,7 +103,7 @@ flowchart TB
 | 方案 | 每帧拷贝量 | 5 stage x 100 Hz | 内存带宽 |
 |------|-----------|------------------|----------|
 | variant 逐级拷贝 | 16 KB x 5 = 80 KB | 8 MB/s | ~1.3% LPDDR4 |
-| **Handle 传递** | **6B x 5 = 30B** | **3 KB/s** | **~0%** |
+| Handle 传递 | 6B x 5 = 30B | 3 KB/s | ~0% |
 
 Handle 传递的核心: SPSC ring buffer 只传递 6 字节的 `FrameHandle`，数据本体始终留在 `ObjectPool` 中，各 stage 通过 index 原地读写:
 
@@ -193,11 +199,11 @@ void ComputeDistance(PointCloudSoA& cloud) {
 | 布局 | Cache line 利用率 | NEON 加速 | 单帧耗时 |
 |------|------------------|-----------|----------|
 | AoS + 标量 | 25% | 无 | ~12 us |
-| **SoA + NEON** | **100%** | **4x** | **~3 us** |
+| SoA + NEON | 100% | 4x | ~3 us |
 
 ### 3.3 In-place 处理
 
-SoA 布局的另一个优势: 多个 stage 可以**原地修改同一个 buffer**，避免格式转换拷贝:
+SoA 布局还有一点好处: 多个 stage 可以原地修改同一个 buffer，避免格式转换拷贝:
 
 ```cpp
 // 串扰去除: 原地修改 intensity
@@ -252,7 +258,7 @@ SPSC vs MPSC Bus 性能对比 (Cortex-A53 @ 1.2 GHz, Handle 传递):
 
 | 通信方式 | 单消息延迟 | 操作 | 适用场景 |
 |---------|-----------|------|---------|
-| **SPSC (FrameHandle)** | **~5 ns** | load/store + acquire/release | **1:1 stage 直连** |
+| SPSC (FrameHandle) | ~5 ns | load/store + acquire/release | 1:1 stage 直连 |
 | Bus (variant Publish) | ~30 ns | CAS + variant visit + callback | 扇入/扇出/控制面 |
 | Bus (ProcessBatchWith) | ~2 ns/msg (批量均摊) | 同上，batch=256 均摊 | 高吞吐广播 |
 
@@ -264,8 +270,8 @@ AsyncBus 不用于线性 Pipeline 数据面，但在多传感器扇入和诊断�
 
 在激光雷达 Pipeline 中，AsyncBus 的典型用法:
 
-- **多传感器扇入**: 多个激光雷达传感器各自 Publish 到同一 Bus，融合节点统一 ProcessBatch
-- **诊断命令注入**: Shell 通过 Bus 下发运行时参数调整 (如滤波阈值)，Pipeline stage 定期 ProcessBatchWith 检查
+- 多传感器扇入: 多个激光雷达传感器各自 Publish 到同一 Bus，融合节点统一 ProcessBatch
+- 诊断命令注入: Shell 通过 Bus 下发运行时参数调整 (如滤波阈值)，Pipeline stage 定期 ProcessBatchWith 检查
 
 ### 4.3 层次状态机: 有状态 Stage 的管理
 
@@ -386,7 +392,7 @@ watchdog.OnTimeout([](uint32_t thread_id) {
 线程3:                         PKG[F0] PKG[F1]
 ```
 
-帧延迟增加 (从 1 帧变为 N 帧，N = stage 数)，但**吞吐翻倍**: 稳态下每个时间单位输出 1 帧，瓶颈取决于最慢的 stage 而非总和。
+帧延迟增加 (从 1 帧变为 N 帧，N = stage 数)，但吞吐翻倍: 稳态下每个时间单位输出 1 帧，瓶颈取决于最慢的 stage，而不是各 stage 之和。
 
 对于激光雷达等非交互式场景，3-4 帧延迟 (30-40 ms @ 100 Hz) 完全可接受。
 
@@ -396,10 +402,10 @@ watchdog.OnTimeout([](uint32_t thread_id) {
 
 | 原始 Stage | 融合策略 | 原因 |
 |-----------|---------|------|
-| 预处理 + 距离计算 | **融合为 PreCalc** | 连续数学运算，无外部状态 |
-| 噪声滤波 + 数据分割 | **融合为 FilterSeg** | 都是逐点操作，数据局部性好 |
-| 串扰去除 | **独立** | 需 HSM 状态管理，有校准流程 |
-| 鬼影消除 | **独立** | 需多帧历史缓冲 |
+| 预处理 + 距离计算 | 融合为 PreCalc | 连续数学运算，无外部状态 |
+| 噪声滤波 + 数据分割 | 融合为 FilterSeg | 都是逐点操作，数据局部性好 |
+| 串扰去除 | 独立 | 需 HSM 状态管理，有校准流程 |
+| 鬼影消除 | 独立 | 需多帧历史缓冲 |
 
 融合后 5 个 stage + 1 个控制线程 = 4 个数据面线程 + 1 控制线程，映射到 4 核:
 
@@ -433,9 +439,9 @@ osp::shell_cmd::RegisterPool(pool, "frame_pool");
 13 个内置诊断命令覆盖: 看门狗、故障、总线统计、工作线程池、传输层、串口、HSM 节点、服务、发现、生命周期、QoS、内存池。
 
 三种后端:
-- **DebugShell**: TCP telnet (远程调试，`#if OSP_HAS_NETWORK`)
-- **ConsoleShell**: stdin/stdout (本地终端，始终可用)
-- **UartShell**: 串口 (工业现场，始终可用)
+- DebugShell: TCP telnet (远程调试，`#if OSP_HAS_NETWORK`)
+- ConsoleShell: stdin/stdout (本地终端，始终可用)
+- UartShell: 串口 (工业现场，始终可用)
 
 ### 6.2 全链路追踪
 
@@ -465,17 +471,17 @@ struct StageMetrics {
 
 | 维度 | 纯 C / QPC | newosp C++17 (本文方案) |
 |------|-----------|------------------------|
-| **数据面通信** | void* 事件队列 (MPSC) | SPSC 直连 + Handle (1:1 专用) |
-| **控制面通信** | 同上 (混用) | AsyncBus (MPSC，仅扇入/扇出/诊断) |
-| **零拷贝** | 手写引用计数 | Handle 传递 (6B)，数据原地读写 |
-| **数据布局** | AoS | SoA (NEON 友好，alignas(16)) |
-| **类型安全** | void* 强转 | std::variant + visitor (控制面) |
-| **内存管理** | 手动 alloc/free | ObjectPool RAII (O(1) 固定块) |
-| **状态机** | switch-case (扁平) | LCA HSM (层次，guard, entry/exit) |
-| **编译期配置** | #define 宏 | 模板参数 (QueueDepth, MaxStates) |
-| **流水线并行** | 手动 pthread | Stage-per-thread + CPU 绑核 |
-| **测试** | 手写断言 | Catch2 (1153 tests) |
-| **Sanitizer** | 无 | ASan + TSan + UBSan 全绿 |
+| 数据面通信 | void* 事件队列 (MPSC) | SPSC 直连 + Handle (1:1 专用) |
+| 控制面通信 | 同上 (混用) | AsyncBus (MPSC，仅扇入/扇出/诊断) |
+| 零拷贝 | 手写引用计数 | Handle 传递 (6B)，数据原地读写 |
+| 数据布局 | AoS | SoA (NEON 友好，alignas(16)) |
+| 类型安全 | void* 强转 | std::variant + visitor (控制面) |
+| 内存管理 | 手动 alloc/free | ObjectPool RAII (O(1) 固定块) |
+| 状态机 | switch-case (扁平) | LCA HSM (层次，guard, entry/exit) |
+| 编译期配置 | #define 宏 | 模板参数 (QueueDepth, MaxStates) |
+| 流水线并行 | 手动 pthread | Stage-per-thread + CPU 绑核 |
+| 测试 | 手写断言 | Catch2 (1153 tests) |
+| Sanitizer | 无 | ASan + TSan + UBSan 全绿 |
 
 ---
 
@@ -578,17 +584,17 @@ int main() {
 
 ## 9. 总结
 
-1. **数据面 SPSC 直连，控制面 Bus 分离**: 线性 Pipeline 的 1:1 stage 间用 SPSC 直连 (~5 ns)，AsyncBus 仅用于扇入/扇出和诊断注入。避免把通用消息总线误用为 Pipeline 数据通道。
+1. 数据面 SPSC 直连，控制面 Bus 分离: 线性 Pipeline 的 1:1 stage 间用 SPSC 直连 (~5 ns)，AsyncBus 仅用于扇入/扇出和诊断注入。通用消息总线不应被当作 Pipeline 数据通道使用。
 
-2. **Handle 传递实现真零拷贝**: SPSC 只传 6B FrameHandle，数据本体留在 ObjectPool 中原地读写。消除逐级 16 KB 拷贝，内存带宽从 ~8 MB/s 降至 ~3 KB/s。
+2. Handle 传递实现真零拷贝: SPSC 只传 6B FrameHandle，数据本体留在 ObjectPool 中原地读写。逐级 16 KB 拷贝被消除，内存带宽从 ~8 MB/s 降至 ~3 KB/s。
 
-3. **SoA 布局 + NEON**: 点云数据按分量连续存储，ARM NEON `vld1q_f32` 一次处理 4 点，距离计算吞吐提升 ~4x。
+3. SoA 布局 + NEON: 点云数据按分量连续存储，ARM NEON `vld1q_f32` 一次处理 4 点，距离计算吞吐提升 ~4x。
 
-4. **Stage-per-thread 流水线并行**: 各 stage 独立线程 + SPSC 连接，稳态吞吐取决于最慢 stage (非串行总和)。4 核 A53 通过 stage 融合映射为 4 数据面线程。
+4. Stage-per-thread 流水线并行: 各 stage 独立线程 + SPSC 连接，稳态吞吐取决于最慢 stage，而不是各 stage 之和。4 核 A53 通过 stage 融合映射为 4 数据面线程。
 
-5. **LCA 层次状态机**: 有状态 stage (串扰去除、校准) 用 HSM 管理，声明式转换替代 switch-case 意大利面条。
+5. LCA 层次状态机: 有状态 stage (串扰去除、校准) 用 HSM 管理，声明式转换替代 switch-case 意大利面条。
 
-6. **工程化保障**: 1153 个 Catch2 测试 + ASan/TSan/UBSan CI + Shell 多后端诊断，基础设施经过充分验证。
+6. 工程化保障: 1153 个 Catch2 测试 + ASan/TSan/UBSan CI + Shell 多后端诊断，基础设施经过充分验证。
 
 ---
 
@@ -596,6 +602,7 @@ int main() {
 
 - [工业嵌入式流式数据处理架构设计](/tech-notes/posts/architecture/embedded_streaming_data_architecture/)，控制面/数据面分离、AsyncBus、ShmChannel、RealtimeExecutor、HSM+BT 通用架构设计
 - [newosp GitHub](https://github.com/DeguiLiu/newosp)，C++17 header-only 嵌入式基础设施库
+- [coact](https://github.com/DeguiLiu/coact)，面向 RT-Thread 单核 MCU 的 header-first C++17 事件框架，单核 MCU 侧的 HSM 对照实现
 - [newosp 设计文档](https://github.com/DeguiLiu/newosp/blob/main/docs/design_zh.md)，完整架构设计
 - QP/C Framework，量子平台 C 事件驱动框架
 - CyberRT / ROS2，机器人中间件参考架构

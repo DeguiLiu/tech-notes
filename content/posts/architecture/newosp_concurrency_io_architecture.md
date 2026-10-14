@@ -4,7 +4,7 @@ date: 2026-02-17T08:30:00
 draft: false
 categories: ["architecture"]
 tags: ["newosp", "C++17", "concurrency", "event-driven", "lock-free", "MPSC", "SPSC", "epoll", "poll", "embedded", "ARM-Linux", "zero-allocation", "WorkerPool", "Executor", "IoPoller"]
-summary: "面向 4 核 ARM-Linux、32-256MB RAM、-fno-exceptions 的工业嵌入式场景，newosp 选择了事件驱动消息总线 + 固定线程预算 + 可移植 I/O 抽象的并发架构。本文从约束出发，展开 AsyncBus (CAS 无锁 MPSC + 优先级准入)、Executor 家族 (SingleThread/Pinned/Realtime)、IoPoller (epoll/poll 编译期选择) 三层设计，详解零堆分配保证、线程预算计算、背压控制机制和 I/O 线程解耦模式，附完整端到端示例和性能数据。"
+summary: "面向 4 核 ARM-Linux、32-256MB RAM、-fno-exceptions 的工业嵌入式场景，newosp 采用事件驱动消息总线 + 固定线程预算 + 可移植 I/O 抽象的并发架构，涵盖零堆分配、线程预算与背压控制。"
 ShowToc: true
 TocOpen: true
 ---
@@ -23,21 +23,21 @@ TocOpen: true
 
 ## 1. 约束与方案选择
 
-newosp 面向的典型硬件是 4 核 ARM Cortex-A (激光雷达、机器人、边缘计算)，32-256MB RAM，编译选项 `-fno-exceptions -fno-rtti`，未来需要移植到 RT-Thread MCU。在这个约束下，并发架构必须满足: **线程数编译期确定** (4-8 个，不随任务数增长)、**热路径零堆分配** (Publish → Dispatch → 回调全程无 malloc)、**I/O 层可移植** (不绑定 epoll)。
+newosp 面向的典型硬件是 4 核 ARM Cortex-A (激光雷达、机器人、边缘计算)，32-256MB RAM，编译选项 `-fno-exceptions -fno-rtti`，未来需要移植到 RT-Thread MCU。在这个约束下，并发架构必须满足三条约束: 线程数编译期确定 (4-8 个，不随任务数增长)、热路径零堆分配 (Publish → Dispatch → 回调全程无 malloc)、I/O 层可移植 (不绑定 epoll)。
 
-newosp 的回答是三层解耦:
+newosp 用三层解耦解决:
 
-- **AsyncBus**: CAS 无锁 MPSC 环形缓冲，替代 mutex + queue 的线程间通信
-- **Executor/WorkerPool**: 固定线程预算的调度层，替代"每任务一线程"
-- **IoPoller**: epoll/poll 编译期选择，I/O 就绪通知与业务逻辑解耦
+- AsyncBus: CAS 无锁 MPSC 环形缓冲，替代 mutex + queue 的线程间通信
+- Executor/WorkerPool: 固定线程预算的调度层，替代"每任务一线程"
+- IoPoller: epoll/poll 编译期选择，I/O 就绪通知与业务逻辑解耦
 
 ### 为什么不用协程
 
-state-threads 实验 (1000x1000 矩阵乘法 + 1us 阻塞) 显示协程在阻塞密集场景下比纯多线程快 4.5 倍 (3.3s vs 14.9s)。但工业嵌入式有两个硬伤: **栈内存不可控**，有栈协程需要 4-64KB/协程，1000 协程 = 4-64MB，在 32-256MB 系统中无法接受，且栈深度编译期无法预测; **`-fno-exceptions` 冲突**，Boost.Fiber/Coroutine2 不兼容，兼容的 state-threads/libco 是纯 C 库，与 C++17 类型系统 (variant, optional, constexpr) 没有集成。
+state-threads 实验 (1000x1000 矩阵乘法 + 1us 阻塞) 显示协程在阻塞密集场景下比纯多线程快 4.5 倍 (3.3s vs 14.9s)。但工业嵌入式有两个硬伤: 栈内存不可控，有栈协程需要 4-64KB/协程，1000 协程 = 4-64MB，在 32-256MB 系统中无法接受，且栈深度编译期无法预测; `-fno-exceptions` 冲突，Boost.Fiber/Coroutine2 不兼容，兼容的 state-threads/libco 是纯 C 库，与 C++17 类型系统 (variant, optional, constexpr) 没有集成。
 
 ### 为什么不直接用 epoll
 
-epoll 是网络 I/O 的最优方案，但直接在 epoll 回调中处理业务会导致三个问题: **不可移植** (RT-Thread 只有 POSIX poll); **回调耦合** (epoll_wait → recv → parse → dispatch → process 层层嵌套，难以独立测试); **缺少消息语义** (epoll 只管 fd 就绪，不提供类型路由、优先级准入、背压控制)。newosp 保留 epoll 做 I/O 通知，但将业务逻辑抽离到消息总线层。
+epoll 是网络 I/O 的最优方案，但直接在 epoll 回调中处理业务会导致三个问题: 不可移植 (RT-Thread 只有 POSIX poll); 回调耦合 (epoll_wait → recv → parse → dispatch → process 层层嵌套，难以独立测试); 缺少消息语义 (epoll 只管 fd 就绪，不提供类型路由、优先级准入、背压控制)。newosp 保留 epoll 做 I/O 通知，把业务逻辑抽离到消息总线层。
 
 ## 2. 架构设计
 
@@ -69,11 +69,11 @@ epoll 是网络 I/O 的最优方案，但直接在 epoll 回调中处理业务�
                         └──────────────────────────────────┘
 ```
 
-**AsyncBus** 是消息骨干: 多个生产者 (传感器线程、网络线程、定时器) 通过 CAS 无锁发布消息到共享环形缓冲; 单消费者 (Executor) 批量取出并分发到 Node/StaticNode 的回调。
+AsyncBus 是消息骨干: 多个生产者 (传感器线程、网络线程、定时器) 通过 CAS 无锁发布消息到共享环形缓冲; 单消费者 (Executor) 批量取出并分发到 Node/StaticNode 的回调。
 
-**Executor** 是调度层: 决定"哪个线程执行 ProcessBatch"。SingleThread 在调用线程阻塞执行; PinnedExecutor 绑定到指定 CPU 核心; RealtimeExecutor 启用 SCHED_FIFO + mlockall + 自定义栈。
+Executor 是调度层: 决定"哪个线程执行 ProcessBatch"。SingleThread 在调用线程阻塞执行; PinnedExecutor 绑定到指定 CPU 核心; RealtimeExecutor 启用 SCHED_FIFO + mlockall + 自定义栈。
 
-**IoPoller** 是 I/O 适配层: 将 fd 就绪事件转化为消息发布，自身不处理业务逻辑。
+IoPoller 是 I/O 适配层: 把 fd 就绪事件转化为消息发布，自身不处理业务逻辑。
 
 ### 2.2 AsyncBus: CAS 发布与批量消费
 
@@ -84,7 +84,7 @@ template <typename PayloadVariant,
 class AsyncBus;
 ```
 
-消息以**信封** (32B header + variant payload) 存储在缓存行对齐的环形缓冲中:
+消息以信封 (32B header + variant payload) 存储在缓存行对齐的环形缓冲中:
 
 ```cpp
 struct alignas(64) RingBufferNode {
@@ -93,7 +93,7 @@ struct alignas(64) RingBufferNode {
 };
 ```
 
-**发布路径** (多生产者，lock-free):
+发布路径 (多生产者，lock-free):
 
 ```
 Producer 0 ─┐
@@ -103,7 +103,7 @@ Producer 2 ─┘
 
 生产者通过 `compare_exchange_weak(acq_rel)` 竞争序列号，获胜者写入对应 slot，最后用 `release store` 发布。无 mutex、无 spinlock。
 
-**消费路径** (单消费者，Run-to-Completion):
+消费路径 (单消费者，Run-to-Completion):
 
 ```cpp
 uint32_t ProcessBatch() {
@@ -122,7 +122,7 @@ uint32_t ProcessBatch() {
 
 批量消费减少原子操作频率，prefetch 预取下一 slot 减少 cache miss。
 
-**两种分发模式**:
+两种分发模式:
 
 | 模式 | 机制 | ns/msg (P50) |
 |------|------|---:|
@@ -135,7 +135,7 @@ StaticNode 的 Handler 在编译期确定，编译器为每个 variant alternati
 
 热路径 (Publish → ProcessBatch → 回调执行) 中零 `malloc`/`free`，通过三个机制:
 
-**环形缓冲预分配**: Bus 构造时一次性分配 `RingBufferNode[QueueDepth]` 数组，后续消息写入只是覆盖已有 slot:
+环形缓冲预分配: Bus 构造时一次性分配 `RingBufferNode[QueueDepth]` 数组，后续消息写入只是覆盖已有 slot:
 
 ```
 内存布局 (QueueDepth=4096):
@@ -145,7 +145,7 @@ StaticNode 的 Handler 在编译期确定，编译器为每个 variant alternati
 └───────────────────────────────────────────────┘
 ```
 
-**FixedFunction SBO**: 替代 `std::function`，32 字节内联缓冲，超限捕获**编译期报错**:
+FixedFunction SBO: 替代 `std::function`，32 字节内联缓冲，超限直接编译期报错:
 
 ```cpp
 template <typename Signature, size_t BufferSize = 2 * sizeof(void*)>
@@ -158,7 +158,7 @@ using CallbackType = FixedFunction<void(const EnvelopeType&), 4 * sizeof(void*)>
 
 `std::function` 在 lambda 超过 SBO 阈值 (通常 16-32B，实现依赖) 时会隐式堆分配。FixedFunction 将这个"可能"变成"编译期拒绝"。
 
-**std::variant 值语义**: 消息作为 variant 直接 move 进 Envelope，无间接指针，无引用计数:
+std::variant 值语义: 消息作为 variant 直接 move 进 Envelope，无间接指针，无引用计数:
 
 ```cpp
 // 传统方案: shared_ptr<Frame> → control block 堆分配 + 原子引用计数
@@ -176,7 +176,7 @@ newosp 典型部署的线程分布:
 | AsyncLog | 1 | -- | 异步日志写盘 |
 | Executor | 1 | CPU 2 (Pinned) | 消息调度 (SpinOnce 循环) |
 | WorkerPool | 1+N | CPU 3+ | Dispatcher + N Worker |
-| **合计** | **6+N** | 确定性 | N 通常 = 2-4 |
+| 合计 | 6+N | 确定性 | N 通常 = 2-4 |
 
 对比:
 
@@ -194,7 +194,7 @@ newosp:         线程数 = 编译期常量，内存预算可精确计算
 | WorkerPool (4 workers x 1024 SPSC) | ~64 KB | 预分配 SPSC 队列 |
 | Node (16 subscriptions) | ~1 KB | 栈数组 |
 | IoPoller (64 events) | ~512 B | 内部缓冲 |
-| **热路径合计** | **~386 KB** | **零 malloc** |
+| 热路径合计 | ~386 KB | 零 malloc |
 
 ### 2.6 背压控制
 
@@ -206,7 +206,7 @@ newosp:         线程数 = 编译期常量，内存预算可精确计算
 队列占用 >= 99%: 拒绝 kHigh (仅保留控制命令)
 ```
 
-实现上，生产者先检查**本地缓存**的消费位置 (relaxed 读，无 cache line 竞争):
+生产者先检查本地缓存的消费位置 (relaxed 读，无 cache line 竞争):
 
 ```cpp
 uint32_t depth = producer_pos_.load(relaxed) - cached_consumer_pos_;
@@ -251,7 +251,7 @@ exec.Start();
 
 RealtimeExecutor 初始化序列: `mlockall()` → CPU affinity → SCHED_FIFO → 自定义栈 → 进入 ProcessBatch 循环。高精度休眠使用 `clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME)` 实现亚毫秒精度。
 
-**PreciseSleepStrategy**: 三参数自适应 (default/min/max sleep_ns)，有消息时快速唤醒，空闲时降低功耗。
+PreciseSleepStrategy: 三参数自适应 (default/min/max sleep_ns)，有消息时快速唤醒，空闲时降低功耗。
 
 ### 2.8 WorkerPool: 两级无锁流水线
 
@@ -268,9 +268,9 @@ Dispatcher Thread (ProcessBatch → Round-Robin 分发)
     └──→ Worker[N] SPSC
 ```
 
-**第一级 MPSC**: 所有生产者 CAS 发布到共享 Bus。
+第一级 MPSC: 所有生产者 CAS 发布到共享 Bus。
 
-**第二级 Per-Worker SPSC**: Dispatcher 从 Bus 取出消息，Round-Robin 分发到各 Worker 的 SPSC 队列。Worker 线程从自己的 SPSC 消费，**无任何锁竞争**。
+第二级 Per-Worker SPSC: Dispatcher 从 Bus 取出消息，Round-Robin 分发到各 Worker 的 SPSC 队列。Worker 线程从自己的 SPSC 消费，没有任何锁竞争。
 
 Worker 空闲时三阶段退避: Spin (1-64 次 CPU relax) → Yield (4 次) → Sleep (50us)。有消息到来立即回退到 Spin。
 
@@ -315,7 +315,7 @@ while (running) {
 
 ### 3.2 I/O 线程与业务线程解耦
 
-I/O 线程只做三件事: **等待 fd 就绪 → 读取数据 → 发布消息**。不持有业务状态，不需要锁:
+I/O 线程只做三件事: 等待 fd 就绪、读取数据、发布消息。它不持有业务状态，不需要锁:
 
 ```
 I/O 线程                               Executor 线程
@@ -331,8 +331,8 @@ IoPoller.Wait()                        ProcessBatch()
 ```
 
 分离带来两个好处:
-1. **I/O 线程极轻量**: recv + publish，无阻塞风险
-2. **业务可独立测试**: StaticNode Handler 接收消息和 Header，不依赖 socket/fd
+1. I/O 线程极轻量: recv + publish，无阻塞风险
+2. 业务可独立测试: StaticNode Handler 接收消息和 Header，不依赖 socket/fd
 
 完整的 Transport 接收路径:
 
@@ -477,7 +477,7 @@ int main() {
 }
 ```
 
-**线程分布**:
+线程分布:
 
 ```
 CPU 0: Linux 内核 + 系统服务
@@ -488,7 +488,7 @@ CPU 3: 备用 (WorkerPool Worker / 日志 / Shell)
 合计: 3 线程，确定性
 ```
 
-**消息流**:
+消息流:
 
 ```
 sensor_fd (硬件)
@@ -505,7 +505,7 @@ IoPoller.Wait() → recv → SensorReading → bus.Publish()
         └── operator()(AlarmEvent) → OSP_LOG_WARN
 ```
 
-**性能数据** (ARM Cortex-A72, 4 核 1.5GHz):
+性能数据 (ARM Cortex-A72, 4 核 1.5GHz):
 
 | 指标 | 数值 | 说明 |
 |------|------|------|
@@ -535,6 +535,7 @@ IoPoller.Wait() → recv → SensorReading → bus.Publish()
 ## 参考资料
 
 1. [newosp GitHub 仓库](https://github.com/DeguiLiu/newosp)，C++17 header-only 嵌入式基础设施库
-2. [C++ 多线程与协程优化阻塞型任务](https://blog.csdn.net/stallion5632/article/details/143887766)，state-threads 实验
-3. [Linux I/O 多路复用与异步 I/O 对比](https://blog.csdn.net/stallion5632/article/details/143675999)，五种 I/O 模型
-4. [Cyber RT 协程实现](https://zhuanlan.zhihu.com/p/365838048)，Baidu Apollo 协程架构
+2. [coact](https://github.com/DeguiLiu/coact)，面向 RT-Thread 单核 MCU 的 header-first C++17 事件框架，单核 MCU 侧的事件派发对照实现
+3. [C++ 多线程与协程优化阻塞型任务](https://blog.csdn.net/stallion5632/article/details/143887766)，state-threads 实验
+4. [Linux I/O 多路复用与异步 I/O 对比](https://blog.csdn.net/stallion5632/article/details/143675999)，五种 I/O 模型
+5. [Cyber RT 协程实现](https://zhuanlan.zhihu.com/p/365838048)，Baidu Apollo 协程架构
