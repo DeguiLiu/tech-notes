@@ -4,7 +4,7 @@ date: 2026-02-16T10:40:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "SPSC", "ring-buffer", "lock-free", "wait-free", "cache-line", "false-sharing", "memory-order", "acquire-release", "ARM", "embedded", "MCU", "FakeTSO", "memcpy", "batch", "trivially-copyable", "object-pool"]
-summary: "深度剖析 liudegui/ringbuffer 的 SPSC 无锁环形缓冲区实现。逐项解析缓存行对齐、2 的幂位掩码、wait-free 无重试设计、精确 acquire-release 内存序、FakeTSO 单核模式、批量 memcpy、ProducerClear 所有权修正等 12 项设计决策，每项标注 **为什么这样做** 和底层硬件原理。"
+summary: "深度剖析 liudegui/ringbuffer 的 SPSC 无锁环形缓冲区实现：缓存行对齐、2 的幂位掩码、wait-free 无重试设计、精确 acquire-release 内存序、FakeTSO 单核模式、批量 memcpy 等 12 项设计决策，每项都对应具体的硬件行为。"
 ShowToc: true
 TocOpen: true
 ---
@@ -16,7 +16,7 @@ TocOpen: true
 > - [无锁编程核心原理: 从 CAS 到三种队列模式](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，SPSC/MPSC/MPMC 的理论基础与对比
 > - [无锁异步日志设计: Per-Thread SPSC](/tech-notes/posts/performance/lockfree_async_log/)，SPSC 在日志系统中的工程应用
 > - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/)，跨进程场景的 SPSC Ring Buffer
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，SPSC 在 newosp 消息总线中的角色
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，SPSC 在 newosp 消息总线中的角色（源码: [github.com/DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)）
 >
 > 参考:
 > - 原始实现: [jnk0le/Ring-Buffer](https://github.com/jnk0le/Ring-Buffer)，本项目在其基础上修正了所有权违反、冗余屏障等问题
@@ -45,9 +45,9 @@ bool Enqueue(const T& data) {
 }
 ```
 
-这个设计功能完备，但存在根本性问题：**CAS 重试循环在多核竞争下的延迟不确定**。当 4 个生产者同时入队时，某些线程可能在 CAS 上自旋数十次才成功，最坏延迟不可预测。
+这个设计功能完备，但存在根本性问题：CAS 重试循环在多核竞争下的延迟不确定。当 4 个生产者同时入队时，某些线程可能在 CAS 上自旋数十次才成功，最坏延迟不可预测。
 
-在实际的嵌入式场景中，许多数据通道天然就是**单生产者单消费者**的：
+在实际的嵌入式场景中，许多数据通道天然就是单生产者单消费者的：
 
 | 场景 | 生产者 | 消费者 |
 |------|--------|--------|
@@ -56,9 +56,9 @@ bool Enqueue(const T& data) {
 | 日志系统 | 应用线程 | 日志写盘线程 |
 | 传感器数据 | 采集线程 | 融合线程 |
 
-对这些场景，MPMC 的 CAS 竞争是不必要的开销。SPSC 可以做到 **wait-free**（最坏情况也是 O(1)），而 MPMC 只能做到 **lock-free**（全局保证进展，但单个线程可能饿死）。
+对这些场景，MPMC 的 CAS 竞争是不必要的开销。SPSC 可以做到 wait-free（最坏情况也是 O(1)），而 MPMC 只能做到 lock-free（全局保证进展，但单个线程可能饿死）。
 
-这就是 [liudegui/ringbuffer](https://gitee.com/liudegui/ringbuffer) 的出发点：**为单生产者单消费者场景提供最优解，不为通用场景做折中**。
+这就是 [liudegui/ringbuffer](https://gitee.com/liudegui/ringbuffer) 的出发点：为单生产者单消费者场景提供最优解，不为通用场景做折中。
 
 ## 2. 为什么不用对象池
 
@@ -86,11 +86,11 @@ public:
 
 对象池确实消除了大部分 `malloc`/`free`，比裸分配快约 60%。但在嵌入式 SPSC 场景下，它引入了三个新的性能代价：
 
-**mutex 在每次存取上**。`acquire()` 和 `release()` 各持有一次 mutex。即使是无竞争的 `futex` 快速路径，在 ARM Cortex-A72 上也需要 ~20-40ns；而 SPSC 环形缓冲的 `Push`/`Pop` 是 wait-free 的 ~5-8ns。
+mutex 出现在每次存取上。`acquire()` 和 `release()` 各持有一次 mutex。即使是无竞争的 `futex` 快速路径，在 ARM Cortex-A 系列处理器上也需要 ~20-40ns；而 SPSC 环形缓冲的 `Push`/`Pop` 是 wait-free 的 ~5-8ns。
 
-**shared_ptr 原子引用计数**。每次 `acquire` 返回 `shared_ptr`，每次拷贝/销毁触发 `atomic_fetch_add`/`atomic_fetch_sub`。SPSC 场景中数据是单向传递（生产者 → 消费者），所有权始终明确，引用计数完全多余。
+shared_ptr 原子引用计数。每次 `acquire` 返回 `shared_ptr`，每次拷贝/销毁触发 `atomic_fetch_add`/`atomic_fetch_sub`。SPSC 场景中数据是单向传递（生产者 → 消费者），所有权始终明确，引用计数完全多余。
 
-**queue 动态增长**。`std::queue` 底层是 `std::deque`，节点分配不可控。池为空时 `make_shared<T>()` 直接回退到堆分配，内存预算无法在编译期确定。
+queue 动态增长。`std::queue` 底层是 `std::deque`，节点分配不可控。池为空时 `make_shared<T>()` 直接回退到堆分配，内存预算无法在编译期确定。
 
 | 维度 | 对象池 (mutex + shared_ptr) | SPSC 环形缓冲 |
 |------|:------------------------:|:------------:|
@@ -100,7 +100,7 @@ public:
 | 最坏延迟 | futex slow path ~us | O(1) ~ns |
 | 适用模式 | 多消费者共享、生命周期不确定 | 单生产者单消费者、用完即弃 |
 
-对象池适合**多个消费者共享对象、生命周期跨越多个作用域**的场景（典型如数据库连接池、线程池）。SPSC 通道的数据是**单向流动、用完即弃**的，环形缓冲直接覆写 slot 比"取出-归还"更简单、更快、更可预测。
+对象池适合多个消费者共享对象、生命周期跨越多个作用域的场景（典型如数据库连接池、线程池）。SPSC 通道的数据是单向流动、用完即弃的，环形缓冲直接覆写 slot 比"取出-归还"更简单、更快、更可预测。
 
 ## 3. 整体架构
 
@@ -138,7 +138,7 @@ alignas(64) T data_buff_[BufferSize]{};  // 环形存储
 
 ### 4.1 问题
 
-`head_` 由生产者频繁写入，`tail_` 由消费者频繁写入。如果这两个变量位于同一条缓存行（通常 64 字节），会发生 **false sharing**：
+`head_` 由生产者频繁写入，`tail_` 由消费者频繁写入。如果这两个变量位于同一条缓存行（通常 64 字节），会发生 false sharing：
 
 ```
 Cache Line (64B)
@@ -149,9 +149,9 @@ Cache Line (64B)
   CPU 0 写             CPU 1 写
 ```
 
-当 CPU 0 修改 `head_` 时，整条缓存行被标记为 Modified（MESI 协议）。CPU 1 想读或写同一行上的 `tail_`，必须先通过总线将整条行从 CPU 0 的 L1 Cache 传输过来。反之亦然。**两个 CPU 在逻辑上互不干扰的变量上产生了串行化**。
+当 CPU 0 修改 `head_` 时，整条缓存行被标记为 Modified（MESI 协议）。CPU 1 想读或写同一行上的 `tail_`，必须先通过总线将整条行从 CPU 0 的 L1 Cache 传输过来。反之亦然。两个 CPU 在逻辑上互不干扰的变量上产生了串行化。
 
-在 ARM Cortex-A 系列上，缓存行通常为 64 字节（Cortex-A53/A72/A76）。false sharing 导致的 L1 Cache miss 延迟约为 **40-80 个时钟周期**（视具体 SoC 互连架构），而 L1 Cache hit 仅需 **2-4 个时钟周期**。差距约 20x。
+在 ARM Cortex-A 系列上，缓存行通常为 64 字节。false sharing 导致的 L1 Cache miss 延迟约为 40-80 个时钟周期（视具体 SoC 互连架构而定），而 L1 Cache hit 仅需 2-4 个时钟周期，差距约 20x。
 
 ### 4.2 解决方案
 
@@ -172,7 +172,7 @@ alignas(64) T data_buff_[BufferSize]{};  // 数据区域从第三条缓存行开
 
 `data_buff_` 也用 `alignas(64)` 对齐，确保数据区域不会与 `tail_` 的填充字节共享缓存行。
 
-**代价**：每个 `PaddedIndex` 从 8 字节膨胀到 64 字节，总共多用 120 字节（2 x 56 字节填充）。对于嵌入式系统，这个代价可以忽略不计。
+代价：每个 `PaddedIndex` 从 8 字节膨胀到 64 字节，总共多用 120 字节（2 x 56 字节填充）。对于嵌入式系统，这个代价可以忽略不计。
 
 ## 5. 2 的幂位掩码
 
@@ -185,7 +185,7 @@ alignas(64) T data_buff_[BufferSize]{};  // 数据区域从第三条缓存行开
 index = head % BufferSize;
 ```
 
-ARM Cortex-M/A 处理器没有硬件除法指令（Cortex-A 的 SDIV/UDIV 是后加的，且延迟远高于位操作），取模运算会被编译器转换为除法或乘法近似，开销约 **4-12 个时钟周期**。
+ARM Cortex-M/A 处理器没有硬件除法指令（Cortex-A 的 SDIV/UDIV 是后加的，且延迟远高于位操作），取模运算会被编译器转换为除法或乘法近似，开销约 4-12 个时钟周期。
 
 当 `BufferSize` 是 2 的幂时，取模可以用位与替代：
 
@@ -195,7 +195,7 @@ static constexpr IndexT kMask = BufferSize - 1u;
 index = head & kMask;
 ```
 
-位与操作在所有 ARM 核心上都是 **单周期执行**。
+位与操作在所有 ARM 核心上都是单周期执行。
 
 ### 5.2 编译期约束
 
@@ -208,7 +208,7 @@ static_assert((BufferSize & (BufferSize - 1)) == 0,
 
 ### 5.3 索引自然溢出
 
-一个巧妙的设计是 `head_` 和 `tail_` **不做回绕**，它们是单调递增的无符号整数。可用元素数量通过无符号减法计算：
+一个巧妙的设计是 `head_` 和 `tail_` 不做回绕，它们是单调递增的无符号整数。可用元素数量通过无符号减法计算：
 
 ```cpp
 IndexT Size() const noexcept {
@@ -219,7 +219,7 @@ IndexT Size() const noexcept {
 
 当 `head_` 从 `UINT32_MAX` 溢出到 0 时，`head_ - tail_` 依然正确（C++ 标准保证无符号整数溢出是 well-defined 的模运算）。
 
-只在**访问数组时**才用 `& kMask` 映射到实际位置：
+只在访问数组时才用 `& kMask` 映射到实际位置：
 
 ```cpp
 data_buff_[current_head & kMask] = data;
@@ -260,12 +260,12 @@ static_assert(BufferSize <= ((std::numeric_limits<IndexT>::max)() >> 1),
 
 | 属性 | 保证 | 实现手段 |
 |------|------|----------|
-| **Lock-free** | 系统整体始终有进展（某个线程在有限步内完成），但单个线程可能被饿死 | CAS 重试循环 |
-| **Wait-free** | 每个线程都在有限步内完成操作 | 无重试，所有路径都是 O(1) |
+| Lock-free | 系统整体始终有进展（某个线程在有限步内完成），但单个线程可能被饿死 | CAS 重试循环 |
+| Wait-free | 每个线程都在有限步内完成操作 | 无重试，所有路径都是 O(1) |
 
 MPMC 队列通常只能做到 lock-free，因为多个生产者必须用 CAS 竞争同一个 `head_`，竞争失败的线程需要重试。
 
-SPSC 队列可以做到 wait-free，因为 `head_` 只有一个写者（生产者），`tail_` 只有一个写者（消费者），**不存在写-写竞争**。
+SPSC 队列可以做到 wait-free，因为 `head_` 只有一个写者（生产者），`tail_` 只有一个写者（消费者），不存在写-写竞争。
 
 ### 6.2 Push 的每一步
 
@@ -291,7 +291,7 @@ bool PushImpl(U&& data) {
 }
 ```
 
-**没有任何循环或重试**。要么满了返回 false（调用者决策），要么一次性完成写入。最坏路径和最好路径执行相同数量的指令。
+没有任何循环或重试。要么满了返回 false（调用者决策），要么一次性完成写入。最坏路径和最好路径执行相同数量的指令。
 
 对比 MPMC 的 CAS 循环：
 
@@ -302,7 +302,7 @@ while (!head_.compare_exchange_weak(head, head + 1, ...)) {
 }
 ```
 
-在 4 核竞争下，CAS 失败重试的平均次数随竞争线程数线性增长。SPSC 的 Push 始终是 **恒定 5 步操作**。
+在 4 核竞争下，CAS 失败重试的平均次数随竞争线程数线性增长。SPSC 的 Push 始终是恒定 5 步操作。
 
 ## 7. 精确的内存序选择
 
@@ -310,13 +310,13 @@ while (!head_.compare_exchange_weak(head, head + 1, ...)) {
 
 ### 7.1 ARM 内存模型背景
 
-ARM 是 **弱序（weakly-ordered）** 架构。CPU 可能：
+ARM 是弱序（weakly-ordered）架构。CPU 可能：
 
-1. 将**存储操作（store）重排到后续加载操作（load）之前**
-2. 将**多个存储操作之间重排**
-3. 将**多个加载操作之间重排**
+1. 将存储操作（store）重排到后续加载操作（load）之前
+2. 将多个存储操作之间重排
+3. 将多个加载操作之间重排
 
-x86 是 **TSO（Total Store Order）** 架构，仅允许 store-load 重排。因此 x86 上很多无锁代码「碰巧正确」，但移植到 ARM 后出 bug。重排序的硬件根因 (Store Buffer、Invalidation Queue、MESI 协议) 以及 ARM DMB/DSB/ISB 三条屏障指令的精确语义，详见 [内存屏障的硬件原理](/tech-notes/posts/performance/memory_barrier_hardware/)。
+x86 是 TSO（Total Store Order）架构，仅允许 store-load 重排。因此 x86 上很多无锁代码「碰巧正确」，但移植到 ARM 后出 bug。重排序的硬件根因 (Store Buffer、Invalidation Queue、MESI 协议) 以及 ARM DMB/DSB/ISB 三条屏障指令的精确语义，详见 [内存屏障的硬件原理](/tech-notes/posts/performance/memory_barrier_hardware/)。
 
 不同内存序在 ARM 上的硬件指令：
 
@@ -331,7 +331,7 @@ x86 是 **TSO（Total Store Order）** 架构，仅允许 store-load 重排。�
 
 每个原子操作的内存序都经过精确推敲：
 
-**生产者读自己的 `head_`：`relaxed`**
+生产者读自己的 `head_`：`relaxed`
 
 ```cpp
 const IndexT current_head = head_.value.load(std::memory_order_relaxed);
@@ -339,21 +339,21 @@ const IndexT current_head = head_.value.load(std::memory_order_relaxed);
 
 `head_` 只有生产者自己会写。读自己上次写的值，不需要跨线程同步。
 
-**生产者读对方的 `tail_`：`acquire`**
+生产者读对方的 `tail_`：`acquire`
 
 ```cpp
 const IndexT current_tail = tail_.value.load(AcquireOrder());
 ```
 
-消费者 Pop 后会 `release` 更新 `tail_`。生产者用 `acquire` 读取，形成 **release-acquire 配对**，保证生产者看到消费者释放的最新 `tail_` 值。语义：「我看到 tail 至少推进到了这里，这些位置是安全可写的」。
+消费者 Pop 后会 `release` 更新 `tail_`。生产者用 `acquire` 读取，形成 release-acquire 配对，保证生产者看到消费者释放的最新 `tail_` 值。语义：「我看到 tail 至少推进到了这里，这些位置是安全可写的」。
 
-**生产者更新 `head_`：`release`**
+生产者更新 `head_`：`release`
 
 ```cpp
 head_.value.store(current_head + 1, ReleaseOrder());
 ```
 
-`release` 保证**之前的数据写入（`data_buff_[...] = data`）不会被 CPU 重排到 `head_` 更新之后**。消费者用 `acquire` 读取 `head_` 时，保证能看到完整的数据。这是正确性的核心：如果数据写入被重排到 `head_` 更新之后，消费者可能读到未初始化的旧数据。
+`release` 保证之前的数据写入（`data_buff_[...] = data`）不会被 CPU 重排到 `head_` 更新之后。消费者用 `acquire` 读取 `head_` 时，保证能看到完整的数据。这是正确性的核心：如果数据写入被重排到 `head_` 更新之后，消费者可能读到未初始化的旧数据。
 
 ### 7.3 为什么不用 `seq_cst`
 
@@ -364,7 +364,7 @@ Producer: write data -> release head  -(同步)-> acquire head -> read data :Con
 Consumer: read data  -> release tail  -(同步)-> acquire tail -> check space :Producer
 ```
 
-只有两对 release-acquire 关系，不需要第三方观察者看到全局一致的顺序。`seq_cst` 在 ARM 上每次操作多一个 `DMB` 屏障，代价约 **2x**。
+只有两对 release-acquire 关系，不需要第三方观察者看到全局一致的顺序。`seq_cst` 在 ARM 上每次操作多一个 `DMB` 屏障，代价约 2x。
 
 ### 7.4 冗余屏障修正
 
@@ -385,15 +385,15 @@ head_.store(current_head + 1, std::memory_order_relaxed);  // relaxed store
 head_.value.store(current_head + 1, ReleaseOrder());  // 单条 STLR
 ```
 
-这是一个微优化，但体现了「**理解硬件指令映射**」的重要性。
+这是一个微优化，但体现了「理解硬件指令映射」的重要性。
 
 ## 8. FakeTSO 单核模式
 
 ### 8.1 原理
 
-在单核 MCU（如 Cortex-M4）上，只有一个 CPU 核心，**不存在跨核缓存一致性问题**。所有的 DMB（Data Memory Barrier）指令都是多余的。
+在单核 MCU 上，只有一个 CPU 核心，不存在跨核缓存一致性问题。所有的 DMB（Data Memory Barrier）指令都是多余的。
 
-但 ISR（中断服务程序）和主循环之间仍然需要防止**编译器重排**。C++ 的 `std::atomic` 即使用 `relaxed` 内存序，也能防止编译器对原子操作的重排。
+但 ISR（中断服务程序）和主循环之间仍然需要防止编译器重排。C++ 的 `std::atomic` 即使用 `relaxed` 内存序，也能防止编译器对原子操作的重排。
 
 ```cpp
 static constexpr std::memory_order AcquireOrder() noexcept {
@@ -405,25 +405,25 @@ static constexpr std::memory_order ReleaseOrder() noexcept {
 }
 ```
 
-当 `FakeTSO = true` 时，所有 acquire/release 降级为 relaxed。ARM 编译器对 relaxed 原子操作生成普通的 `LDR`/`STR` 指令，**不插入任何 DMB 屏障**。
+当 `FakeTSO = true` 时，所有 acquire/release 降级为 relaxed。ARM 编译器对 relaxed 原子操作生成普通的 `LDR`/`STR` 指令，不插入任何 DMB 屏障。
 
 ### 8.2 为什么叫 FakeTSO
 
-TSO（Total Store Order）是 x86 的内存模型，在 TSO 下 acquire-load 和 release-store 不需要额外屏障（硬件保证）。`FakeTSO` 的含义是「**假装我们运行在 TSO 架构上**」：在单核 MCU 上这是安全的，因为没有第二个 CPU 核心能观察到重排。
+TSO（Total Store Order）是 x86 的内存模型，在 TSO 下 acquire-load 和 release-store 不需要额外屏障（硬件保证）。`FakeTSO` 的含义是「假装我们运行在 TSO 架构上」：在单核 MCU 上这是安全的，因为没有第二个 CPU 核心能观察到重排。
 
 ### 8.3 安全边界
 
 `FakeTSO = true` 的前提条件：
 
-1. **只有一个 CPU 核心**（或所有参与线程都 pinned 到同一核心）
+1. 只有一个 CPU 核心（或所有参与线程都 pinned 到同一核心）
 2. 生产者是 ISR，消费者是主循环（或反之）
-3. **没有 DMA 设备直接读写 ring buffer**（DMA 有自己的内存视图，需要显式同步）
+3. 没有 DMA 设备直接读写 ring buffer（DMA 有自己的内存视图，需要显式同步）
 
-违反这些条件使用 `FakeTSO = true` 是 **未定义行为**。
+违反这些条件使用 `FakeTSO = true` 是未定义行为。
 
 ### 8.4 实际效果
 
-在 Cortex-M4 (100 MHz) 上，DMB 指令延迟约 3-5 个时钟周期。每次 Push/Pop 有两个原子操作（一个 load + 一个 store），FakeTSO 省下约 **6-10 个时钟周期/操作**。对于 10 kHz 采样率，每秒节省 60,000-100,000 个周期。这在 MCU 上是可观的。
+在 Cortex-M 系列 (100 MHz) 上，DMB 指令延迟约 3-5 个时钟周期。每次 Push/Pop 有两个原子操作（一个 load + 一个 store），FakeTSO 省下约 6-10 个时钟周期/操作。对于 10 kHz 采样率，每秒节省 60,000-100,000 个周期。这在 MCU 上是可观的。
 
 ## 9. 批量 memcpy 操作
 
@@ -438,7 +438,7 @@ TSO（Total Store Order）是 x86 的内存模型，在 TSO 下 acquire-load 和
 
 第 2 步的 acquire load 和第 4 步的 release store 涉及内存屏障。当需要传输 1000 个元素时，逐个操作需要 1000 次屏障。
 
-批量操作将 **N 个元素用一次 acquire load 和一次 release store 包裹**：
+批量操作将 N 个元素用一次 acquire load 和一次 release store 包裹：
 
 ```cpp
 std::size_t PushBatchCore(const T* buf, std::size_t count) {
@@ -504,7 +504,7 @@ static_assert(std::is_trivially_copyable<T>::value,
 
 `memcpy` 只对 `trivially_copyable` 类型安全。如果 `T` 有自定义拷贝构造函数、析构函数或虚函数表，`memcpy` 会绕过这些逻辑，导致未定义行为。
 
-这个约束也与嵌入式设计哲学一致：**热路径上的数据类型应该是 POD-like 的**，不应携带复杂的生命周期管理。
+这个约束也与嵌入式设计哲学一致：热路径上的数据类型应该是 POD-like 的，不应携带复杂的生命周期管理。
 
 ## 10. ProducerClear 所有权修正
 
@@ -519,7 +519,7 @@ void producerClear() {
 }
 ```
 
-这违反了 SPSC 的核心约定：**`tail_` 由消费者拥有，只有消费者可以写入**。如果生产者和消费者同时操作（生产者调用 `producerClear`，消费者正在 `Pop`），两个线程同时写 `tail_`，产生数据竞争（data race），属于未定义行为。
+这违反了 SPSC 的核心约定：`tail_` 由消费者拥有，只有消费者可以写入。如果生产者和消费者同时操作（生产者调用 `producerClear`，消费者正在 `Pop`），两个线程同时写 `tail_`，产生数据竞争（data race），属于未定义行为。
 
 ### 10.2 修正方案
 
@@ -571,7 +571,7 @@ bool PushFromCallback(Callable&& callback) {
 
 为什么不直接 `Push(expensive_construct())`？
 
-如果队列已满，`Push` 返回 false，但 `expensive_construct()` **已经被调用并构造了对象**，白白浪费了计算。`PushFromCallback` 先检查空间，只在确认有空间时才调用 callback 构造数据。
+如果队列已满，`Push` 返回 false，但 `expensive_construct()` 已经被调用并构造了对象，白白浪费了计算。`PushFromCallback` 先检查空间，只在确认有空间时才调用 callback 构造数据。
 
 典型场景：
 
@@ -605,16 +605,16 @@ Address   Content              Size    Cache Line
 
 三个成员分别位于不同的缓存行组：
 
-- **生产者热数据**：`head_` + `data_buff_[head & mask]`
-- **消费者热数据**：`tail_` + `data_buff_[tail & mask]`
-- **生产者偶尔读**：`tail_`（检查空间）
-- **消费者偶尔读**：`head_`（检查数据）
+- 生产者热数据：`head_` + `data_buff_[head & mask]`
+- 消费者热数据：`tail_` + `data_buff_[tail & mask]`
+- 生产者偶尔读：`tail_`（检查空间）
+- 消费者偶尔读：`head_`（检查数据）
 
 ### 12.2 数组的缓存行为
 
 环形缓冲区的顺序访问模式对 CPU 预取器非常友好。生产者和消费者都是按索引单调递增访问 `data_buff_`，CPU 硬件预取器会提前加载下一条缓存行。
 
-对比链表：节点在堆上随机分配，指针跳转导致缓存 miss。环形缓冲区的数组布局保证了 **空间局部性（spatial locality）**。
+对比链表：节点在堆上随机分配，指针跳转导致缓存 miss。环形缓冲区的数组布局保证了空间局部性（spatial locality）。
 
 ## 13. 设计决策汇总
 
@@ -653,8 +653,8 @@ Address   Content              Size    Cache Line
 
 `spsc::Ringbuffer` 在以下项目中被复用：
 
-- **[newosp](https://github.com/DeguiLiu/newosp)**：`spsc_ringbuffer.hpp` 模块，用于日志系统和传感器数据管道
-- **[mccc-bus](https://gitee.com/liudegui/mccc-bus)**：MPSC 消息总线内部的单生产者路径
+- [newosp](https://github.com/DeguiLiu/newosp)：`spsc_ringbuffer.hpp` 模块，用于日志系统和传感器数据管道
+- [mccc-bus](https://gitee.com/liudegui/mccc-bus)：MPSC 消息总线内部的单生产者路径
 
 无锁异步日志系统中的典型用法：
 
@@ -680,8 +680,8 @@ void LogFlush() {
 
 ## 16. 总结
 
-`spsc::Ringbuffer` 的设计哲学可以概括为一句话：**只为确定的场景付出最小的代价**。
+`spsc::Ringbuffer` 的设计哲学可以概括为一句话：只为确定的场景付出最小的代价。
 
-它不试图支持多生产者多消费者（那是 MPMC 队列的职责），不试图支持非平凡类型（那是有锁队列的领域），不试图在所有架构上使用同一种内存序（那是 `seq_cst` 的懒惰）。通过缩窄适用范围，在 SPSC 这个特定领域做到了 wait-free、零冗余屏障、缓存友好、批量高效。
+它的做法是缩窄适用范围：只服务单生产者单消费者，只支持可平凡拷贝的类型，并按目标架构选择内存序。正因为范围窄，它在 SPSC 这个特定领域做到了 wait-free、零冗余屏障、缓存友好、批量高效。
 
-每一个设计决策都对应一个具体的硬件现象或性能瓶颈：缓存行对齐对应 false sharing、位掩码对应 ARM 除法开销、FakeTSO 对应单核 MCU 无 DMA 屏障、memcpy 对应 SIMD 加速。**没有「因为教科书说要这样」的设计，只有「因为硬件是这样工作的」的选择**。
+每一个设计决策都对应一个具体的硬件现象或性能瓶颈：缓存行对齐对应 false sharing、位掩码对应 ARM 除法开销、FakeTSO 对应单核 MCU 无 DMA 屏障、memcpy 对应 SIMD 加速。文中每一条设计取舍都对应一个具体的硬件行为。

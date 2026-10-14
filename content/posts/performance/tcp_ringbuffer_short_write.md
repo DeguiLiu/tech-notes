@@ -4,7 +4,7 @@ date: 2026-02-16T10:50:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "TCP", "epoll", "ring-buffer", "SPSC", "short-write", "non-blocking", "ARM", "embedded", "zero-copy"]
-summary: "非阻塞 TCP 发送的 short write 问题在高吞吐嵌入式场景下不可回避。本文从一个 CSDN 环形缓冲方案出发，逐项分析其 5 个工程缺陷 (非 2 幂、无界索引、内存泄漏、部分发送丢失、EAGAIN 误判)，给出工程级改进方案: 2 的幂位掩码、精确 acquire-release 内存序、EPOLLOUT 驱动异步刷写，并对比 newosp SpscRingbuffer 的设计取舍。"
+summary: "非阻塞 TCP 发送在高吞吐嵌入式场景会遇到 short write。本文从一份 CSDN 环形缓冲方案入手，逐项分析它的 5 个缺陷 (非 2 幂、无界索引、内存泄漏、部分发送丢失、EAGAIN 误判) 并给出改进方案。"
 ShowToc: true
 TocOpen: true
 ---
@@ -20,7 +20,7 @@ TocOpen: true
 
 ### 1.1 什么是 TCP Short Write
 
-非阻塞模式下调用 `send()` / `write()`，内核 TCP 发送缓冲区空间不足时，系统调用只写入**部分字节**并返回实际写入数，`errno` 置为 `EAGAIN` / `EWOULDBLOCK`。这就是 short write。
+非阻塞模式下调用 `send()` / `write()`，内核 TCP 发送缓冲区空间不足时，系统调用只写入部分字节并返回实际写入数，`errno` 置为 `EAGAIN` / `EWOULDBLOCK`。这就是 short write。
 
 ```
 应用层: send(fd, buf, 4096)
@@ -35,8 +35,8 @@ TocOpen: true
 
 EAGAIN (errno 11) 是 POSIX 标准定义的瞬态错误码，表示"资源暂时不可用"。在非阻塞 I/O 中，它的含义是:
 
-- **send() 返回 -1, errno=EAGAIN**: 内核 TCP 发送缓冲区已满，一个字节也写不进去。不是连接错误，稍后重试可能成功。
-- **send() 返回 N (0 < N < len)**: 写入了部分字节 (short write)。不一定触发 EAGAIN，但后续 send 可能触发。
+- send() 返回 -1, errno=EAGAIN: 内核 TCP 发送缓冲区已满，一个字节也写不进去。这是瞬态状态，稍后重试可能成功。
+- send() 返回 N (0 < N < len): 写入了部分字节 (short write)。不一定触发 EAGAIN，但后续 send 可能触发。
 
 关键区分:
 
@@ -52,8 +52,8 @@ EAGAIN (errno 11) 是 POSIX 标准定义的瞬态错误码，表示"资源暂时
 
 ### 1.3 正确的处理策略
 
-1. **同步重试 (简单场景)**: 循环调用 `send()`，遇到 EAGAIN 时 `yield()` + 重试，超过上限则报告失败。适合低频场景。
-2. **用户态发送缓冲 + EPOLLOUT (高吞吐场景)**: 数据先写入环形缓冲区，由 `EPOLLOUT` 事件驱动异步刷写。不阻塞调用线程。
+1. 同步重试 (简单场景): 循环调用 `send()`，遇到 EAGAIN 时 `yield()` + 重试，超过上限则报告失败。适合低频场景。
+2. 用户态发送缓冲 + EPOLLOUT (高吞吐场景): 数据先写入环形缓冲区，由 `EPOLLOUT` 事件驱动异步刷写。不阻塞调用线程。
 
 本文重点讨论方案 2。
 
@@ -120,7 +120,7 @@ const std::size_t pos = current_write % kBufferSize;  // 除法取模
 
 每次 `append()` 和 `beginRead()` 各有 2 次取模，单次 I/O 操作多出 ~60 ns 的无谓开销。
 
-**修正**: 缓冲区大小用 2 的幂，取模改为位与:
+修正: 缓冲区大小用 2 的幂，取模改为位与:
 
 ```cpp
 static constexpr std::size_t kBufferSize = 8192U;  // 2^13
@@ -139,7 +139,7 @@ std::size_t available = (current_write - current_read) % kBufferSize;
 
 当 `write - read` 接近 `SIZE_MAX` 时，`% 10240` 的结果不等于实际有效数据量。虽然在实践中 `size_t` 的回绕周期极长 (64-bit 下约 1.8 x 10^19)，但设计上不应依赖此假设。
 
-**修正**: 使用 2 的幂后，索引差值天然正确:
+修正: 使用 2 的幂后，索引差值天然正确:
 
 ```cpp
 // 2 的幂下，无符号差值 & kMask 始终正确
@@ -178,11 +178,11 @@ int doSend() {
 }
 ```
 
-`send()` 可能只发送了 `data_size` 的一部分 (short write)。此时 `endRead(send_size)` 正确推进了读指针，但**没有重新注册 `EPOLLOUT`** 来触发下一次刷写。在 EPOLLET (边缘触发) 模式下，如果不重新 MOD 事件，剩余数据将永远不会被发送。
+`send()` 可能只发送了 `data_size` 的一部分 (short write)。此时 `endRead(send_size)` 正确推进了读指针，但没有重新注册 `EPOLLOUT` 来触发下一次刷写。在 EPOLLET (边缘触发) 模式下，如果不重新 MOD 事件，剩余数据将永远不会被发送。
 
 LT (水平触发) 模式下问题较轻，因为只要发送缓冲区可写，`EPOLLOUT` 会持续触发。但原文使用 `EPOLLONESHOT`，每次事件后必须重新注册。
 
-**修正**: `doSend()` 返回后检查缓冲区是否还有数据，有则重新注册 `EPOLLOUT`:
+修正: `doSend()` 返回后检查缓冲区是否还有数据，有则重新注册 `EPOLLOUT`:
 
 ```cpp
 int doSend() {
@@ -381,10 +381,10 @@ class AsyncSocket {
 
 关键设计:
 
-1. **EPOLLOUT 按需注册**: 只在缓冲区有数据时注册 `EPOLLOUT`，避免空转唤醒
-2. **FlushSendBuffer 循环刷写**: 一次 `EPOLLOUT` 事件尽量多地发送数据 (EPOLLET 要求)
-3. **EAGAIN/EINTR 正确处理**: `EAGAIN` 等待下次事件，`EINTR` 立即重试，其他错误断开
-4. **背压感知**: `AsyncSend()` 返回实际入队字节数，应用层可据此控制生产速率
+1. EPOLLOUT 按需注册: 只在缓冲区有数据时注册 `EPOLLOUT`，避免空转唤醒
+2. FlushSendBuffer 循环刷写: 一次 `EPOLLOUT` 事件尽量多地发送数据 (EPOLLET 要求)
+3. EAGAIN/EINTR 正确处理: `EAGAIN` 等待下次事件，`EINTR` 立即重试，其他错误断开
+4. 背压感知: `AsyncSend()` 返回实际入队字节数，应用层可据此控制生产速率
 
 ### 3.3 事件循环集成
 
@@ -450,7 +450,7 @@ for (int i = 0; i < n; ++i) {
 
 ## 4. 与 newosp 基础设施的对比
 
-newosp 的 `SpscRingbuffer<T, N>` 和本文的 `SendBuffer` 解决不同层面的问题:
+[newosp](https://github.com/DeguiLiu/newosp) 是面向嵌入式 Linux 的 C++17 header-only 基础库，它的 `SpscRingbuffer<T, N>` 和本文的 `SendBuffer` 解决不同层面的问题:
 
 ### 4.1 SpscRingbuffer: 类型化元素队列
 
@@ -464,9 +464,9 @@ std::memcpy(slot.payload, data, len);
 ring.Push(slot);  // 整帧入队
 ```
 
-- **用途**: 接收线程 → 处理线程的帧传递
-- **元素**: 固定大小结构体 (`RecvFrameSlot` ~4KB)
-- **操作粒度**: 整帧 Push/Pop
+- 用途: 接收线程 → 处理线程的帧传递
+- 元素: 固定大小结构体 (`RecvFrameSlot` ~4KB)
+- 操作粒度: 整帧 Push/Pop
 
 ### 4.2 SendBuffer: 字节流缓冲
 
@@ -479,9 +479,9 @@ buf.Write(payload, 4096);      // 载荷
 // 由 EPOLLOUT 驱动 Peek() + send() + Consume()
 ```
 
-- **用途**: 应用层 → TCP 发送的字节流暂存
-- **元素**: 原始字节 (uint8_t)
-- **操作粒度**: 可变长度字节块
+- 用途: 应用层 → TCP 发送的字节流暂存
+- 元素: 原始字节 (uint8_t)
+- 操作粒度: 可变长度字节块
 
 ### 4.3 核心共性
 
@@ -523,7 +523,7 @@ while (remaining > 0) {
 }
 ```
 
-这是**同步有限重试**方案，比 v0.4.0 的直接判定失败改进了对瞬态 EAGAIN 的容忍度，且 EAGAIN 重试耗尽后返回 `kWouldBlock` 而不断开连接，允许调用方决策是否重试。
+这是同步有限重试方案，比 v0.4.0 的直接判定失败改进了对瞬态 EAGAIN 的容忍度，且 EAGAIN 重试耗尽后返回 `kWouldBlock` 而不断开连接，允许调用方决策是否重试。
 
 对于 newosp 的目标场景 (同机 shm_transport 优先，TCP 仅作远程备选)，同步方案是合理的选择。高吞吐 TCP 场景应引入本文的 `SendBuffer` + EPOLLOUT 异步方案。
 
@@ -561,13 +561,13 @@ ARM (非 TSO 架构) 上:
 
 ## 6. 总结
 
-1. **TCP short write 在非阻塞 + EPOLLET 模式下必须处理**。正确方案是用户态发送缓冲 + EPOLLOUT 事件驱动刷写，而非阻塞重试。
+1. 非阻塞加 EPOLLET 模式下的 TCP short write 必须处理。正确做法是用户态发送缓冲加 EPOLLOUT 事件驱动刷写，阻塞重试不可取。
 
-2. **字节环形缓冲的工程要求**: 2 的幂位掩码 (非除法取模)、无界递增无符号索引、精确 acquire-release 内存序、缓存行对齐消除伪共享。这些要求与结构化 SPSC 队列完全一致。
+2. 字节环形缓冲的工程要求: 2 的幂位掩码 (非除法取模)、无界递增无符号索引、精确 acquire-release 内存序、缓存行对齐消除伪共享。这些要求与结构化 SPSC 队列完全一致。
 
-3. **EPOLLOUT 管理关键**: 按需注册 (有数据时 arm，空时 disarm)，EPOLLET 模式下一次事件循环内尽量多发送，区分 EAGAIN (等待) / EINTR (重试) / 其他 (断开)。
+3. EPOLLOUT 的管理要点: 有数据时 arm、空时 disarm；EPOLLET 下一次事件循环内尽量多发送；区分 EAGAIN (等待) / EINTR (重试) / 其他 (断开)。
 
-4. **同步 vs 异步 short write 处理**: 同步方案 (循环 `send()` 直到写完) 适合低吞吐场景，实现简单但阻塞调用线程；异步方案 (缓冲 + EPOLLOUT) 适合高吞吐场景，不阻塞但需要管理缓冲区生命周期和背压。
+4. 同步方案 (循环 `send()` 直到写完) 适合低吞吐场景，实现简单但阻塞调用线程；异步方案 (缓冲 + EPOLLOUT) 适合高吞吐场景，不阻塞，代价是管理缓冲区生命周期和背压。
 
 ---
 

@@ -4,41 +4,41 @@ date: 2026-02-17T09:10:00
 draft: false
 categories: ["performance"]
 tags: ["ARM", "C++17", "MCCC", "MISRA", "callback", "embedded", "lock-free", "message-bus", "newosp", "performance", "zero-heap"]
-summary: "从 MCCC 消息总线优化实践中提炼 5 个零堆分配模式 (Envelope 内嵌、编译期类型索引、函数指针 RAII、FixedFunction/FixedVector/FixedString、编译期配置矩阵)，并附完整性能数据: BARE_METAL 18.7 M/s (54 ns/msg)，FULL_FEATURED 5.8 M/s (172 ns/msg)，HIGH 优先级零丢失，E2E P99 仅 449 ns。"
+summary: "从 MCCC 消息总线优化中提炼 5 个零堆分配模式 (Envelope 内嵌、编译期类型索引、函数指针 RAII、定长容器、编译期配置矩阵)，附实测数据: BARE_METAL 18.7 M/s，FULL_FEATURED 5.8 M/s，HIGH 优先级零丢失，E2E P99 449 ns。"
 ShowToc: true
 TocOpen: true
 ---
 
 ## 核心结论 (Key Takeaways)
 
-> **MCCC Lock-free 提供优先级保护和背压控制，同时保持高性能。**
-> **eventpp 优化分支 (OPT-1~8) 显著提升 Active Object 吞吐量。**
+> MCCC Lock-free 提供优先级保护和背压控制，同时保持较高吞吐量。
+> eventpp 优化分支 (OPT-1~8) 显著提升 Active Object 吞吐量。
 
 | 结论 | 数据支撑 |
 |------|----------|
-| **MCCC BARE_METAL 极高性能** | 18.7 M/s, 54 ns/msg（Lock-free + 线程安全） |
-| **MCCC FULL_FEATURED 生产可用** | 5.8 M/s, 172 ns/msg（全功能 + 线程安全） |
-| **eventpp 优化后 AO 大幅提升** | 8.5 M/s, 118 ns/msg（优化前 1.5 M/s, 689 ns） |
-| **HIGH 消息零丢失** | 背压测试中 HIGH 优先级丢弃率 **0%** |
-| **功能开销可控** | 全功能模式增加 ~118 ns/消息 |
-| **尾部延迟稳定** | MCCC E2E P99 仅 449 ns |
+| MCCC BARE_METAL 极高性能 | 18.7 M/s, 54 ns/msg（Lock-free + 线程安全） |
+| MCCC FULL_FEATURED 生产可用 | 5.8 M/s, 172 ns/msg（全功能 + 线程安全） |
+| eventpp 优化后 AO 大幅提升 | 8.5 M/s, 118 ns/msg（优化前 1.5 M/s, 689 ns） |
+| HIGH 消息零丢失 | 背压测试中 HIGH 优先级丢弃率 0% |
+| 功能开销可控 | 全功能模式增加 ~118 ns/消息 |
+| 尾部延迟稳定 | MCCC E2E P99 仅 449 ns |
 
 ---
 
 ## 对比层级说明
 
-> **重要**: 不同层级的对比有不同的语义，不能混淆。
+> 重要: 不同层级的对比有不同的语义，不能混淆。
 
 ### 层级定义
 
 | 层级 | 实现 | 特点 | 适用场景 |
 |------|------|------|----------|
-| **L1: Raw Queue** | eventpp 值语义 (优化后) | 无堆分配、无线程切换 | 理论上限参考 |
-| **L1.5: Raw + PoolQueueList** | eventpp + 池化分配器 | 零 per-node malloc | 小批量最优 |
-| **L2: Queue + shared_ptr** | eventpp + shared_ptr | 有堆分配、无线程切换 | AO 封装开销参考 |
-| **L3: Active Object** | eventpp + AO + 线程 (优化后) | 有堆分配、有线程切换 | 生产环境 eventpp |
-| **L4: MCCC BARE_METAL** | Lock-free Ring Buffer | 无堆分配、有线程切换、无锁 | 公平对比 L3 |
-| **L5: MCCC FULL** | L4 + 优先级/背压/统计 | 全功能 | 生产环境 MCCC |
+| L1: Raw Queue | eventpp 值语义 (优化后) | 无堆分配、无线程切换 | 理论上限参考 |
+| L1.5: Raw + PoolQueueList | eventpp + 池化分配器 | 零 per-node malloc | 小批量最优 |
+| L2: Queue + shared_ptr | eventpp + shared_ptr | 有堆分配、无线程切换 | AO 封装开销参考 |
+| L3: Active Object | eventpp + AO + 线程 (优化后) | 有堆分配、有线程切换 | 生产环境 eventpp |
+| L4: MCCC BARE_METAL | Lock-free Ring Buffer | 无堆分配、有线程切换、无锁 | 公平对比 L3 |
+| L5: MCCC FULL | L4 + 优先级/背压/统计 | 全功能 | 生产环境 MCCC |
 
 ### 性能对比图
 
@@ -60,9 +60,9 @@ TocOpen: true
  0  └─────────────────────────────────────────────────────────────────
 ```
 
-> **关键发现**:
+> 关键发现:
 > - L1.5 (PoolQueueList) 在小批量场景下达 28.5 M/s，超越默认 std::list
-> - L3 (eventpp + AO) 优化后从 1.5 M/s 提升至 8.5 M/s（**5.7x**），吞吐量超过 L5
+> - L3 (eventpp + AO) 优化后从 1.5 M/s 提升至 8.5 M/s（5.7x），吞吐量超过 L5
 > - L4 (MCCC BARE_METAL) 吞吐量 18.7 M/s，接近 Raw eventpp
 > - L5 (MCCC FULL) 吞吐量 5.8 M/s，但 E2E 延迟远优于 L3（P50 367 ns vs 11.6 us）
 
@@ -74,39 +74,39 @@ TocOpen: true
 | L1.5 | Raw + PoolQueueList | 28.5 +/- 3.1 M/s | 36 +/- 4 ns | - | - |
 | L2 | eventpp + shared_ptr | 17.0 +/- 5.7 M/s | 54 +/- 5 ns | 有 | - |
 | L3 | eventpp + AO (优化后) | 8.5 +/- 0.6 M/s | 118 +/- 8 ns | 有 | 有 |
-| **L4** | **MCCC BARE_METAL** | **18.7 +/- 1.4 M/s** | **54 +/- 4 ns** | **无** | **有** |
-| **L5** | **MCCC FULL_FEATURED** | **5.8 +/- 0.3 M/s** | **172 +/- 8 ns** | **无** | **有** |
+| L4 | MCCC BARE_METAL | 18.7 +/- 1.4 M/s | 54 +/- 4 ns | 无 | 有 |
+| L5 | MCCC FULL_FEATURED | 5.8 +/- 0.3 M/s | 172 +/- 8 ns | 无 | 有 |
 
 ---
 
 ## 开销来源分析
 
-> **优化后 MCCC BARE_METAL 已接近 Raw eventpp 性能**
+> 优化后 MCCC BARE_METAL 已接近 Raw eventpp 性能
 
 ### 开销分解
 
 | 分类 | 开销来源 | 估算 | 说明 |
 |:----:|----------|------|------|
-| **已消除** | ~~shared_ptr 堆分配~~ | 0 ns | Envelope 内嵌在 RingBufferNode |
-| **已消除** | ~~unordered_map hash 查找~~ | 0 ns | 固定数组 + 编译期类型索引 |
-| **已消除** | ~~原子引用计数~~ | 0 ns | 无 shared_ptr |
-| **保留** | 优先级检查 + 背压判断 | ~30-70 ns | FULL_FEATURED 模式 |
-| **保留** | 统计计数 (atomic fetch_add) | ~20-40 ns | FULL_FEATURED 模式 |
-| **保留** | CAS 竞争 | ~10-30 ns | 多生产者场景 |
-| | **BARE_METAL 总开销** | ~54 ns | 仅 CAS + 序列号同步 |
-| | **FULL 功能开销** | ~118 ns | 优先级 + 背压 + 统计 |
+| 已消除 | ~~shared_ptr 堆分配~~ | 0 ns | Envelope 内嵌在 RingBufferNode |
+| 已消除 | ~~unordered_map hash 查找~~ | 0 ns | 固定数组 + 编译期类型索引 |
+| 已消除 | ~~原子引用计数~~ | 0 ns | 无 shared_ptr |
+| 保留 | 优先级检查 + 背压判断 | ~30-70 ns | FULL_FEATURED 模式 |
+| 保留 | 统计计数 (atomic fetch_add) | ~20-40 ns | FULL_FEATURED 模式 |
+| 保留 | CAS 竞争 | ~10-30 ns | 多生产者场景 |
+| | BARE_METAL 总开销 | ~54 ns | 仅 CAS + 序列号同步 |
+| | FULL 功能开销 | ~118 ns | 优先级 + 背压 + 统计 |
 
 ### MCCC 如何避免传统开销
 
 | 开销 | eventpp + AO | MCCC (优化后) | 差异原因 |
 |------|:------------:|:----:|----------|
-| 堆分配 | 每消息 make_shared | **零** | Envelope 内嵌 Ring Buffer |
-| 引用计数 | 原子操作 | **零** | 无 shared_ptr |
-| 队列锁 | 互斥锁 | **零 (CAS)** | Lock-free MPSC |
-| 回调查找 | unordered_map hash | **O(1) 数组** | 编译期 VariantIndex |
+| 堆分配 | 每消息 make_shared | 零 | Envelope 内嵌 Ring Buffer |
+| 引用计数 | 原子操作 | 零 | 无 shared_ptr |
+| 队列锁 | 互斥锁 | 零 (CAS) | Lock-free MPSC |
+| 回调查找 | unordered_map hash | O(1) 数组 | 编译期 VariantIndex |
 | 线程切换 | 独立线程 | 独立线程 | 两者相同 |
 
-> **总结**：优化后 BARE_METAL 吞吐从 3.1 M/s 提升至 18.7 M/s (6.0x)，
+> 总结：优化后 BARE_METAL 吞吐从 3.1 M/s 提升至 18.7 M/s (6.0x)，
 > 主要得益于消除 shared_ptr 堆分配和 unordered_map 查找。
 
 ---
@@ -190,13 +190,13 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 | 零堆分配容器 | 容量上界编译期可确定 | 容量不可预测 |
 | 编译期配置 | 需适配多种硬件平台 | 单一目标平台 |
 
-> 共同原则: **将运行时决策提前到编译期，用编译期已知信息换取运行时零开销**。
+> 共同原则: 把运行时决策提前到编译期，用编译期已知的信息换取运行时零开销。
 
 ---
 
 ## 背压与优先级测试
 
-> **测试目的**: 验证系统过载时，高优先级消息（如紧急停止）不会被低优先级消息阻塞。
+> 测试目的: 验证系统过载时，高优先级消息（如紧急停止）不会被低优先级消息阻塞。
 
 ### 测试方法
 
@@ -225,17 +225,17 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 
 | 优先级 | 发送 | 成功 | 丢弃 | 丢弃率 | 状态 |
 |--------|------|------|------|--------|:----:|
-| **HIGH** | 30,000 | 30,000 | 0 | **0.0%** | 完全保护 |
+| HIGH | 30,000 | 30,000 | 0 | 0.0% | 完全保护 |
 | MEDIUM | 39,321 | 33,642 | 5,679 | 12.6% | 次级保护 |
 | LOW | 39,320 | 3,640 | 35,680 | 47.6% | 优先丢弃 |
 
-**结论**: 优先级准入控制验证通过！
+结论: 优先级准入控制验证通过。
 
 ---
 
 ## 端到端延迟测试
 
-> **测试目的**: 测量消息从发布到回调执行的完整延迟（包含队列等待时间）。
+> 测试目的: 测量消息从发布到回调执行的完整延迟（包含队列等待时间）。
 
 ### MCCC E2E 延迟 (10,000 样本)
 
@@ -244,9 +244,9 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 | Mean | 380 ns | 平均延迟 |
 | StdDev | 334 ns | 标准差 |
 | Min | 287 ns | 最小延迟 |
-| **P50** | **367 ns** | 中位数 |
+| P50 | 367 ns | 中位数 |
 | P95 | 396 ns | 95% 分位 |
-| **P99** | **449 ns** | 99% 分位 |
+| P99 | 449 ns | 99% 分位 |
 | Max | 17,649 ns | 最大延迟 |
 
 ### eventpp + AO E2E 延迟 (10,000 样本，优化后)
@@ -256,9 +256,9 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 | Mean | 11,715 ns | 平均延迟 |
 | StdDev | 2,888 ns | 标准差 |
 | Min | 966 ns | 最小延迟 |
-| **P50** | **11,588 ns** | 中位数 |
+| P50 | 11,588 ns | 中位数 |
 | P95 | 15,545 ns | 95% 分位 |
-| **P99** | **24,289 ns** | 99% 分位 |
+| P99 | 24,289 ns | 99% 分位 |
 | Max | 41,844 ns | 最大延迟 |
 
 ### E2E 延迟对比
@@ -270,8 +270,8 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 | P99 | 449 ns | 24,289 ns | 54x |
 | Max | 18 us | 42 us | 2.3x |
 
-**分析**:
-- MCCC P50 约 367 ns，P99 仅 449 ns，尾部延迟极其稳定（无锁设计）
+分析:
+- MCCC P50 约 367 ns，P99 仅 449 ns，尾部延迟很稳定（无锁设计）
 - eventpp + AO 优化后吞吐量大幅提升（8.5 M/s），但 E2E P50 约 11.6 us（内部批量调度开销）
 - MCCC 在 E2E 延迟上优势更加显著（P50 相差 32x）
 
@@ -295,8 +295,8 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 |------|--------|---------|------|
 | FULL_FEATURED | 5.84 +/- 0.28 M/s | 172 +/- 8 ns | 优先级+背压+统计 |
 | BARE_METAL | 18.70 +/- 1.38 M/s | 54 +/- 4 ns | 仅队列操作 |
-| **功能开销** | - | **~118 ns** | 全功能额外开销 |
-| **BARE_METAL 提升** | **220%** | **69% 降低** | 相对 FULL_FEATURED |
+| 功能开销 | - | ~118 ns | 全功能额外开销 |
+| BARE_METAL 提升 | 220% | 69% 降低 | 相对 FULL_FEATURED |
 
 ### eventpp Raw 测试 (优化后，值语义，10 轮统计)
 
@@ -364,8 +364,8 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 | OPT | 优化内容 | 主要收益 |
 |:---:|----------|----------|
 | 1 | SpinLock ARM YIELD / x86 PAUSE | 降低自旋功耗 |
-| 2 | CallbackList 批量预取 (8x 减少锁) | **P99 延迟大幅降低** |
-| 3 | EventDispatcher shared_mutex 读写分离 | **多线程 dispatch 不互斥** |
+| 2 | CallbackList 批量预取 (8x 减少锁) | P99 延迟大幅降低 |
+| 3 | EventDispatcher shared_mutex 读写分离 | 多线程 dispatch 不互斥 |
 | 4 | doEnqueue try_lock (非阻塞 freeList) | 减少入队锁竞争 |
 | 5 | PoolAllocator 池化分配器 | 小批量吞吐提升 |
 | 6 | Cache-line 对齐 | 消除 false sharing |
@@ -376,12 +376,12 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 
 | 指标 | 优化前 (vanilla v0.1.3) | 优化后 (OPT-1~8) | 提升 |
 |------|:----------------------:|:-----------------:|:----:|
-| Small 1K 吞吐量 | ~1.9 M/s | 6.05 M/s | **3.2x** |
-| Medium 10K 吞吐量 | ~1.6 M/s | 8.52 M/s | **5.3x** |
-| Large 100K 吞吐量 | ~1.5 M/s | 4.22 M/s | **2.8x** |
+| Small 1K 吞吐量 | ~1.9 M/s | 6.05 M/s | 3.2x |
+| Medium 10K 吞吐量 | ~1.6 M/s | 8.52 M/s | 5.3x |
+| Large 100K 吞吐量 | ~1.5 M/s | 4.22 M/s | 2.8x |
 | E2E P50 | ~1,200 ns | 11,588 ns | 吞吐-延迟权衡 |
 | E2E P99 | ~8,953 ns | 24,289 ns | 吞吐-延迟权衡 |
-| 持续吞吐 | ~1.25 M/s | 3.13 M/s | **2.5x** |
+| 持续吞吐 | ~1.25 M/s | 3.13 M/s | 2.5x |
 
 ### Raw eventpp 优化前后
 
@@ -389,7 +389,7 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 |------|:----------------------:|:-----------------:|:----:|
 | Medium 10K | 23.5 M/s | 22.2 M/s | 持平 |
 | VeryLarge 1M | 22.2 M/s | 24.8 M/s | +12% |
-| PoolQueueList 10K | - | 28.5 M/s | **+28%** (vs 默认) |
+| PoolQueueList 10K | - | 28.5 M/s | +28% (vs 默认) |
 
 > Raw 值语义场景下优化前后持平（单线程无锁竞争，OPT-2/3/4 不生效）。
 > PoolQueueList 在小批量场景下提供额外 28% 吞吐提升。
@@ -402,13 +402,13 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 
 | 指标 | 优化前 | 优化后 | 提升 |
 |------|--------|--------|------|
-| FULL_FEATURED 吞吐量 | ~2.0 M/s | ~5.8 M/s | **2.9x** |
-| BARE_METAL 吞吐量 | ~3.1 M/s | ~18.7 M/s | **6.0x** |
-| FULL 入队延迟 | ~505 ns | ~172 ns | **66% 降低** |
-| BARE 入队延迟 | ~318 ns | ~54 ns | **83% 降低** |
-| 功能开销 | ~187 ns | ~118 ns | **37% 降低** |
-| Publish 堆分配 | 1 次 (make_shared) | 0 次 | **消除** |
-| Borrow 堆分配 | 1 次 (unique_ptr) | 0 次 | **消除** |
+| FULL_FEATURED 吞吐量 | ~2.0 M/s | ~5.8 M/s | 2.9x |
+| BARE_METAL 吞吐量 | ~3.1 M/s | ~18.7 M/s | 6.0x |
+| FULL 入队延迟 | ~505 ns | ~172 ns | 66% 降低 |
+| BARE 入队延迟 | ~318 ns | ~54 ns | 83% 降低 |
+| 功能开销 | ~187 ns | ~118 ns | 37% 降低 |
+| Publish 堆分配 | 1 次 (make_shared) | 0 次 | 消除 |
+| Borrow 堆分配 | 1 次 (unique_ptr) | 0 次 | 消除 |
 
 ---
 
@@ -433,14 +433,14 @@ MCU 配置 (`-DQUEUE_DEPTH=256 -DCACHE_COHERENT=0`): RAM 从 ~16 MB 降至 ~23 K
 
 | 场景 | 推荐方案 | 原因 |
 |------|----------|------|
-| 安全关键系统 | **MCCC** | 优先级保护 + MISRA 合规 |
-| 需要背压控制 | **MCCC** | 分级丢弃验证通过 |
-| 尾部延迟敏感 | **MCCC** | P99 449 ns，Max 18 us |
-| 零依赖要求 | **MCCC** | 纯 C++17 实现 |
-| 高吞吐低延迟 | **MCCC** | BARE_METAL 18.7 M/s, 54 ns |
-| 嵌入式/MCU | **MCCC** | 编译宏裁剪，零堆分配 |
-| 已有 eventpp 代码 | **eventpp + AO (优化后)** | 迁移成本低，优化后 3.1 M/s 持续吞吐 |
-| 单线程高吞吐 | **eventpp PoolQueueList** | 29 M/s (小批量) |
+| 安全关键系统 | MCCC | 优先级保护 + MISRA 合规 |
+| 需要背压控制 | MCCC | 分级丢弃验证通过 |
+| 尾部延迟敏感 | MCCC | P99 449 ns，Max 18 us |
+| 零依赖要求 | MCCC | 纯 C++17 实现 |
+| 高吞吐低延迟 | MCCC | BARE_METAL 18.7 M/s, 54 ns |
+| 嵌入式/MCU | MCCC | 编译宏裁剪，零堆分配 |
+| 已有 eventpp 代码 | eventpp + AO (优化后) | 迁移成本低，优化后 3.1 M/s 持续吞吐 |
+| 单线程高吞吐 | eventpp PoolQueueList | 29 M/s (小批量) |
 
 ---
 
@@ -482,3 +482,5 @@ cmake .. -DCMAKE_BUILD_TYPE=Release && make -j$(nproc)
 ./eventpp_benchmark          # eventpp + Active Object 性能测试
 ./demo_mccc                  # 功能验证
 ```
+
+> 参考: [mccc-bus](https://gitee.com/liudegui/mccc-bus), [newosp](https://github.com/DeguiLiu/newosp)，面向嵌入式 Linux 的 C++17 header-only 基础库

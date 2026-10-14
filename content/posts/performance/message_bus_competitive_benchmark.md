@@ -9,7 +9,7 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 测试环境: Ubuntu 24.04, GCC 13.3, `-O3 -march=native`, Intel Xeon 64 vCPU
+> 测试环境: Ubuntu 24.04, GCC 13.3, `-O3 -march=native`, 64 vCPU x86-64 服务器
 >
 > 测试源码: [mccc-bus/examples/competitive_benchmark.cpp](https://gitee.com/liudegui/mccc-bus)
 
@@ -19,11 +19,11 @@ TocOpen: true
 
 工业嵌入式系统（激光雷达、机器人、传感器融合）中，消息总线是各模块之间解耦通信的核心组件。选型时面临三个矛盾:
 
-1. **吞吐量 vs 线程安全**: 最快的方案（EnTT）不支持多线程，最安全的方案（ZeroMQ）延迟最高
-2. **灵活性 vs 零堆分配**: `std::function` + `shared_ptr` 提供灵活回调，但每条消息 1-3 次 malloc
-3. **通用性 vs 嵌入式适配**: ZeroMQ 功能强大但静态库 2 MB，MCU 上跑不起来
+1. 吞吐量 vs 线程安全: 最快的方案（EnTT）不支持多线程，最安全的方案（ZeroMQ）延迟最高
+2. 灵活性 vs 零堆分配: `std::function` + `shared_ptr` 提供灵活回调，但每条消息 1-3 次 malloc
+3. 通用性 vs 嵌入式适配: ZeroMQ 功能强大但静态库 2 MB，MCU 上跑不起来
 
-市面上的消息总线库各有侧重，但很少有人在**同一硬件、同一测试条件**下横向对比。本文选取 6 个代表性开源项目，统一测试后给出选型建议。
+市面上的消息总线库各有侧重，但很少有人在相同硬件、相同测试条件下横向对比。本文选取 6 个代表性开源项目，统一测试后给出选型建议。
 
 ---
 
@@ -31,7 +31,7 @@ TocOpen: true
 
 | 项目 | Stars | 类型 | 标准 | Header-only |
 |------|:-----:|------|:----:|:-----------:|
-| [MCCC](https://gitee.com/liudegui/mccc-bus) | -- | Lock-free MPSC 消息总线 | C++17 | 是 |
+| [MCCC](https://gitee.com/liudegui/mccc-bus) | 自研 | Lock-free MPSC 消息总线 | C++17 | 是 |
 | [eventpp](https://github.com/wqking/eventpp) | ~2,000 | 事件队列/分发器 | C++14 | 是 |
 | [EnTT](https://github.com/skypjack/entt) | ~10,000 | ECS + 事件分发器 | C++17 | 是 |
 | [sigslot](https://github.com/palacaze/sigslot) | ~600 | 信号/槽 | C++14 | 是 |
@@ -65,7 +65,7 @@ TocOpen: true
 | sigslot | 同步 emit (单线程) | 信号直接调用槽函数，无队列 |
 | ZeroMQ | push/pull inproc (双线程) | 进程内 socket 传输 |
 
-> 注意: EnTT 和 sigslot 是同步方案，不存在真正的"异步队列"。它们的高吞吐数据不能与异步方案直接对比：同步方案没有线程同步开销。
+> 注意: EnTT 和 sigslot 是同步方案，没有异步队列。它们的高吞吐数据不能与异步方案直接对比：同步方案没有线程同步开销。
 
 ---
 
@@ -92,12 +92,12 @@ xychart-beta
 | eventpp Raw | 5.11 | 49 | std::mutex + std::list | 是 |
 | ZeroMQ inproc | 4.48 | 221 | Socket 内部锁 | 是 |
 
-**关键发现**:
+关键发现:
 
-- **EnTT 一骑绝尘 (115 M/s)**，但它本质是 `vector::push_back`，不支持多线程。这个数字说明的是"无同步开销时 CPU 能多快"
-- **sigslot 同样快 (26 M/s)**，因为它是同步直接调用，没有队列
-- 在**异步线程安全**方案中，MCCC BARE_METAL 以 31 M/s 领先，是 eventpp HighPerf 的 **4.5x**，eventpp Raw 的 **6.1x**
-- MCCC 开启全部安全特性后 (FULL) 仍有 20.6 M/s，是 eventpp Raw 的 **4.0x**
+- EnTT 最快 (115 M/s)，但它本质是 `vector::push_back`，不支持多线程。这个数字说明的是"无同步开销时 CPU 能多快"
+- sigslot 同样快 (26 M/s)，因为它是同步直接调用，没有队列
+- 在异步线程安全方案中，MCCC BARE_METAL 以 31 M/s 领先，是 eventpp HighPerf 的 4.5x，eventpp Raw 的 6.1x
+- MCCC 开启全部安全特性后 (FULL) 仍有 20.6 M/s，是 eventpp Raw 的 4.0x
 
 ### 4.2 端到端吞吐量 (生产者 + 消费者并发)
 
@@ -108,7 +108,7 @@ xychart-beta
 | MCCC SPSC FULL | 7.04 | 143 |
 | MCCC MPSC FULL | 6.82 | 148 |
 
-E2E 吞吐量受消费者处理速度约束，低于纯入队吞吐量。但这才是更贴近真实系统的指标。
+E2E 吞吐量受消费者处理速度约束，低于纯入队吞吐量。这个指标更贴近真实系统。
 
 ### 4.3 不同载荷大小的影响
 
@@ -121,9 +121,9 @@ E2E 吞吐量受消费者处理速度约束，低于纯入队吞吐量。但这�
 | 128B | 4.37 M/s | 4.50 M/s | 30.13 M/s | 1.98 M/s |
 | 256B | 4.09 M/s | 3.53 M/s | 31.39 M/s | 2.14 M/s |
 
-- **sigslot** 不受载荷大小影响（同步调用，不拷贝入队）
-- **ZeroMQ** 受影响最大（Socket 协议栈的拷贝成本随载荷线性增长）
-- **MCCC** 和 **eventpp** 在大载荷时差距缩小，因为内存拷贝成为共同瓶颈
+- sigslot 不受载荷大小影响（同步调用，不拷贝入队）
+- ZeroMQ 受影响最大（Socket 协议栈的拷贝成本随载荷线性增长）
+- MCCC 和 eventpp 在大载荷时差距缩小，因为内存拷贝成为共同瓶颈
 
 ---
 
@@ -139,20 +139,20 @@ E2E 吞吐量受消费者处理速度约束，低于纯入队吞吐量。但这�
 | eventpp Raw | 49 | 50 | 50 | 1.02x |
 | ZeroMQ | 221 | 228 | 228 | 1.03x |
 
-**MCCC 的尾部延迟极其稳定**: P99/P50 仅 1.03x，说明 CAS 操作不会产生长尾。对嵌入式实时系统来说，稳定的尾部延迟比极致的中位延迟更有价值。
+MCCC 的尾部延迟很稳定: P99/P50 仅 1.03x，说明 CAS 操作不会产生长尾。对嵌入式实时系统来说，稳定的尾部延迟比极低的中位延迟更有价值。
 
-BARE -> FULL 的功能开销 = 48 - 32 = **16 ns/消息**（优先级检查 + 背压判断 + 统计计数）。
+BARE -> FULL 的功能开销 = 48 - 32 = 16 ns/消息（优先级检查 + 背压判断 + 统计计数）。
 
 ---
 
 ## 6. 队列溢出效应: 真实吞吐量比表观数据低 30%
 
-上述 Publish-only 测试使用 1M 消息写入 128K 深度队列。队列满后，后续 Publish 快速失败返回，导致**表观吞吐量偏高**。通过对照实验揭示真实吞吐量:
+上述 Publish-only 测试使用 1M 消息写入 128K 深度队列。队列满后，后续 Publish 快速失败返回，导致表观吞吐量偏高。下面用对照实验看真实吞吐量:
 
 | 实验 | BARE (M/s) | FULL (M/s) | 说明 |
 |------|:---------:|:---------:|------|
 | 1M 无消费者 | 31.09 | 20.61 | 含 ~872K fast-path failure，表观偏高 |
-| **100K 无消费者** | **22.95** | **17.51** | 100K < 128K，全部成功入队，**真实吞吐量** |
+| 100K 无消费者 | 22.95 | 17.51 | 100K < 128K，全部成功入队，真实吞吐量 |
 | 1M 有消费者 | 15.95 | 7.19 | 跨核 cache coherence 成本 |
 
 ```mermaid
@@ -163,9 +163,9 @@ xychart-beta
     bar [31.09, 22.95, 15.95]
 ```
 
-**分析**:
+分析:
 
-- **真实纯发布吞吐量** (100K 实验) 为 22.95 M/s，比表观值低 ~26%。这是实测得出的数据，发布基准测试时不应回避这一点
+- 真实纯发布吞吐量 (100K 实验) 为 22.95 M/s，比表观值低约 26%
 - 加入消费者后吞吐量再降 ~30%（22.95 -> 15.95 M/s），这是跨核 cache line 竞争的固有成本
 - FULL 模式下 cache coherence 成本更高（17.51 -> 7.19，-59%），因为 shared_mutex 读锁在高频场景成为瓶颈
 
@@ -178,8 +178,8 @@ MCCC v2.0 新增 `ProcessBatchWith<Visitor>` 方法，绕过回调表和 `shared
 | 消费路径 | MPSC BARE | MPSC FULL | SPSC FULL |
 |----------|:---------:|:---------:|:---------:|
 | ProcessBatch (回调表) | 16.46 M/s | 6.82 M/s | 7.04 M/s |
-| ProcessBatchWith (Visitor) | 15.28 M/s | **10.20 M/s** | **10.59 M/s** |
-| 变化 | -7% | **+50%** | **+50%** |
+| ProcessBatchWith (Visitor) | 15.28 M/s | 10.20 M/s | 10.59 M/s |
+| 变化 | -7% | +50% | +50% |
 
 FULL 模式下 +50% 的提升来自绕过 `shared_mutex` 读锁和回调表间接调用。BARE 模式本身无 shared_mutex 开销，Visitor 的分支匹配反而略有损耗。
 
@@ -191,17 +191,17 @@ FULL 模式下 +50% 的提升来自绕过 `shared_mutex` 读锁和回调表间�
 
 | 特性 | MCCC | eventpp | EnTT | sigslot | ZeroMQ | QP/C++ |
 |------|:----:|:-------:|:----:|:-------:|:------:|:------:|
-| 异步队列 | Y | Y | Y | -- | Y | Y |
-| 类型安全分发 | Y | Y | Y | Y | -- | -- |
-| 优先级准入 | Y | -- | -- | -- | -- | Y |
-| 背压控制 | Y | -- | -- | -- | Y | -- |
-| Lock-free | Y | 部分 | -- | -- | 部分 | -- |
-| 零堆分配 (热路径) | Y | -- | -- | Y | -- | Y |
-| 线程安全 | Y | Y | -- | Y | Y | Y |
-| Header-only | Y | Y | Y | Y | -- | -- |
-| MISRA 合规 | Y | -- | -- | -- | -- | Y |
-| 嵌入式可裁剪 | Y | -- | -- | -- | -- | Y |
-| IPC/网络传输 | -- | -- | -- | -- | Y | -- |
+| 异步队列 | Y | Y | Y | 无 | Y | Y |
+| 类型安全分发 | Y | Y | Y | Y | 无 | 无 |
+| 优先级准入 | Y | 无 | 无 | 无 | 无 | Y |
+| 背压控制 | Y | 无 | 无 | 无 | Y | 无 |
+| Lock-free | Y | 部分 | 无 | 无 | 部分 | 无 |
+| 零堆分配 (热路径) | Y | 无 | 无 | Y | 无 | Y |
+| 线程安全 | Y | Y | 无 | Y | Y | Y |
+| Header-only | Y | Y | Y | Y | 无 | 无 |
+| MISRA 合规 | Y | 无 | 无 | 无 | 无 | Y |
+| 嵌入式可裁剪 | Y | 无 | 无 | 无 | 无 | Y |
+| IPC/网络传输 | 无 | 无 | 无 | 无 | Y | 无 |
 
 ### 资源消耗
 
@@ -231,6 +231,7 @@ FULL 模式下 +50% 的提升来自绕过 `shared_mutex` 读锁和回调表间�
 
 ```mermaid
 flowchart TB
+    classDef box fill:#e8eef7,stroke:#5b6b9c,color:#1a1a1a
     subgraph MCCC["MCCC: Lock-free MPSC"]
         direction LR
         P1["Producer"] -->|CAS| RB["Ring Buffer\n128K slots\nEnvelope 内嵌"]
@@ -248,6 +249,8 @@ flowchart TB
         P3["Producer"] -->|socket| PROTO["协议栈\n序列化"]
         PROTO -->|"recv"| CB3["Handler"]
     end
+
+    class P1,RB,CB,P2,LIST,CB2,P3,PROTO,CB3 box
 ```
 
 核心差异在同步机制:
@@ -290,10 +293,10 @@ flowchart TB
 
 没有"最好"的消息总线，只有最适合场景的选择:
 
-- 如果你的系统**不需要多线程**，EnTT 和 sigslot 提供最高的单线程吞吐量，没必要引入异步队列的复杂度
-- 如果你需要**异步、线程安全、且对延迟敏感**，MCCC 在同类方案中性能领先（BARE_METAL 31 M/s，是 eventpp 的 4.5x），且提供优先级准入和背压控制
-- 如果你的系统需要**跨进程/网络通信**，ZeroMQ 是唯一选择，但要接受 2 MB 的体积和 ~220 ns 的延迟
-- 如果你在做**安全关键系统** (MISRA 合规、零堆分配、确定性内存)，选择范围缩小到 MCCC 和 QP/C++
+- 如果你的系统不需要多线程，EnTT 和 sigslot 提供最高的单线程吞吐量，没必要引入异步队列的复杂度
+- 如果你需要异步、线程安全、且对延迟敏感，MCCC 在同类方案中性能领先（BARE_METAL 31 M/s，是 eventpp 的 4.5x），且提供优先级准入和背压控制
+- 如果你的系统需要跨进程/网络通信，ZeroMQ 是唯一选择，但要接受 2 MB 的体积和 ~220 ns 的延迟
+- 如果你在做安全关键系统 (MISRA 合规、零堆分配、确定性内存)，选择范围缩小到 MCCC 和 QP/C++
 
 本文所有数据均为同一硬件、同一编译器、同一测试条件下的实测结果，测试源码开源可复现。
 
@@ -301,4 +304,4 @@ flowchart TB
 
 > 参考: [MCCC 源码](https://gitee.com/liudegui/mccc-bus),
 > [eventpp](https://github.com/wqking/eventpp),
-> [newosp](https://github.com/DeguiLiu/newosp) (MCCC 的架构设计后来融入了 newosp 基础设施库)
+> [newosp](https://github.com/DeguiLiu/newosp) (MCCC 的架构设计后来融入了 newosp 基础设施库，面向嵌入式 Linux 的 C++17 header-only 基础库)

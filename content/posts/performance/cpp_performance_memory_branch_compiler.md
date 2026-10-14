@@ -4,7 +4,7 @@ date: 2026-02-16T09:40:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "ARM", "embedded", "performance", "RTOS", "state-machine", "cache", "lock-free"]
-summary: "系统级性能优化不是微调指令，而是在编译器、数据布局、并发架构三个层面做出正确选择。本文从编译器内建函数、编译期多态替代虚函数、零堆分配热路径、缓存友好布局、无锁并发、Active Object 去锁化架构、行为树并行启动、实时调度八个方向，结合 newosp 基础设施库的实际代码，给出可落地的嵌入式 C/C++ 优化实践。"
+summary: "系统级性能优化是在编译器、数据布局、并发架构三个层面做出的选择。本文按编译器内建函数、编译期多态替代虚函数、零堆分配热路径、缓存友好布局、无锁并发、Active Object 去锁化、行为树并行启动、实时调度八个方向，结合 newosp 基础库的代码，给出可落地的嵌入式 C/C++ 优化实践。"
 ShowToc: true
 TocOpen: true
 ---
@@ -13,11 +13,11 @@ TocOpen: true
 
 ### 度量、定位、验证
 
-性能优化的第一条铁律: **不要猜**。
+性能优化的第一条原则: 不要猜。
 
-- **度量** (Measure): 用 perf、DWT 周期计数器、Google Benchmark 建立基线数据
-- **定位** (Locate): 用火焰图或 profiler 找到真正的热点，不靠"感觉慢"的地方
-- **验证** (Verify): 每次改动后重新跑基准，确认改进是真实且稳定的
+- 度量 (Measure): 用 perf、DWT 周期计数器、Google Benchmark 建立基线数据
+- 定位 (Locate): 用火焰图或 profiler 找到真正的热点，不靠"感觉慢"的地方
+- 验证 (Verify): 每次改动后重新跑基准，确认改进是真实且稳定的
 
 违反这条定律的后果可能是"优化"反而让性能变差。一个典型案例: 在 ARMv8 上用 NEON SIMD 优化 CRC32，获得了 8 倍加速；但用同样的思路优化简单字节累加校验和，性能反而下降 20%，SIMD 的寄存器加载/存储开销超过了并行计算的收益。
 
@@ -36,7 +36,7 @@ TocOpen: true
 | 分支预测失败 | 10-20 |
 | 虚函数调用 | 10-30 (含 cache miss) |
 
-优化的核心不是让 CPU 算得更快，而是**减少数据搬运和间接跳转**:
+优化的核心是减少数据搬运和间接跳转:
 
 - 传指针，不传对象
 - DMA 搬运，不用 CPU 拷贝
@@ -47,15 +47,15 @@ TocOpen: true
 
 架构决定上限，算法决定下限，微优化只影响常数因子:
 
-1. **算法复杂度**：O(n) → O(log n) 的改进远超任何微优化
-2. **架构设计**：零拷贝、无锁、核绑定等系统级决策
-3. **数据布局**：缓存友好的内存组织
-4. **编译器提示**：分支预测、预取、强制内联
-5. **指令级优化**：SIMD、汇编 (投入大收益不确定)
+1. 算法复杂度：O(n) → O(log n) 的改进远超任何微优化
+2. 架构设计：零拷贝、无锁、核绑定等系统级决策
+3. 数据布局：缓存友好的内存组织
+4. 编译器提示：分支预测、预取、强制内联
+5. 指令级优化：SIMD、汇编 (投入大收益不确定)
 
 ### 跨平台开发模型: 主机优化，目标部署
 
-在 MCU 上调试和性能分析工具极其有限。一个高效的实践是**将核心算法封装为平台无关的 C/C++ 模块**:
+在 MCU 上调试和性能分析工具极其有限。一个高效的实践是将核心算法封装为平台无关的 C/C++ 模块:
 
 1. 通过回调函数或 HAL 层抽象硬件操作 (SPI/UART/DMA)
 2. 在 Linux 上用 perf、Valgrind、gdb 进行性能分析和调试
@@ -69,7 +69,7 @@ TocOpen: true
 
 ### 强制内联
 
-热点函数的内联化是最基础的优化手段。编译器通常会自主决定是否内联，但在嵌入式和实时系统中，关键路径上的短小函数需要**保证**内联:
+热点函数的内联化是最基础的优化手段。编译器通常会自主决定是否内联，但在嵌入式和实时系统中，关键路径上的短小函数需要保证内联:
 
 ```cpp
 // GCC/Clang: __attribute__((always_inline))
@@ -91,7 +91,7 @@ FORCE_INLINE uint32_t FastHash(uint32_t key) {
 
 内联消除了函数调用的固定开销 (参数压栈/出栈、返回地址保存、栈帧创建)，更重要的是让编译器能跨函数边界做常量传播和死代码消除。
 
-注意：过度内联会导致代码膨胀 (code bloat)，增加指令缓存压力。只对**热路径上的短小函数**使用强制内联。
+注意：过度内联会导致代码膨胀 (code bloat)，增加指令缓存压力。只对热路径上的短小函数使用强制内联。
 
 ### 分支预测提示: `__builtin_expect`
 
@@ -156,7 +156,7 @@ void TraverseList(Node* head) {
 }
 ```
 
-newosp 的消息总线在批处理消费循环中使用了预取:
+[newosp](https://github.com/DeguiLiu/newosp) 的消息总线在批处理消费循环中使用了预取:
 
 ```cpp
 // newosp bus.hpp: 批处理循环中预取下一个 ring buffer 节点
@@ -173,9 +173,9 @@ for (uint32_t i = 0; i < batch_count; ++i) {
 
 | MCU 类型 | `__builtin_expect` | `__builtin_prefetch` | 实际收益 |
 |----------|-------------------|---------------------|----------|
-| Cortex-M0/M3 | 编译支持 | 硬件无缓存，NOP | 分支优化有限，预取无效 |
-| Cortex-M4/M7 | 编译支持 | M7 有 D-Cache | M7 两者均有收益 |
-| Cortex-A7/A9/A53 | 支持 | 多级缓存 | 两者均有显著收益 |
+| 无缓存的入门级 MCU | 编译支持 | 硬件无缓存，NOP | 分支优化有限，预取无效 |
+| 带 D-Cache 的 MCU | 编译支持 | 部分型号带 D-Cache | 两者均有收益 |
+| ARM 应用处理器 | 支持 | 多级缓存 | 两者均有显著收益 |
 
 在没有 D-Cache 的 MCU 上，`__builtin_prefetch` 会被编译器生成为 NOP，不会造成错误，但也没有任何收益。
 
@@ -187,9 +187,9 @@ for (uint32_t i = 0; i < batch_count; ++i) {
 
 在嵌入式和实时系统中，虚函数有三个代价:
 
-1. **vtable 间接跳转**: 每次虚函数调用需要先读 vtable 指针，再读函数地址，两次内存访问。如果 vtable 不在缓存中，代价可达 100+ 周期
-2. **无法内联**: 编译器在编译期不知道虚函数的实际目标，无法进行内联优化
-3. **RTTI 内存**: 启用 RTTI 后每个多态类型增加类型信息，在 MCU 上不可接受
+1. vtable 间接跳转: 每次虚函数调用需要先读 vtable 指针，再读函数地址，两次内存访问。如果 vtable 不在缓存中，代价可达 100+ 周期
+2. 无法内联: 编译器在编译期不知道虚函数的实际目标，无法进行内联优化
+3. RTTI 内存: 启用 RTTI 后每个多态类型增加类型信息，在 MCU 上不可接受
 
 MISRA C++ 2008 对虚函数和 RTTI 有严格限制 (Rule 5-0-1, Rule 5-0-2)。在 `-fno-rtti -fno-exceptions` 编译模式下，需要编译期替代方案。
 
@@ -587,7 +587,7 @@ class SpscRingBuffer {
 
 两个关键优化:
 
-1. **`if constexpr` 双路径**: 对于 trivially copyable 类型 (如 `int`、`float`、POD 结构体)，使用 `memcpy` 批量拷贝，不做逐元素赋值。这让编译器生成 SIMD 或 REP MOVSB 指令:
+1. `if constexpr` 双路径: 对于 trivially copyable 类型 (如 `int`、`float`、POD 结构体)，使用 `memcpy` 批量拷贝，不做逐元素赋值。这让编译器生成 SIMD 或 REP MOVSB 指令:
 
 ```cpp
 if constexpr (kTriviallyCopyable) {
@@ -604,7 +604,7 @@ if constexpr (kTriviallyCopyable) {
 }
 ```
 
-2. **FakeTSO 模式**: 在单核 MCU 上 (Cortex-M0/M3/M4)，不存在多核缓存一致性问题。将 acquire/release 降级为 relaxed + `atomic_signal_fence` (只阻止编译器重排，不发出 DMB 硬件指令)，消除内存屏障开销。
+2. FakeTSO 模式: 在单核 MCU 上，不存在多核缓存一致性问题。将 acquire/release 降级为 relaxed + `atomic_signal_fence` (只阻止编译器重排，不发出 DMB 硬件指令)，消除内存屏障开销。
 
 ### MPSC Lock-Free Ring Buffer
 
@@ -677,7 +677,7 @@ static void CpuRelax() noexcept {
 
 ### 批处理: 减少原子操作频率
 
-逐条消息更新原子变量的开销很高。newosp 的做法是**在循环内不更新共享状态，循环结束后一次性提交**:
+逐条消息更新原子变量的开销很高。newosp 的做法是在循环内不更新共享状态，循环结束后一次性提交:
 
 ```cpp
 // 消费者批处理: 一次处理多条消息，最后一次性更新 consumer_pos_
@@ -759,9 +759,9 @@ void on_sensor_event(void) {
 
 优化锁的正确步骤是"度量 → 缩小 → 替代":
 
-**第一步: 定位热锁**。用 perf lock / DWT 埋点找到争用最激烈的锁。不要凭感觉猜。
+第一步: 定位热锁。用 perf lock / DWT 埋点找到争用最激烈的锁。不要凭感觉猜。
 
-**第二步: 最小化临界区**。持锁时间越短越好。锁内只做 O(1) 操作 (指针交换、标志位修改)，耗时操作 (内存分配、I/O) 移到锁外:
+第二步: 最小化临界区。持锁时间越短越好。锁内只做 O(1) 操作 (指针交换、标志位修改)，耗时操作 (内存分配、I/O) 移到锁外:
 
 ```cpp
 // 错误: 锁内执行耗时操作
@@ -777,13 +777,13 @@ shared_queue.push(data);      // 仅保护必要操作
 lock.unlock();
 ```
 
-**第三步: 自适应自旋**。对持锁时间极短的场景，用自旋锁避免上下文切换。但纯自旋浪费 CPU，参见上文 AdaptiveBackoff 三阶段策略。
+第三步: 自适应自旋。对持锁时间极短的场景，用自旋锁避免上下文切换。但纯自旋浪费 CPU，参见上文 AdaptiveBackoff 三阶段策略。
 
-**第四步: 无锁替代**。争用极其激烈的核心路径上，用 SPSC/MPSC Ring Buffer 替代锁。
+第四步: 无锁替代。争用极其激烈的核心路径上，用 SPSC/MPSC Ring Buffer 替代锁。
 
 ### 7.2 事件驱动 Active Object: 消灭共享状态
 
-传统多线程编程的核心问题是**共享状态 + 锁**。Active Object 模式从架构上消除这个问题:
+传统多线程编程的核心问题是共享状态 + 锁。Active Object 模式从架构上消除这个问题:
 
 - 每个 Active Object (AO) 拥有私有事件队列和私有线程
 - AO 之间只通过事件通信，没有共享变量
@@ -930,9 +930,9 @@ void SystemInit() {
 
 用行为树 (Behavior Tree) 替代串行初始化:
 
-- **Parallel 节点**: 并行启动无依赖关系的模块
-- **Sequence 节点**: 串行执行有依赖关系的阶段
-- **Decorator 节点**: 条件控制 (延迟加载、CPU 负载门控)
+- Parallel 节点: 并行启动无依赖关系的模块
+- Sequence 节点: 串行执行有依赖关系的阶段
+- Decorator 节点: 条件控制 (延迟加载、CPU 负载门控)
 
 ```
 SystemBoot (Sequence)
@@ -999,7 +999,7 @@ bool isp_should_init(void* bb) {
 
 ### 7.5 异构 SoC 分层流水线
 
-在 Zynq-7000 等 FPGA+ARM 异构 SoC 上，任务应按计算复杂度分级:
+在 FPGA+ARM 异构 SoC 上，任务应按计算复杂度分级:
 
 | 任务等级 | 典型操作 | 执行单元 |
 |----------|---------|---------|
@@ -1019,15 +1019,18 @@ graph LR
     F --> G[DMA → Core 1]
     D --> H[输出]
     G --> H
+
+    classDef path fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    class A,B,C,D,E,F,G,H path
 ```
 
 核心原则:
 
-- **核 0 专职 I/O**: 数据接收、DMA 配置、中断处理
-- **核 1 专职计算**: 算法处理、协议栈、结果封装
-- **CPU 亲和性绑定**: 避免任务在核间迁移导致的缓存抖动
+- 核 0 专职 I/O: 数据接收、DMA 配置、中断处理
+- 核 1 专职计算: 算法处理、协议栈、结果封装
+- CPU 亲和性绑定: 避免任务在核间迁移导致的缓存抖动
 
-> 详细的 Zynq-7000 架构设计参见 [Zynq-7000 激光雷达点云处理: FPGA + 双核 ARM 的架构设计](/tech-notes/posts/architecture/fpga_arm_soc_lidar_feasibility/)
+> 详细的架构设计参见 [激光雷达点云处理: FPGA + 双核 ARM 的架构设计](/tech-notes/posts/architecture/fpga_arm_soc_lidar_feasibility/)
 
 ---
 
@@ -1037,7 +1040,7 @@ graph LR
 
 在 Linux 实时系统中，三项配置决定了延迟的确定性:
 
-**1. CPU 亲和性绑定**：消除缓存迁移
+1. CPU 亲和性绑定：消除缓存迁移
 
 ```cpp
 void BindToCpu(int cpu_id) {
@@ -1050,7 +1053,7 @@ void BindToCpu(int cpu_id) {
 
 线程在核间迁移时，L1/L2 缓存全部失效。绑定后可减少 20-40% 的缓存 miss。
 
-**2. 内存锁定**：消除页错误
+2. 内存锁定：消除页错误
 
 ```cpp
 mlockall(MCL_CURRENT | MCL_FUTURE);
@@ -1060,7 +1063,7 @@ mlockall(MCL_CURRENT | MCL_FUTURE);
 
 实时线程被页错误中断会导致毫秒级的不确定延迟。`mlockall` 把所有虚拟内存页锁定在物理内存中。
 
-**3. 实时调度策略**：保证优先级
+3. 实时调度策略：保证优先级
 
 ```cpp
 struct sched_param param;
@@ -1115,17 +1118,17 @@ SIMD (单指令多数据) 理论上可以提供 4-16 倍的并行加速，但实
 | 存在数据依赖链 | 无法并行 |
 | 分支密集 | 向量化困难 |
 
-**实测案例**: ARM NEON 优化 CRC32 获得 8 倍加速 (适合并行)，但同样手法优化简单字节累加校验和反而下降 20% (加载/存储开销大于并行收益)。
+实测案例: ARM NEON 优化 CRC32 获得 8 倍加速 (适合并行)，但同样手法优化简单字节累加校验和反而下降 20% (加载/存储开销大于并行收益)。
 
 > 完整实验数据参见 [ARMv8 CRC 性能实测](/tech-notes/posts/performance/armv8_crc32_hardware_vs_neon_benchmark/)
 
 ### DMA 零拷贝
 
-高吞吐 I/O 场景的正确做法不是优化 `memcpy`，而是用 DMA 消除 CPU 拷贝:
+高吞吐 I/O 场景应当用 DMA 消除 CPU 拷贝，`memcpy` 的微调在这里收益有限:
 
-- **DMA + 双缓冲**: 外设通过 DMA 写入缓冲区 A，CPU 处理缓冲区 B，完成后交换
-- **Scatter-Gather DMA**: 支持非连续内存区域的零拷贝传输
-- **中断/轮询混合**: 低流量用中断 (低 CPU 占用)，高流量切换到批量轮询 (低延迟):
+- DMA + 双缓冲: 外设通过 DMA 写入缓冲区 A，CPU 处理缓冲区 B，完成后交换
+- Scatter-Gather DMA: 支持非连续内存区域的零拷贝传输
+- 中断/轮询混合: 低流量用中断 (低 CPU 占用)，高流量切换到批量轮询 (低延迟):
 
 ```cpp
 void AdaptivePolling() {
@@ -1146,7 +1149,7 @@ void AdaptivePolling() {
 
 ### MCU: DWT 周期计数
 
-Cortex-M3/M4/M7 内置 DWT (Data Watchpoint and Trace) 周期计数器，精度为 1 个 CPU 周期:
+多数 Cortex-M 系列 MCU 内置 DWT (Data Watchpoint and Trace) 周期计数器，精度为 1 个 CPU 周期:
 
 ```cpp
 // 启用 DWT
@@ -1190,7 +1193,7 @@ static void BM_ProcessMessage(benchmark::State& state) {
 BENCHMARK(BM_ProcessMessage)->Range(1, 1 << 20);
 ```
 
-**基准测试原则**:
+基准测试原则:
 
 1. 预热: 丢弃前几次结果，避免冷缓存影响
 2. 多次采样: 取中位数而非平均值 (排除异常值)
@@ -1247,8 +1250,8 @@ BENCHMARK(BM_ProcessMessage)->Range(1, 1 << 20);
 
 几条经验:
 
-1. **架构先行**: "分层分级 + 零拷贝 + 核绑定"带来的收益远超微优化
-2. **实测驱动**: 不量化就不优化，不验证就不上线
-3. **零堆热路径**: 每秒执行百万次的路径上，杜绝 malloc/new
-4. **消灭共享**: 事件驱动 + 私有状态 > mutex + 共享变量
-5. **批处理**: 循环内累积，循环外提交，减少原子操作和系统调用频率
+1. 架构先行: "分层分级 + 零拷贝 + 核绑定"带来的收益远超微优化
+2. 实测驱动: 不量化就不优化，不验证就不上线
+3. 零堆热路径: 每秒执行百万次的路径上，杜绝 malloc/new
+4. 消灭共享: 事件驱动 + 私有状态 > mutex + 共享变量
+5. 批处理: 循环内累积，循环外提交，减少原子操作和系统调用频率

@@ -4,14 +4,14 @@ date: 2026-02-16T10:00:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "deadlock", "priority-inversion", "mutex", "SCHED_FIFO", "PTHREAD_PRIO_INHERIT", "std::scoped_lock", "TSan", "ARM", "embedded", "RTOS", "lock-ordering", "re-entrancy"]
-summary: "死锁与优先级反转的实战指南。通过 6 个可编译运行的 C++ 示例，复现经典 AB-BA 死锁、回调重入死锁、自死锁、优先级反转等场景，逐一给出工程修复方案（全局锁序、std::scoped_lock、try_lock 回退、PTHREAD_PRIO_INHERIT、无锁架构）。纠正「编译优化导致死锁」的常见误解。附 TSan/lockdep 检测方法。本文为实战篇，与姊妹篇《嵌入式系统死锁防御》形成互补。"
+summary: "死锁与优先级反转的实战指南。用 6 个可编译运行的 C++ 示例复现 AB-BA 死锁、回调重入死锁、自死锁和优先级反转，逐一给出修复方案（全局锁序、std::scoped_lock、try_lock 回退、PTHREAD_PRIO_INHERIT、无锁架构），并纠正「编译优化导致死锁」的误解。"
 ShowToc: true
 TocOpen: true
 ---
 
-> 本文是**实战篇**，通过可编译运行的代码示例复现死锁与优先级反转，并给出修复方案。
+> 本文是实战篇，通过可编译运行的代码示例复现死锁与优先级反转，并给出修复方案。
 >
-> **姊妹篇**: [嵌入式系统死锁防御: 从有序锁到无锁架构的工程实践](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/)，侧重 newosp 框架的架构级防御策略（无锁 MPSC 总线、SPSC 队列、Collect-Release-Execute 模式、LIFO 有序关停等），读者可先阅读本文理解问题场景，再阅读姊妹篇学习系统级解决方案。
+> 姊妹篇: [嵌入式系统死锁防御: 从有序锁到无锁架构的工程实践](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/)，侧重 [newosp](https://github.com/DeguiLiu/newosp)（面向嵌入式 Linux 的 C++17 header-only 基础库）框架的架构级防御策略（无锁 MPSC 总线、SPSC 队列、Collect-Release-Execute 模式、LIFO 有序关停等），读者可先阅读本文理解问题场景，再阅读姊妹篇学习系统级解决方案。
 >
 > 相关文章:
 > - [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/)，生产环境的锁竞争量化定位
@@ -31,11 +31,11 @@ TocOpen: true
 | 维度 | 本文（实战篇） | 姊妹篇（架构篇） |
 |------|---------------|-----------------|
 | 侧重 | **复现问题 + 逐个修复** | **架构级根除** |
-| 代码风格 | 独立可编译示例 | newosp 框架源码 |
+| 代码风格 | 独立可编译示例 | [newosp](https://github.com/DeguiLiu/newosp) 框架源码 |
 | 读者画像 | 遇到死锁 bug 需要定位修复 | 设计新系统需要防御策略 |
 | 覆盖范围 | AB-BA 死锁、重入死锁、自死锁、优先级反转 | 无锁 MPSC/SPSC、自旋锁退避、Collect-Release-Execute、LIFO 关停 |
 
-建议阅读顺序: **本文（理解问题） -> 姊妹篇（系统方案）**。
+建议阅读顺序: 本文（理解问题） -> 姊妹篇（系统方案）。
 
 ---
 
@@ -79,7 +79,7 @@ int main() {
 }
 ```
 
-运行结果: **程序挂起，永不退出**。
+运行结果: 程序挂起，永不退出。
 
 ```
 $ ./deadlock_abba
@@ -109,7 +109,7 @@ gantt
 
 ### 1.2 修复方案一: 统一锁序
 
-最简单直接的修复: **所有线程以相同顺序获取锁**。
+最简单直接的修复: 所有线程以相同顺序获取锁。
 
 ```cpp
 void thread1_fixed() {
@@ -174,7 +174,7 @@ void thread2_scoped() {
 
 这保证不会出现「持有一把锁等待另一把」的情况，从根本上打破了循环等待条件。
 
-**嵌入式注意**: `std::scoped_lock` 适用于 Linux 用户空间。RTOS 环境（FreeRTOS、RT-Thread）无 C++ 标准库，需使用姊妹篇中的 `lock_multiple()` C 实现。
+嵌入式注意: `std::scoped_lock` 适用于 Linux 用户空间。RTOS 环境（FreeRTOS、RT-Thread）无 C++ 标准库，需使用姊妹篇中的 `lock_multiple()` C 实现。
 
 ### 1.4 修复方案三: try_lock + 回退
 
@@ -197,7 +197,7 @@ void thread2_trylock() {
 }
 ```
 
-关键：`try_lock` 失败时**必须释放已持有的锁**，否则会活锁。退避时间加随机抖动可以避免两个线程同步重试。
+关键：`try_lock` 失败时必须释放已持有的锁，否则会活锁。退避时间加随机抖动可以避免两个线程同步重试。
 
 ---
 
@@ -284,7 +284,7 @@ main()
 std::recursive_mutex mutex_;  // 允许同一线程多次加锁
 ```
 
-这在技术上能避免死锁，但**不推荐**。`recursive_mutex` 掩盖了架构问题: 回调在锁内执行意味着回调可以看到中间状态的数据结构，容易引发更难调试的逻辑错误。
+这在技术上能避免死锁，但不推荐。`recursive_mutex` 掩盖了架构问题: 回调在锁内执行意味着回调会读到处于中间状态的数据结构，容易引发更难调试的逻辑错误。
 
 此外，`recursive_mutex` 的性能开销高于普通 `mutex`（需要记录持有线程 ID 和递归计数）。
 
@@ -313,7 +313,7 @@ sequenceDiagram
     end
 ```
 
-将通知逻辑拆分为三个阶段: 在锁内**收集**回调列表，**释放**锁后再**执行**回调:
+将通知逻辑拆分为三个阶段: 在锁内收集回调列表，释放锁后再执行回调:
 
 ```cpp
 class EventManagerFixed {
@@ -349,7 +349,7 @@ private:
 };
 ```
 
-**代价**: 额外的回调列表拷贝。对于嵌入式系统，可以使用栈上固定数组替代 `std::vector` 避免堆分配（参见姊妹篇中 newosp Watchdog 的 `PendingCallback timeout_pending[MaxThreads]` 实现）。
+代价: 额外的回调列表拷贝。对于嵌入式系统，可以使用栈上固定数组替代 `std::vector` 避免堆分配（参见姊妹篇中 newosp Watchdog 的 `PendingCallback timeout_pending[MaxThreads]` 实现）。
 
 ---
 
@@ -370,7 +370,7 @@ sequenceDiagram
     Note over outer,inner: 死锁: 同一线程持有 mtx<br/>又尝试再次获取 mtx
 ```
 
-`std::mutex` 的 `lock()` 在同一线程重复调用时是**未定义行为**（通常表现为死锁）:
+`std::mutex` 的 `lock()` 在同一线程重复调用时是未定义行为（通常表现为死锁）:
 
 ```cpp
 // deadlock_self.cpp
@@ -397,7 +397,7 @@ int main() {
 
 ### 3.2 修复方案
 
-**方案 A: 分离锁职责**
+方案 A: 分离锁职责
 
 `outer()` 和 `inner()` 不应共享同一把锁。如果它们保护不同的数据，使用不同的锁:
 
@@ -416,7 +416,7 @@ void outer() {
 }
 ```
 
-**方案 B: 提供无锁内部版本**
+方案 B: 提供无锁内部版本
 
 如果 `outer()` 和 `inner()` 确实保护同一份数据，提供一个不加锁的内部实现:
 
@@ -450,7 +450,7 @@ private:
 
 ### 4.1 什么是优先级反转
 
-优先级反转是实时系统中的「准死锁」: 高优先级任务被低优先级任务**间接**阻塞。
+优先级反转是实时系统中的「准死锁」: 高优先级任务被低优先级任务间接阻塞。
 
 ```mermaid
 gantt
@@ -474,7 +474,7 @@ gantt
 
 > Task A (高优先级) 等待 Task C 释放锁，但 Task C 被 Task B 抢占无法运行。结果: A 的实际优先级低于 B。
 
-关键: Task A（高优先级）等待 Task C（低优先级）释放锁，但 Task B（中优先级）抢占了 Task C 的 CPU 时间，导致 C 无法执行从而无法释放锁。**高优先级任务实际上被中优先级任务阻塞了**。
+关键: Task A（高优先级）等待 Task C（低优先级）释放锁，但 Task B（中优先级）抢占了 Task C 的 CPU 时间，导致 C 无法执行从而无法释放锁。高优先级任务就这样被中优先级任务阻塞了。
 
 最著名的案例是 1997 年 Mars Pathfinder: VxWorks RTOS 上的气象数据采集任务（低优先级）持有共享内存总线锁，通信任务（高优先级）等待该锁，被中优先级任务持续抢占，导致看门狗超时系统反复重启。NASA 最终通过地面上传补丁启用优先级继承解决了问题。
 
@@ -556,7 +556,7 @@ int main() {
 }
 ```
 
-**预期输出** (单核或绑定同一核心时):
+预期输出 (单核或绑定同一核心时):
 
 ```
 [Low ] Acquired lock, working...
@@ -567,11 +567,11 @@ int main() {
 [High] Acquired lock after ~5000 ms   <-- 高优先级等待了 5 秒
 ```
 
-高优先级任务本应最快完成，实际等待时间等于 **低优先级持锁时间 + 中优先级抢占时间**。
+高优先级任务本应最快完成，实际等待时间等于低优先级持锁时间加中优先级抢占时间。
 
 ### 4.3 修复方案一: 优先级继承 (PTHREAD_PRIO_INHERIT)
 
-优先级继承的原理: 当高优先级任务 A 阻塞在低优先级任务 C 持有的锁上时，内核**临时提升** C 的优先级到 A 的级别。这样 C 不会被中优先级任务 B 抢占，可以尽快释放锁。
+优先级继承的原理: 当高优先级任务 A 阻塞在低优先级任务 C 持有的锁上时，内核临时提升 C 的优先级到 A 的级别。这样 C 不会被中优先级任务 B 抢占，可以尽快释放锁。
 
 ```cpp
 #include <pthread.h>
@@ -613,7 +613,7 @@ gantt
 
 > C 被提升到与 A 相同的优先级，B 无法抢占 C，C 快速完成并释放锁。A 的等待时间大幅缩短。
 
-**内核要求**: `PTHREAD_PRIO_INHERIT` 需要 Linux 内核配置 `CONFIG_RT_MUTEXES=y`。标准内核通常已启用，PREEMPT_RT 补丁集一定启用。可通过以下命令确认:
+内核要求: `PTHREAD_PRIO_INHERIT` 需要 Linux 内核配置 `CONFIG_RT_MUTEXES=y`。标准内核通常已启用，PREEMPT_RT 补丁集一定启用。可通过以下命令确认:
 
 ```bash
 zcat /proc/config.gz | grep RT_MUTEX
@@ -621,7 +621,7 @@ zcat /proc/config.gz | grep RT_MUTEX
 grep RT_MUTEX /boot/config-$(uname -r)
 ```
 
-**C++ 标准库的限制**: `std::mutex` 不支持设置优先级继承属性。需要使用 POSIX `pthread_mutex_t` 或封装一个 RAII 包装器:
+C++ 标准库的限制: `std::mutex` 不支持设置优先级继承属性。需要使用 POSIX `pthread_mutex_t` 或封装一个 RAII 包装器:
 
 ```cpp
 class PiMutex {
@@ -654,13 +654,13 @@ std::lock_guard<PiMutex> lock(shared_resource);
 
 ### 4.4 修复方案二: 无锁架构
 
-如果高优先级任务的数据通路可以设计为无锁，则从根本上消除优先级反转。这正是姊妹篇中 newosp `RealtimeExecutor` 的方案: **SCHED_FIFO 调度线程 + 无锁 CAS 消息总线**，整条实时路径不持有任何 mutex。
+如果高优先级任务的数据通路可以设计为无锁，则从根本上消除优先级反转。这正是姊妹篇中 newosp `RealtimeExecutor` 的方案: SCHED_FIFO 调度线程 + 无锁 CAS 消息总线，整条实时路径不持有任何 mutex。
 
 详见: [嵌入式系统死锁防御，第10节: 实时调度与优先级反转防御](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/)
 
 ### 4.5 修复方案三: 最小化持锁时间
 
-优先级反转的严重程度与**持锁时间成正比**。缩短临界区是最具普适性的缓解措施:
+优先级反转的严重程度与持锁时间成正比。缩短临界区是最具普适性的缓解措施:
 
 ```cpp
 // 不好: 在锁内做 I/O
@@ -691,11 +691,11 @@ void task_low_good() {
 
 ### 5.1 误解来源
 
-有一种广泛传播的说法: 「`-O3` 编译优化可能重排 mutex 的获取顺序，导致死锁」。这是**不正确的**。
+有一种广泛传播的说法: 「`-O3` 编译优化可能重排 mutex 的获取顺序，导致死锁」。这是不正确的。
 
 ### 5.2 为什么编译器不会重排锁操作
 
-C++ 标准明确规定: `std::mutex::lock()` 和 `std::mutex::unlock()` 是**同步操作**（synchronization operations），具有 acquire 和 release 语义。编译器和 CPU 都**不允许**将普通内存操作移出临界区，更不允许重排 mutex 操作本身。
+C++ 标准明确规定: `std::mutex::lock()` 和 `std::mutex::unlock()` 是同步操作（synchronization operations），具有 acquire 和 release 语义。编译器和 CPU 都不允许将普通内存操作移出临界区，更不允许重排 mutex 操作本身。
 
 ```cpp
 std::lock_guard<std::mutex> lockA(mutexA);  // acquire 语义
@@ -715,13 +715,13 @@ g++ -std=c++17 -O3 -S -o output.s deadlock_abba.cpp
 
 ### 5.3 死锁的真正原因
 
-第 1 节的 AB-BA 死锁示例在**任何优化级别**下都会死锁（`-O0`、`-O1`、`-O2`、`-O3`），因为死锁的根因是**锁获取顺序不一致**，与编译优化无关。
+第 1 节的 AB-BA 死锁示例在任何优化级别下都会死锁（`-O0`、`-O1`、`-O2`、`-O3`），因为死锁的根因是锁获取顺序不一致，与编译优化无关。
 
-`-O3` 能影响的是: 临界区**内部**的指令重排和优化（寄存器分配、循环展开、内联等），但这些不会改变锁操作的顺序。
+`-O3` 能影响的是: 临界区内部的指令重排和优化（寄存器分配、循环展开、内联等），但这些不会改变锁操作的顺序。
 
 ### 5.4 编译优化真正影响的场景
 
-编译器优化确实会导致多线程问题，但是**数据竞争**，不是锁重排:
+编译器优化确实会导致多线程问题，但是数据竞争，不是锁重排:
 
 ```cpp
 // 没有同步的共享变量
@@ -742,7 +742,7 @@ void thread2() {
 
 这里 `x` 和 `y` 不是原子变量，也没有锁保护，编译器可以自由重排。解决方案是使用 `std::atomic` 或加锁，不是「避免 `-O3`」。
 
-**结论**: 如果你的程序在 `-O0` 下正常但在 `-O3` 下死锁，问题出在数据竞争或未定义行为，不是锁重排。应该用 TSan 检测数据竞争。
+结论: 如果你的程序在 `-O0` 下正常但在 `-O3` 下死锁，问题出在数据竞争或未定义行为，不是锁重排。应该用 TSan 检测数据竞争。
 
 ---
 
@@ -775,7 +775,7 @@ WARNING: ThreadSanitizer: lock-order-inversion (potential deadlock)
     #1 thread2() deadlock_abba.cpp:15
 ```
 
-**嵌入式集成**: newosp 的 CI 对所有测试启用 TSan，确保 979 个测试用例无锁序违反。参见姊妹篇第 11.3 节的验证阶段建议。
+嵌入式集成: newosp 的 CI 对所有测试启用 TSan，确保 979 个测试用例无锁序违反。参见姊妹篇第 11.3 节的验证阶段建议。
 
 ### 6.2 Valgrind Helgrind
 
@@ -798,7 +798,7 @@ CONFIG_LOCKDEP=y
 cat /proc/lockdep_stats
 ```
 
-lockdep 在**第一次**出现潜在的锁序违反时就会告警，即使死锁尚未实际发生。
+lockdep 在第一次出现潜在的锁序违反时就会告警，即使死锁尚未实际发生。
 
 ### 6.4 GDB 死锁诊断
 
@@ -839,7 +839,7 @@ void UART_IRQHandler(void) {
 }
 ```
 
-**解决方案**:
+解决方案:
 
 | 方案 | 实现 | 适用场景 |
 |------|------|----------|
@@ -851,7 +851,7 @@ SPSC 无锁队列正是姊妹篇第 4.2 节详细介绍的 `SpscRingbuffer`，�
 
 ### 7.2 RTOS 优先级反转
 
-FreeRTOS 提供了 `xSemaphoreCreateMutex()` 自带优先级继承，但 **Binary Semaphore 不支持**:
+FreeRTOS 提供了 `xSemaphoreCreateMutex()` 自带优先级继承，但 Binary Semaphore 不支持:
 
 ```c
 // 正确: 使用 Mutex (支持优先级继承)
@@ -888,4 +888,4 @@ RT-Thread 的 `rt_mutex_create()` 同样默认启用优先级继承。
 | 系统关停资源竞争 | 关停死锁 | LIFO 有序释放 | 姊妹篇第 8 节 |
 | 高频通信路径 | 锁竞争瓶颈 | 无锁 MPSC/SPSC | 姊妹篇第 4 节 |
 
-核心思路：本文解决「如何修 bug」，姊妹篇解决「如何不出 bug」，一篇是战术，一篇是战略。
+核心区别在于: 本文解决「如何修 bug」，姊妹篇解决「如何不出 bug」。

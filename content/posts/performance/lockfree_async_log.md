@@ -9,7 +9,7 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 在多核 ARM Linux 嵌入式系统中，传统的同步日志记录方式（如直接调用 `fprintf` 或 `write`）由于受限于磁盘 I/O 延迟及内核态切换开销，往往成为系统的性能瓶颈。本文提出并实现了一种基于 **Per-Thread SPSC 环形缓冲** 与 **分级路由** 的异步日志架构，在 ARM 平台上实现了 wait-free 热路径 (~200-300ns)、零竞争生产者、崩溃安全的关键日志保障，以及背压丢弃的自动上报机制。
+> 在多核 ARM Linux 嵌入式系统中，传统的同步日志记录方式（如直接调用 `fprintf` 或 `write`）由于受限于磁盘 I/O 延迟及内核态切换开销，往往成为系统的性能瓶颈。本文提出并实现了一种基于 Per-Thread SPSC 环形缓冲与分级路由的异步日志架构，在 ARM 平台上实现了 wait-free 热路径 (~200-300ns)、零竞争生产者、崩溃安全的关键日志保障，以及背压丢弃的自动上报机制。
 >
 > 相关文章:
 > - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，SPSC/MPSC 无锁队列的理论基础
@@ -50,8 +50,8 @@ CPU 访问不同存储层级的耗时差异巨大:
 
 CPU 以 Cache Line（通常 64 字节）为单位访问内存:
 
-- **数组 (Ring Buffer)**: 内存物理连续，读取第一个元素时后续元素已通过缓存行预取至 L1/L2，Cache Hit 率高
-- **链表**: 节点离散分布，遍历需随机跳跃，频繁 Cache Miss，对于 2GHz CPU 意味着数百个指令周期的停顿
+- 数组 (Ring Buffer): 内存物理连续，读取第一个元素时后续元素已通过缓存行预取至 L1/L2，Cache Hit 率高
+- 链表: 节点离散分布，遍历需随机跳跃，频繁 Cache Miss，对于 2GHz CPU 意味着数百个指令周期的停顿
 
 ## 3. 并发模型选型: MPSC vs Per-Thread SPSC
 
@@ -66,9 +66,9 @@ Thread N -->|CAS push|-->
 ```
 
 MPSC 的问题:
-- **CAS 竞争**: 高并发时 CAS 失败重试，延迟波动 ~50-100ns
-- **缓存行弹跳**: 共享 `tail` 指针在多核间的 MESI 一致性协议导致频繁缓存失效
-- **committed 标志**: CAS 分配 slot 后、`vsnprintf` 完成前，消费者不能读取该 slot，需额外的原子标志协调
+- CAS 竞争: 高并发时 CAS 失败重试，延迟波动 ~50-100ns
+- 缓存行弹跳: 共享 `tail` 指针在多核间的 MESI 一致性协议导致频繁缓存失效
+- committed 标志: CAS 分配 slot 后、`vsnprintf` 完成前，消费者不能读取该 slot，需额外的原子标志协调
 
 ### 3.2 Per-Thread SPSC 方案 (推荐)
 
@@ -88,13 +88,13 @@ Thread N --> [SPSC RingBuffer N] --+    (round-robin poll)
 | 内存 | 1 x N x entry_size | MaxThreads x N x entry_size |
 | 适用场景 | 线程数多/动态 | **线程数固定 (嵌入式 2-8)** |
 
-嵌入式场景线程数少且编译期可确定 (2-8 个)，Per-Thread SPSC 的 **wait-free 确定性延迟**更适合实时系统。多出的内存开销 (8 x 80KB = 640KB) 在 ARM Linux 平台上可接受且编译期可控。
+嵌入式场景线程数少且编译期可确定 (2-8 个)，Per-Thread SPSC 的 wait-free 确定性延迟更适合实时系统。多出的内存开销 (8 x 80KB = 640KB) 在 ARM Linux 平台上可接受且编译期可控。
 
 ## 4. 针对 ARM 平台的深度优化
 
 ### 4.1 消除伪共享 (False Sharing)
 
-在多核 ARM 处理器 (Cortex-A53/A72) 中，若不同核心频繁写入同一 Cache Line 的不同变量，MESI 协议会导致缓存行在核心间不断失效和重载。
+在多核 ARM 处理器中，若不同核心频繁写入同一 Cache Line 的不同变量，MESI 协议会导致缓存行在核心间不断失效和重载。
 
 解决方案: 将热点原子变量对齐到独立的缓存行:
 
@@ -122,7 +122,7 @@ buf->queue.Push(entry);  // 内部: store(tail, new_tail, release)
 auto n = buf->queue.PopBatch(batch, 32);  // 内部: load(tail, acquire)
 ```
 
-编译器和 CPU 保证: **release 之前的所有写入对 acquire 之后的读取可见**。在 ARM 上映射为 `DMB` (Data Memory Barrier) 指令。
+编译器和 CPU 保证: release 之前的所有写入对 acquire 之后的读取可见。在 ARM 上映射为 `DMB` (Data Memory Barrier) 指令。
 
 ### 4.3 三阶段自适应退避 (AdaptiveBackoff)
 
@@ -159,7 +159,7 @@ class LogBackoff {
 
 ## 5. 分级路由: 关键日志同步写
 
-异步日志的最大风险是 **崩溃时丢失关键信息**。解决方案: 按日志级别分级路由。
+异步日志的最大风险是崩溃时丢失关键信息。解决方案: 按日志级别分级路由。
 
 ```
 OSP_LOG_XXX(category, fmt, ...)
@@ -181,9 +181,9 @@ AsyncLogWrite(level, ...)
 ```
 
 设计原则:
-- **ERROR/FATAL**: 同步写 `fprintf(stderr)` + `fflush`，保证崩溃前输出完整
-- **DEBUG/INFO/WARN**: 异步写，不阻塞业务线程
-- **队列满**: 丢弃非关键日志（计数上报），不阻塞生产者
+- ERROR/FATAL: 同步写 `fprintf(stderr)` + `fflush`，保证崩溃前输出完整
+- DEBUG/INFO/WARN: 异步写，不阻塞业务线程
+- 队列满: 丢弃非关键日志（计数上报），不阻塞生产者
 
 ## 6. 背压丢弃与主动上报
 
@@ -234,9 +234,9 @@ struct LogEntry {
 ```
 
 设计要点:
-- **trivially_copyable**: SPSC 使用 memcpy 批处理路径，单条 copy ~10ns (L1 命中)
-- **固定大小**: 避免动态分配，支持数组连续存储
-- **调用线程格式化**: `va_list` 参数生命周期限于当前栈帧，不能跨线程传递
+- trivially_copyable: SPSC 使用 memcpy 批处理路径，单条 copy ~10ns (L1 命中)
+- 固定大小: 避免动态分配，支持数组连续存储
+- 调用线程格式化: `va_list` 参数生命周期限于当前栈帧，不能跨线程传递
 
 ### 7.2 线程注册 (CAS 首次, thread_local 后续)
 
@@ -264,9 +264,9 @@ inline LogBuffer* AcquireLogBuffer() noexcept {
 
 异步日志作为基础设施，用户不应关心后台线程的启停:
 
-- **自动启动**: 首次 `AsyncLogWrite()` 调用时，CAS 原子自启动写线程
-- **自动停止**: `atexit(StopAsync)` 注册，进程退出前自动 drain 所有缓冲
-- **强制同步**: 编译期定义 `OSP_LOG_SYNC_ONLY` 禁用异步路径
+- 自动启动: 首次 `AsyncLogWrite()` 调用时，CAS 原子自启动写线程
+- 自动停止: `atexit(StopAsync)` 注册，进程退出前自动 drain 所有缓冲
+- 强制同步: 编译期定义 `OSP_LOG_SYNC_ONLY` 禁用异步路径
 
 ```cpp
 // 用户代码: 无需 Start/Stop
@@ -422,8 +422,8 @@ inline void WriterLoop() noexcept {
 
 消费者使用 `PopBatch(batch, 32)` 一次取出最多 32 条 entry，然后统一调用 sink。在 ARM Linux 中，减少系统调用次数是关键优化:
 
-- **单条 dprintf**: 每条日志一次 `write` 系统调用 (~2-5us)
-- **批量 32 条**: 累积后一次 `write`，均摊系统调用开销至 ~60-150ns/条
+- 单条 dprintf: 每条日志一次 `write` 系统调用 (~2-5us)
+- 批量 32 条: 累积后一次 `write`，均摊系统调用开销至 ~60-150ns/条
 
 ## 13. 工程实践建议
 
@@ -447,20 +447,20 @@ using LogSinkFn = void (*)(const LogEntry* entries, uint32_t count, void* ctx);
 ### 13.3 测试验证
 
 生产级异步日志必须通过:
-- **ASan (AddressSanitizer)**: 检测内存越界、use-after-free
-- **TSan (ThreadSanitizer)**: 检测数据竞争
-- **UBSan (UndefinedBehaviorSanitizer)**: 检测未定义行为
-- **Release + Debug 双构建**: 确保优化级别不影响正确性
-- **-fno-exceptions 构建**: 嵌入式场景兼容
+- ASan (AddressSanitizer): 检测内存越界、use-after-free
+- TSan (ThreadSanitizer): 检测数据竞争
+- UBSan (UndefinedBehaviorSanitizer): 检测未定义行为
+- Release + Debug 双构建: 确保优化级别不影响正确性
+- -fno-exceptions 构建: 嵌入式场景兼容
 
 ## 14. 结论
 
 本文提出的 Per-Thread SPSC 异步日志架构，相比传统 MPSC 方案，在嵌入式 ARM Linux 平台上具备以下优势:
 
-1. **wait-free 热路径**: 生产者零竞争，延迟确定性强，适合实时系统
-2. **分级路由**: ERROR/FATAL 崩溃安全，非关键日志异步不阻塞
-3. **背压可观测**: 丢弃计数 + 定时上报 + Shell 查询，运维可感知
-4. **零配置**: 自动启动/停止，用户无感知
-5. **编译期可控**: 队列深度、线程数、上报间隔均为宏配置
+1. wait-free 热路径: 生产者零竞争，延迟确定性强，适合实时系统
+2. 分级路由: ERROR/FATAL 崩溃安全，非关键日志异步不阻塞
+3. 背压可观测: 丢弃计数 + 定时上报 + Shell 查询，运维可感知
+4. 零配置: 自动启动/停止，用户无感知
+5. 编译期可控: 队列深度、线程数、上报间隔均为宏配置
 
 该方案已在 [newosp](https://github.com/DeguiLiu/newosp) 框架 v0.3.2 中落地，通过 1078 个单元测试 (ASan + UBSan + TSan 全绿)，适用于激光雷达、机器人、边缘计算等工业嵌入式场景。

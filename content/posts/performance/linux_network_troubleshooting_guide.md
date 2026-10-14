@@ -4,7 +4,7 @@ date: 2026-02-20T14:00:00
 draft: false
 categories: ["performance"]
 tags: ["Linux", "network", "UDP", "TCP", "TIME_WAIT", "zero-copy", "sendfile", "splice", "MSG_ZEROCOPY", "dropwatch", "troubleshooting", "embedded", "C++17", "sockpp", "newosp"]
-summary: "面向嵌入式 Linux 高性能网络场景的排障与优化指南。覆盖 UDP 丢包全链路诊断 (6 个丢包位置及对应 sysctl 调优)、TCP TIME_WAIT 端口耗尽排障、零拷贝技术对比 (sendfile/splice/MSG_ZEROCOPY)、dropwatch 内核丢包追踪工具实战，以及陈硕网络编程方法论精华。结合 sockpp RAII socket 封装和 newosp 帧协议丢包检测的工程实践。"
+summary: "面向嵌入式 Linux 网络的排障与优化指南。覆盖 UDP 丢包全链路诊断（6 个丢包位置与对应 sysctl 调优）、TCP TIME_WAIT 端口耗尽排障、零拷贝方案对比（sendfile/splice/MSG_ZEROCOPY）、dropwatch 内核丢包追踪，以及同机通信的共享内存方案。"
 ShowToc: true
 TocOpen: true
 ---
@@ -17,11 +17,11 @@ TocOpen: true
 >
 > 相关: [ARM-Linux 网络性能优化实战](/tech-notes/posts/performance/arm_linux_network_optimization/) | [TCP Short Write 环形缓冲区方案](/tech-notes/posts/performance/tcp_ringbuffer_short_write/)
 >
-> **定位差异**: [ARM-Linux 网络性能优化](/tech-notes/posts/performance/arm_linux_network_optimization/) 侧重**调优** (怎么让网络更快)，本文侧重**排障** (网络出问题时怎么定位原因) 和**高性能传输方案选型**。两篇互补，调优是预防，排障是治疗。
+> 定位差异: [ARM-Linux 网络性能优化](/tech-notes/posts/performance/arm_linux_network_optimization/) 侧重调优 (怎么让网络更快)，本文侧重排障 (网络出问题时怎么定位原因) 和高性能传输方案选型。两篇互补。
 
-**本文解决的问题**: 嵌入式 Linux 网络程序上线后出现丢包、端口耗尽、传输瓶颈时，如何系统化定位原因并选择合适的优化方案。
+本文解决的问题: 嵌入式 Linux 网络程序上线后出现丢包、端口耗尽、传输瓶颈时，如何系统化定位原因并选择合适的优化方案。
 
-**关键结论**:
+关键结论:
 1. UDP 丢包 90% 发生在 Ring Buffer 溢出和 Socket Buffer 满两个位置，`ethtool -S` + `netstat -su` 可以在 10 秒内定位
 2. TIME_WAIT 问题的根因是架构设计 (谁主动关闭)，不是调内核参数；`tcp_tw_reuse=1` 是安全的，`tcp_tw_recycle` 已废弃
 3. 零拷贝三种方案各有适用场景: sendfile 用于文件服务，splice 用于代理转发，MSG_ZEROCOPY 用于大缓冲区直发 (>10KB)；同机通信用共享内存直接绕过网络栈
@@ -31,9 +31,9 @@ TocOpen: true
 
 ## 1. UDP 丢包全链路诊断
 
-Julia Evans 在 [Why do UDP packets get dropped?](https://jvns.ca/blog/2016/08/24/find-out-where-youre-dropping-packets/) 中提出一个关键观点: **"UDP packets don't get lost by magic"**：丢包不是 UDP 的天性，而是链路上某个缓冲区满了。她将丢包归纳为三个方向: lost on the way out (发送缓冲区满)、lost in transit (传输途中)、lost on the way in (接收缓冲区满)，并总结出 **"EVERYTHING IS BUFFERS"**：网卡、backlog 队列、socket buffer、中间路由器，所有环节的丢包都是缓冲区溢出导致的。
+Julia Evans 在 [Why do UDP packets get dropped?](https://jvns.ca/blog/2016/08/24/find-out-where-youre-dropping-packets/) 中提出一个关键观点: **"UDP packets don't get lost by magic"**：丢包来自链路上某个缓冲区满了，与 UDP 协议本身无关。她将丢包归纳为三个方向: lost on the way out (发送缓冲区满)、lost in transit (传输途中)、lost on the way in (接收缓冲区满)，并总结出 **"EVERYTHING IS BUFFERS"**：网卡、backlog 队列、socket buffer、中间路由器，所有环节的丢包都是缓冲区溢出导致的。
 
-本章将这个思路展开为完整的诊断流程。数据包从网卡到应用层依次经过以下可能丢包的位置:
+数据包从网卡到应用层依次经过以下可能丢包的位置:
 
 ```mermaid
 graph LR
@@ -46,9 +46,12 @@ graph LR
     B -.- B1["/proc/net/softnet_stat"]
     C -.- C1["netstat -su"]
     D -.- D1["iptables -nvL"]
+
+    classDef path fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    class A,B,C,D path
 ```
 
-**快速全局诊断** ([Julia Evans, 2017](https://jvns.ca/blog/2017/09/05/finding-out-where-packets-are-being-dropped/)): 在深入各层之前，先用 `netstat -i` 获取每个网卡的丢包全局视图:
+快速全局诊断 ([Julia Evans, 2017](https://jvns.ca/blog/2017/09/05/finding-out-where-packets-are-being-dropped/)): 在深入各层之前，先用 `netstat -i` 获取每个网卡的丢包全局视图:
 
 ```bash
 $ netstat -i
@@ -65,7 +68,7 @@ lo     65536   21558    0       0       0      21558    0       0       0
 
 网卡通过 DMA 将数据包写入 Ring Buffer (驱动预分配的 sk_buff 环形队列)。当 CPU 处理中断不够快时，Ring Buffer 写满，新包被网卡硬件直接丢弃。
 
-**诊断:**
+诊断:
 
 ```bash
 # 查看网卡丢包计数
@@ -76,7 +79,7 @@ ethtool -S eth0 | grep -i drop
 ethtool -g eth0
 ```
 
-**调优:**
+调优:
 
 ```bash
 # 增大 Ring Buffer (需网卡驱动支持)
@@ -87,7 +90,7 @@ ethtool -G eth0 rx 4096
 
 NAPI poll 将数据包从 Ring Buffer 取出后放入 per-CPU 的 backlog 队列。当 softirq 处理速度跟不上收包速度时，backlog 队列溢出。
 
-**诊断:**
+诊断:
 
 ```bash
 # 第 2 列 (dropped) 非零表示 backlog 溢出
@@ -96,7 +99,7 @@ cat /proc/net/softnet_stat
 # ^packet  ^dropped ^squeezed
 ```
 
-**调优:**
+调优:
 
 ```bash
 # 默认 1000，高吞吐场景建议 10000-30000
@@ -107,7 +110,7 @@ sysctl -w net.core.netdev_max_backlog=10000
 
 协议栈将数据包放入 socket 接收缓冲区。当应用层 `recv()` 不够快时，缓冲区写满，内核丢弃后续包。Julia Evans 用一句话概括了这个机制: *"Your application reads packets out of that buffer and handles them. If the buffer gets full, the packets get dropped. Simple!"*
 
-**诊断:**
+诊断:
 
 ```bash
 # UDP 丢包统计 (Julia Evans 推荐 netstat -suna)
@@ -124,9 +127,9 @@ netstat -su
 ss -u -a -m
 ```
 
-**关键参数**: `net.core.rmem_max` 控制 socket 接收缓冲区的上限。`net.ipv4.udp_mem` 的第三个值是所有 UDP socket 可用的总页数上限。
+关键参数: `net.core.rmem_max` 控制 socket 接收缓冲区的上限。`net.ipv4.udp_mem` 的第三个值是所有 UDP socket 可用的总页数上限。
 
-**调优:**
+调优:
 
 ```bash
 # 增大 UDP 接收缓冲区 (字节)
@@ -141,7 +144,7 @@ sysctl -w net.core.rmem_default=26214400
 
 防火墙规则可能静默丢包，且不会体现在上述计数器中。
 
-**诊断:**
+诊断:
 
 ```bash
 # 查看所有规则的包计数
@@ -154,7 +157,7 @@ sysctl net.netfilter.nf_conntrack_count
 sysctl net.netfilter.nf_conntrack_max
 ```
 
-**调优:**
+调优:
 
 ```bash
 # 增大 conntrack 表
@@ -163,9 +166,9 @@ sysctl -w net.netfilter.nf_conntrack_max=262144
 
 ### 1.5 应用层处理过慢
 
-应用层 `recv()` 调用频率不够，或处理逻辑阻塞了事件循环，导致 socket buffer 持续堆积。这不是内核问题，而是应用架构问题。
+应用层 `recv()` 调用频率不够，或处理逻辑阻塞了事件循环，导致 socket buffer 持续堆积。这类堆积的根因在应用架构，与内核无关。
 
-**排查思路:**
+排查思路:
 
 - 确认事件循环中没有阻塞操作 (磁盘 I/O、锁竞争)
 - 使用 epoll 边缘触发 + 批量读取
@@ -179,17 +182,17 @@ sysctl -w net.netfilter.nf_conntrack_max=262144
 
 TCP 连接主动关闭方在发送最后一个 ACK 后进入 TIME_WAIT 状态，等待 2MSL (通常 60 秒)。目的:
 
-1. **确保最后的 ACK 到达对端**: 如果 ACK 丢失，对端会重发 FIN，TIME_WAIT 状态可以重新响应
-2. **防止旧连接的延迟报文污染新连接**: 2MSL 确保网络中该连接的所有报文都已过期
+1. 确保最后的 ACK 到达对端: 如果 ACK 丢失，对端会重发 FIN，TIME_WAIT 状态可以重新响应
+2. 防止旧连接的延迟报文污染新连接: 2MSL 确保网络中该连接的所有报文都已过期
 
 ### 2.2 问题场景
 
 高频短连接场景 (如 HTTP/1.0 客户端) 中，主动关闭方会累积大量 TIME_WAIT socket，导致:
 
-- **端口耗尽**: 本地端口范围默认 32768-60999，约 28000 个端口，每个 TIME_WAIT 占用 60 秒
-- **内存占用**: 每个 TIME_WAIT socket 约占 ~0.5KB 内核内存
+- 端口耗尽: 本地端口范围默认 32768-60999，约 28000 个端口，每个 TIME_WAIT 占用 60 秒
+- 内存占用: 每个 TIME_WAIT socket 约占 ~0.5KB 内核内存
 
-**诊断:**
+诊断:
 
 ```bash
 # 统计 TIME_WAIT 数量
@@ -211,13 +214,13 @@ sysctl -w net.ipv4.ip_local_port_range="1024 65535"
 sysctl -w net.ipv4.tcp_max_tw_buckets=262144
 ```
 
-**tcp_tw_recycle 已废弃**: Linux 4.12 移除了 `tcp_tw_recycle`。该选项依赖 TCP 时间戳判断连接新旧，在 NAT 环境下，不同客户端共享同一 IP 但时间戳不同，导致合法连接被拒绝。
+tcp_tw_recycle 已废弃: Linux 4.12 移除了 `tcp_tw_recycle`。该选项依赖 TCP 时间戳判断连接新旧，在 NAT 环境下，不同客户端共享同一 IP 但时间戳不同，导致合法连接被拒绝。
 
 ### 2.4 架构层面的优化
 
-- **让客户端主动关闭连接**: TIME_WAIT 分散到各客户端，服务端不积压
-- **服务端用定时器踢掉超时连接**: 而非主动 close()
-- **使用长连接**: HTTP/1.1 Keep-Alive 或 HTTP/2 多路复用，减少连接建立/关闭频率
+- 让客户端主动关闭连接: TIME_WAIT 分散到各客户端，服务端不积压
+- 服务端用定时器踢掉超时连接: 而非主动 close()
+- 使用长连接: HTTP/1.1 Keep-Alive 或 HTTP/2 多路复用，减少连接建立/关闭频率
 
 ---
 
@@ -232,10 +235,10 @@ sysctl -w net.ipv4.tcp_max_tw_buckets=262144
 ssize_t sendfile(int out_fd, int in_fd, off_t *offset, size_t count);
 ```
 
-- **适用场景**: 静态文件服务 (文件 -> TCP socket)，如 Nginx 的 `sendfile on`
-- **限制**: `in_fd` 必须支持 mmap (普通文件)，`out_fd` 必须是 socket
-- **内核版本**: Linux 2.2+；2.6.33+ 支持 `in_fd` 为任意文件
-- **原理**: 数据从 page cache 直接 DMA 到网卡，不经过用户空间
+- 适用场景: 静态文件服务 (文件 -> TCP socket)，如 Nginx 的 `sendfile on`
+- 限制: `in_fd` 必须支持 mmap (普通文件)，`out_fd` 必须是 socket
+- 内核版本: Linux 2.2+；2.6.33+ 支持 `in_fd` 为任意文件
+- 原理: 数据从 page cache 直接 DMA 到网卡，不经过用户空间
 
 ```mermaid
 graph LR
@@ -250,6 +253,9 @@ graph LR
         D2[磁盘] -->|DMA| K3[内核缓冲/Page Cache]
         K3 -->|DMA gather| N2[网卡]
     end
+
+    classDef path fill:#e3f2fd,stroke:#1565c0,color:#0d47a1
+    class D1,K1,U1,K2,N1,D2,K3,N2 path
 ```
 
 ### 3.2 splice: 管道中转
@@ -261,10 +267,10 @@ ssize_t splice(int fd_in, off64_t *off_in,
                size_t len, unsigned int flags);
 ```
 
-- **适用场景**: 任意两个文件描述符之间的数据传输，只要其中一个是管道
-- **典型用法**: socket -> pipe -> socket (代理场景)
-- **内核版本**: Linux 2.6.17+
-- **flags**: `SPLICE_F_MOVE` (尝试移动页面而非拷贝)、`SPLICE_F_NONBLOCK`
+- 适用场景: 任意两个文件描述符之间的数据传输，只要其中一个是管道
+- 典型用法: socket -> pipe -> socket (代理场景)
+- 内核版本: Linux 2.6.17+
+- flags: `SPLICE_F_MOVE` (尝试移动页面而非拷贝)、`SPLICE_F_NONBLOCK`
 
 ```c
 // proxy 场景: 从 client_fd 转发到 server_fd
@@ -284,10 +290,10 @@ send(fd, buf, len, MSG_ZEROCOPY);
 recvmsg(fd, &msg, MSG_ERRQUEUE);
 ```
 
-- **适用场景**: 大缓冲区发送 (>10KB 才有收益)，用户态缓冲区直接 DMA
-- **内核版本**: Linux 4.14+ (TCP)，4.18+ (UDP)
-- **注意**: 需要 `setsockopt(fd, SOL_SOCKET, SO_ZEROCOPY, &one, sizeof(one))`
-- **代价**: 完成通知机制增加编程复杂度；小包场景下 notification 开销反而导致性能下降
+- 适用场景: 大缓冲区发送 (>10KB 才有收益)，用户态缓冲区直接 DMA
+- 内核版本: Linux 4.14+ (TCP)，4.18+ (UDP)
+- 注意: 需要 `setsockopt(fd, SOL_SOCKET, SO_ZEROCOPY, &one, sizeof(one))`
+- 代价: 完成通知机制增加编程复杂度；小包场景下 notification 开销反而导致性能下降
 
 ### 3.4 对比总结
 
@@ -304,11 +310,11 @@ recvmsg(fd, &msg, MSG_ERRQUEUE);
 
 上述三种零拷贝技术仍然经过内核网络栈 (协议处理、socket buffer、softirq)。对于同机进程间通信，[newosp](https://github.com/DeguiLiu/newosp) 的共享内存 transport 使用 lock-free SPSC ring buffer 完全绕过网络栈:
 
-- **零拷贝 + 零系统调用**: 生产者直接写入共享内存，消费者直接读取，数据路径上无 syscall 开销
-- **崩溃恢复**: `CreateOrReplace` 语义，进程重启后自动重建共享内存段，无需外部监控
-- **ARM 单核优化**: 无 D-Cache 的 MCU 使用 relaxed 原子序 + `atomic_signal_fence` 替代硬件 DMB，避免不必要的内存屏障开销
+- 零拷贝 + 零系统调用: 生产者直接写入共享内存，消费者直接读取，数据路径上无 syscall 开销
+- 崩溃恢复: `CreateOrReplace` 语义，进程重启后自动重建共享内存段，无需外部监控
+- ARM 单核优化: 无 D-Cache 的 MCU 使用 relaxed 原子序 + `atomic_signal_fence` 替代硬件 DMB，避免不必要的内存屏障开销
 
-ARM Cortex-A53 实测: 共享内存 transport 延迟 <1us，TCP loopback ~30us，差距约 30 倍。当同机通信是瓶颈时，共享内存比调优 TCP 参数更有效。详见 [共享内存 IPC 与无锁环形缓冲区](/tech-notes/posts/performance/shared_memory_ipc_lockfree_ringbuffer/)。
+ARM 应用处理器实测: 共享内存 transport 延迟 <1us，TCP loopback ~30us，差距约 30 倍。当同机通信是瓶颈时，共享内存比调优 TCP 参数更有效。详见 [共享内存 IPC 与无锁环形缓冲区](/tech-notes/posts/performance/shared_memory_ipc_lockfree_ringbuffer/)。
 
 ---
 
@@ -382,13 +388,13 @@ perf script
 #   ...
 ```
 
-这样可以看到完整的内核调用链，精确定位丢包原因。
+这样能得到完整的内核调用链，精确定位丢包原因。
 
 ---
 
 ## 5. 嵌入式网络工程实践
 
-本节集中讨论在 [sockpp](https://github.com/DeguiLiu/sockpp) 和 [newosp](https://github.com/DeguiLiu/newosp) 项目中解决上述问题的工程方案。
+[sockpp](https://github.com/DeguiLiu/sockpp) 和 [newosp](https://github.com/DeguiLiu/newosp) 两个项目给出了对应的工程做法。
 
 ### 5.1 应用层丢包检测: newosp 帧协议
 
@@ -421,7 +427,7 @@ RAII 保证了 socket 不泄漏，但也意味着作用域结束时立即触发 
 
 ### 5.3 同机通信: 共享内存替代 TCP
 
-详见 3.5 节。newosp 的共享内存 transport 在 ARM Cortex-A53 上实测延迟 <1us，比 TCP loopback (~30us) 快约 30 倍。工程上的关键设计: `CreateOrReplace` 语义实现进程崩溃后自动恢复共享内存段，无需外部监控。
+详见 3.5 节。newosp 的共享内存 transport 在 ARM 应用处理器上实测延迟 <1us，比 TCP loopback (~30us) 快约 30 倍。工程上的关键设计: `CreateOrReplace` 语义实现进程崩溃后自动恢复共享内存段，无需外部监控。
 
 ### 5.4 应用层 checksum 的必要性
 
@@ -433,9 +439,9 @@ TCP 的 16-bit checksum 强度不足。路由器内存 bit flip 可导致 payloa
 
 陈硕 (muduo 网络库作者) 的[《谈一谈网络编程学习经验》](https://blog.csdn.net/solstice/article/details/6527585)是网络编程领域的经典综述，提出了几个有实践价值的观点:
 
-- **TCP 编程的本质是处理"三个半事件"**: 连接建立、断开、消息到达、消息发送完毕 (半个)。程序员应专注事件处理中的业务逻辑，而非 Sockets API 细节
-- **80% 的网络编程问题与 API 无关**: 根因是对 TCP/IP 协议理解不足。掌握 tcpdump 能解决大部分线上问题
-- **必练三个例子**: echo (单连接)、chat (跨连接数据交换)、proxy (双端流控)。复杂度递进，proxy 最接近生产场景
+- TCP 编程的本质是处理"三个半事件": 连接建立、断开、消息到达、消息发送完毕 (半个)。程序员应专注事件处理中的业务逻辑，而非 Sockets API 细节
+- 80% 的网络编程问题与 API 无关: 根因是对 TCP/IP 协议理解不足。掌握 tcpdump 能解决大部分线上问题
+- 必练三个例子: echo (单连接)、chat (跨连接数据交换)、proxy (双端流控)。复杂度递进，proxy 最接近生产场景
 
 推荐书目: 《TCP/IP Illustrated, Vol.1》(重点 17-24 章)、《Unix Network Programming, Vol.1》、《Effective TCP/IP Programming》(第 6 条 "TCP 是字节流协议" 终结 "粘包" 困惑)。
 

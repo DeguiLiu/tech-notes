@@ -4,7 +4,7 @@ date: 2026-02-16T10:10:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "lock-free", "wait-free", "CAS", "ABA", "memory-order", "SPSC", "MPSC", "MPMC", "ring-buffer", "atomic", "ARM", "embedded", "performance"]
-summary: "无锁编程的基础性原理文章。从 CAS 原子操作的硬件实现出发，严格定义 lock-free 与 wait-free 的进展保证差异，深入分析 ABA 问题及其解决方案，阐明 acquire-release 内存序的必要性，最终以 SPSC/MPSC/MPMC 三种队列模式为主线，展示无锁数据结构从设计到工程落地的完整知识体系。"
+summary: "无锁编程的原理梳理。从 CAS 原子操作的硬件实现出发，界定 lock-free 与 wait-free 的进展保证差异，分析 ABA 问题及其解法，说明 acquire/release 内存序的必要性，并以 SPSC/MPSC/MPMC 三种队列模式为主线串联设计与落地。"
 ShowToc: true
 TocOpen: true
 ---
@@ -13,12 +13,12 @@ TocOpen: true
 > - [内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB](/tech-notes/posts/performance/memory_barrier_hardware/)，内存序的硬件根因 (Store Buffer/Invalidation Queue/MESI)
 > - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，Wait-free SPSC 的逐行代码分析
 > - [无锁异步日志设计](/tech-notes/posts/performance/lockfree_async_log/)，Per-Thread SPSC 在日志系统中的应用
-> - [嵌入式系统死锁防御: 从有序锁到无锁架构](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/)，newosp 的无锁 MPSC 总线架构
+> - [嵌入式系统死锁防御: 从有序锁到无锁架构](/tech-notes/posts/performance/embedded_deadlock_prevention_lockfree/)，[newosp](https://github.com/DeguiLiu/newosp) 的无锁 MPSC 总线架构
 > - [嵌入式线程间消息传递重构: MCCC 无锁消息总线](/tech-notes/posts/performance/mccc_message_passing/)，MPSC 消息总线的完整工程实现
 > - [锁竞争基准测试: Spinlock vs Mutex vs ConcurrentQueue](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/)，有锁与无锁的性能实测
 > - [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/)，何时需要从有锁迁移到无锁
 > - [共享内存进程间通信](/tech-notes/posts/practice/newosp_spmc_shm_data_distribution/)，跨进程场景的无锁 Ring Buffer
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，无锁 MPSC 总线在完整框架中的集成
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，无锁 MPSC 总线在完整框架中的集成（源码: [github.com/DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)）
 >
 > 参考:
 > - [iceoryx Lock-Free Queue Design](https://github.com/eclipse-iceoryx/iceoryx/blob/main/doc/design/lockfree_queue.md)
@@ -31,12 +31,12 @@ TocOpen: true
 
 锁（mutex）是多线程编程最直觉的同步工具，但它有两个根本性开销:
 
-1. **系统调用**: Linux 的 `pthread_mutex_lock` 在竞争时进入内核 futex，两次用户态/内核态切换 + 上下文切换，延迟 1-100+ us
-2. **序列化**: 锁保护的临界区同一时刻只有一个线程执行，并行度为 1
+1. 系统调用: Linux 的 `pthread_mutex_lock` 在竞争时进入内核 futex，两次用户态/内核态切换 + 上下文切换，延迟 1-100+ us
+2. 序列化: 锁保护的临界区同一时刻只有一个线程执行，并行度为 1
 
 > 这两个开销可以用 `perf lock contention` 量化。详见 [perf lock 锁竞争诊断](/tech-notes/posts/performance/perf_lock_contention_diagnosis/)。
 
-无锁编程的目标不是消灭所有同步，而是**用原子操作替代锁，让多个线程能同时推进**。但无锁不是银弹，它增加了代码复杂度，且只在特定数据结构（队列、栈、计数器）上有成熟方案。
+无锁编程用原子操作替代锁，让多个线程同时推进，目的不是消灭所有同步。代价是代码复杂度上升，成熟的方案也集中在队列、栈、计数器这类结构上。
 
 决策原则：不要在没有数据支撑的情况下追求无锁。先用 `perf lock` 量化锁竞争，确认它确实是瓶颈，再考虑无锁替代。
 
@@ -60,7 +60,7 @@ bool CAS(addr, expected, desired):
     }
 ```
 
-整个「比较 + 交换」操作在硬件层面是**不可分割的**。没有任何线程能在比较和交换之间看到中间状态。
+整个「比较 + 交换」操作在硬件层面是不可分割的。没有任何线程能在比较和交换之间看到中间状态。
 
 ### 2.2 硬件实现
 
@@ -91,7 +91,7 @@ graph LR
     style E2 fill:#ffcdd2
 ```
 
-ARM 的 STXR 可能因为**任何原因**失败（不仅是目标地址被修改，甚至中断、缓存行被驱逐也可能清除独占监视器）。这是 `compare_exchange_weak` 允许「伪失败」（spurious failure）的硬件原因。
+ARM 的 STXR 可能因为任何原因失败（不仅是目标地址被修改，甚至中断、缓存行被驱逐也可能清除独占监视器）。这是 `compare_exchange_weak` 允许「伪失败」（spurious failure）的硬件原因。
 
 ### 2.3 weak vs strong
 
@@ -105,7 +105,7 @@ bool compare_exchange_weak(T& expected, T desired, ...);
 bool compare_exchange_strong(T& expected, T desired, ...);
 ```
 
-**选择原则**:
+选择原则:
 
 | 场景 | 选择 | 原因 |
 |------|------|------|
@@ -172,7 +172,7 @@ bool Push(T data) {
 }
 ```
 
-**没有任何循环或重试**。每次调用恒定 5 步完成。无论消费者如何运行，生产者都能在有限步内返回。这就是 wait-free。
+没有任何循环或重试。每次调用恒定 5 步完成。无论消费者如何运行，生产者都能在有限步内返回。这就是 wait-free。
 
 > SPSC 的完整设计剖析见 [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)。
 
@@ -219,7 +219,7 @@ public:
 };
 ```
 
-虽然没有使用 OS mutex，但自旋锁仍然是**互斥的**，同一时刻只有一个线程能进入临界区。持有锁的线程被调度走后，等待线程无限自旋，系统没有进展。这不满足 lock-free 的定义。
+虽然没有使用 OS mutex，但自旋锁仍然是互斥的，同一时刻只有一个线程能进入临界区。持有锁的线程被调度走后，等待线程无限自旋，系统没有进展。这不满足 lock-free 的定义。
 
 > 自旋锁、互斥锁与无锁队列的性能对比，见 [锁竞争基准测试](/tech-notes/posts/performance/arm_linux_lock_contention_benchmark/)。结论: 无锁队列在 MPMC 场景下吞吐量领先 1-2 个数量级。
 
@@ -256,7 +256,7 @@ sequenceDiagram
     Note over Stack: top -> A -> B -> C
     T1->>Stack: 读 top=A, next=B
     Note over T1: 准备 CAS(top, A, B)
-    Note over T1: -- 被抢占 --
+    Note over T1: （被抢占）
 
     T2->>Stack: pop A (top=B)
     T2->>Stack: pop B (top=C)
@@ -268,11 +268,11 @@ sequenceDiagram
     Note over T1: B 已被释放,<br/>使用它是未定义行为
 ```
 
-CAS 只比较**值**是否相等，无法判断值是否在中间被改变过又改回来。
+CAS 只比较值是否相等，无法判断值是否在中间被改变过又改回来。
 
 ### 4.2 解决方案: 版本号标记
 
-为每个指针或索引附加一个单调递增的**版本号（tag）**:
+为每个指针或索引附加一个单调递增的版本号（tag）:
 
 ```cpp
 struct TaggedPointer {
@@ -286,7 +286,7 @@ std::atomic<TaggedPointer> top;
 
 即使 ptr 回到原值，tag 已经不同，CAS 会正确失败。
 
-在 64 位系统上，可以利用**指针高位未使用**的特性（x86-64 的虚拟地址只用 48 位），将 tag 打包到高 16 位:
+在 64 位系统上，可以利用指针高位未使用的特性（x86-64 的虚拟地址只用 48 位），将 tag 打包到高 16 位:
 
 ```cpp
 // 打包方案: 高 16 位存 tag，低 48 位存地址
@@ -298,7 +298,7 @@ uintptr_t pack(void* ptr, uint16_t tag) {
 
 ### 4.3 iceoryx 的周期索引设计
 
-iceoryx 的无锁队列采用了一种优雅的 ABA 防护: **周期索引（Cyclic Index）**。
+iceoryx 的无锁队列采用了一种优雅的 ABA 防护: 周期索引（Cyclic Index）。
 
 索引 `j` 表示为 `(cycle, index)` 对:
 - `index = j % n`，数组中的实际位置
@@ -312,7 +312,7 @@ j = 4  -> (cycle=1, index=0)  // 第二轮
 j = 8  -> (cycle=2, index=0)  // 第三轮
 ```
 
-**head 和 tail 是单调递增的无符号整数，不做回绕**。推送使 tail 增加 1，弹出使 head 增加 1。只在访问数组时用 `& (n-1)` 映射到实际位置。
+head 和 tail 是单调递增的无符号整数，不做回绕。推送使 tail 增加 1，弹出使 head 增加 1。只在访问数组时用 `& (n-1)` 映射到实际位置。
 
 每个数组元素也存储一个 cycle 值。推送时，只有当元素的 cycle 恰好比 tail 的 cycle 小 1 时才进行写入:
 
@@ -336,11 +336,11 @@ bool push(uint64_t value) {
 }
 ```
 
-由于 head 和 tail 严格单调递增，要发生 ABA，需要完整的 `uint64_t` 溢出回绕，即 2^64 次操作。以每秒 10 亿次操作计算，需要约 584 年。实际上不可能发生。
+由于 head 和 tail 严格单调递增，要发生 ABA，需要完整的 `uint64_t` 溢出回绕，即 2^64 次操作。以每秒 10 亿次操作计算，需要约 584 年。可以认为不会发生。
 
 ### 4.4 SPSC 不存在 ABA
 
-SPSC 队列中，`head` 只有一个写者（生产者），`tail` 只有一个写者（消费者）。**不存在写-写竞争**，因此不使用 CAS，自然没有 ABA 问题。这是 SPSC 比 MPMC 简单得多的根本原因之一。
+SPSC 队列中，`head` 只有一个写者（生产者），`tail` 只有一个写者（消费者）。不存在写-写竞争，因此不使用 CAS，自然没有 ABA 问题。这是 SPSC 比 MPMC 简单得多的根本原因之一。
 
 ---
 
@@ -405,7 +405,7 @@ while (!ready.load(std::memory_order_acquire));
 | `release` | 无额外开销 (TSO 保证) | `STLR` 或 `DMB ISH` | ARM 多 10-40 周期 |
 | `seq_cst` | `MFENCE` 全屏障 | `DMB ISH` + load/store + `DMB ISH` | 两者都有开销 |
 
-x86 硬件天然保证了大多数排序，所以在 x86 上用 `relaxed` 的代码"碰巧正确"。但移植到 ARM 后会出 bug。**正确的做法是始终使用恰当的内存序**，让编译器在 x86 上自动省略不必要的屏障。
+x86 硬件天然保证了大多数排序，所以在 x86 上用 `relaxed` 的代码"碰巧正确"。但移植到 ARM 后会出 bug。正确的做法是始终使用恰当的内存序，让编译器在 x86 上自动省略不必要的屏障。
 
 ### 5.4 精确内存序选择原则
 
@@ -443,7 +443,7 @@ graph TD
 
 适用场景：严格的一对一通道，ISR 到处理线程、日志生产者到写盘线程、传感器采集到融合线程。
 
-**核心设计**:
+核心设计:
 
 ```
 Producer Thread                    Consumer Thread
@@ -454,9 +454,9 @@ Producer Thread                    Consumer Thread
     | store head_+1 (release)          | store tail_+1 (release)
 ```
 
-**为什么 wait-free**: `head_` 只有生产者写，`tail_` 只有消费者写。两个线程各操作各的索引，无写-写竞争，无需 CAS，无需重试循环。
+为什么 wait-free: `head_` 只有生产者写，`tail_` 只有消费者写。两个线程各操作各的索引，无写-写竞争，无需 CAS，无需重试循环。
 
-**关键工程决策**:
+关键工程决策:
 
 | 决策 | 原因 |
 |------|------|
@@ -473,7 +473,7 @@ Producer Thread                    Consumer Thread
 
 适用场景：多个线程向同一个队列发送消息，一个专用线程消费，消息总线、事件分发器、日志聚合。
 
-**核心设计**: 生产者之间通过 CAS 竞争 `tail`（写入端），消费者独占 `head`（读取端）。
+核心设计: 生产者之间通过 CAS 竞争 `tail`（写入端），消费者独占 `head`（读取端）。
 
 ```cpp
 // MPSC 入队: CAS 竞争写入端
@@ -516,9 +516,9 @@ uint32_t ProcessBatch() {
 }
 ```
 
-**关键差异**: 消费者不用 CAS，它是唯一的读者，`consumer_pos_` 是普通变量（非原子）。这比 MPMC 少了一半的 CAS 操作。
+关键差异: 消费者不用 CAS，它是唯一的读者，`consumer_pos_` 是普通变量（非原子）。这比 MPMC 少了一半的 CAS 操作。
 
-**每个 Slot 的 sequence 字段**用于协调生产者和消费者:
+每个 Slot 的 sequence 字段用于协调生产者和消费者:
 
 ```
 sequence == pos     : 槽空闲，生产者可写入
@@ -533,7 +533,7 @@ sequence == pos + N : 消费者已释放，下一轮可用
 
 适用场景：多个生产者和多个消费者都需要并发访问同一个队列，线程池任务队列、通用工作分发。
 
-MPMC 队列是最复杂的无锁数据结构之一。一种经典的实现方案（iceoryx 采用）是**索引队列 + 数据缓冲区分离**:
+MPMC 队列是最复杂的无锁数据结构之一。一种经典的实现方案（iceoryx 采用）是索引队列 + 数据缓冲区分离:
 
 ```
 +---------------------------+
@@ -545,7 +545,7 @@ MPMC 队列是最复杂的无锁数据结构之一。一种经典的实现方案
 +---------------------------+
 ```
 
-**Push 流程**:
+Push 流程:
 
 ```
 1. 从 freeList 弹出一个空闲索引 i    (CAS pop)
@@ -553,7 +553,7 @@ MPMC 队列是最复杂的无锁数据结构之一。一种经典的实现方案
 3. 将 i 推入 usedList               (CAS push)
 ```
 
-**Pop 流程**:
+Pop 流程:
 
 ```
 1. 从 usedList 弹出一个已用索引 i    (CAS pop)
@@ -562,12 +562,12 @@ MPMC 队列是最复杂的无锁数据结构之一。一种经典的实现方案
 ```
 
 这种设计的优点:
-- **数据不移动**: push/pop 只传递索引，数据始终在 buffer 原地，适合大对象
-- **ABA 安全**: 索引队列使用周期索引，单调递增消除 ABA 风险
-- **lock-free**: 生产者和消费者各自独立推进，互不阻塞
+- 数据不移动: push/pop 只传递索引，数据始终在 buffer 原地，适合大对象
+- ABA 安全: 索引队列使用周期索引，单调递增消除 ABA 风险
+- lock-free: 生产者和消费者各自独立推进，互不阻塞
 
 缺点:
-- 每次操作涉及**两次 CAS**（一次索引弹出 + 一次索引推入）
+- 每次操作涉及两次 CAS（一次索引弹出 + 一次索引推入）
 - 内存访问不连续（索引队列 + 数据缓冲区分散在不同缓存行）
 
 ### 6.5 三种模式对比
@@ -691,9 +691,9 @@ if (queue_full)
 ```
 
 阻塞等待违反了无锁的进展保证。如果生产者在队列满时 spin-wait 消费者释放空间，就退化成了互斥等待。正确的做法是:
-- **背压丢弃**: 丢弃低优先级消息，计数上报
-- **回退策略**: 超时后走同步 fallback 路径
-- **准入控制**: 按优先级设定不同的丢弃阈值
+- 背压丢弃: 丢弃低优先级消息，计数上报
+- 回退策略: 超时后走同步 fallback 路径
+- 准入控制: 按优先级设定不同的丢弃阈值
 
 ---
 
@@ -749,11 +749,11 @@ ABA 问题 (CAS 的正确性陷阱)
 工程实践 (缓存行对齐、批量操作、非阻塞返回)
 ```
 
-**核心原则**:
+核心原则:
 
-1. **数据驱动**: 先量化锁竞争（perf lock），确认是瓶颈再迁移到无锁
-2. **最简适配**: 能 SPSC 不 MPSC，能 MPSC 不 MPMC
-3. **精确内存序**: 不用 seq_cst 求安全，也不用 relaxed 求性能，用恰当的 acquire/release
-4. **硬件意识**: 理解 CAS 在 ARM LL/SC 上的伪失败、DMB 屏障的代价、缓存行的粒度
+1. 数据驱动: 先量化锁竞争（perf lock），确认是瓶颈再迁移到无锁
+2. 最简适配: 能 SPSC 不 MPSC，能 MPSC 不 MPMC
+3. 精确内存序: 不用 seq_cst 求安全，也不用 relaxed 求性能，用恰当的 acquire/release
+4. 硬件意识: 理解 CAS 在 ARM LL/SC 上的伪失败、DMB 屏障的代价、缓存行的粒度
 
-无锁不是"高级版的有锁"，而是一种完全不同的并发思维方式: **不阻止其他线程执行，而是让每个线程在竞争中自适应地完成自己的操作**。
+无锁是一种不同的并发思维方式: 不阻止其他线程执行，让每个线程在竞争中自适应地完成自己的操作。

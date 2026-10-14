@@ -4,14 +4,14 @@ date: 2026-02-16T10:20:00
 draft: false
 categories: ["performance"]
 tags: ["C++17", "MCCC", "MPSC", "lock-free", "message-bus", "SendMessage", "PostMessage", "embedded", "ring-buffer", "priority", "CAS", "zero-heap"]
-summary: "本文基于一个实际的线程间消息传递需求（Windows 风格的 SendMessage/PostMessage），分析传统 mutex + priority_queue + promise/future 方案的工程缺陷，然后用 MCCC 无锁消息总线重新实现，并通过完整的测试和 Sanitizer 验证。"
+summary: "线程间消息传递用 mutex + priority_queue + promise/future 组合会带来锁竞争和热路径堆分配。本文用 MCCC 无锁消息总线重写 SendMessage/PostMessage，并给出测试与 Sanitizer 验证结果。"
 ShowToc: true
 TocOpen: true
 ---
 
 >
 > 相关文章:
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，MCCC 的 C++17 演进: newosp AsyncBus
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，MCCC 的 C++17 演进: newosp AsyncBus（源码: [github.com/DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)）
 > - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，MPSC 无锁队列的理论基础
 > - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，底层环形缓冲区的设计详解
 >
@@ -23,8 +23,8 @@ TocOpen: true
 
 在嵌入式 Linux 系统和工业控制软件中，线程间消息传递是最基本的协作机制。Windows 提供了两个经典 API：
 
-- **SendMessage**：同步消息。调用线程阻塞，直到目标线程处理完消息并返回结果。
-- **PostMessage**：异步消息。消息入队后调用线程立即返回，不等待处理结果。
+- SendMessage：同步消息。调用线程阻塞，直到目标线程处理完消息并返回结果。
+- PostMessage：异步消息。消息入队后调用线程立即返回，不等待处理结果。
 
 在 Linux 上没有原生对应物，需要自行实现。原文给出了一个基于 `std::mutex` + `std::priority_queue` + `std::promise/future` 的方案。
 
@@ -107,7 +107,7 @@ auto promise_ptr = std::make_shared<std::promise<int>>();
 3. 构造 `std::promise`（内部包含 shared state、mutex、condition variable）
 4. 析构时再次调用 `operator delete`
 
-在嵌入式系统中，`malloc/free` 的延迟不确定性是实时性的天敌。
+在嵌入式系统中，`malloc/free` 的延迟不确定性会直接破坏实时性。
 
 ## 3. MCCC 消息总线
 
@@ -183,7 +183,7 @@ using MsgBus = mccc::AsyncBus<MsgPayload>;
 
 MCCC 是纯异步总线（fire-and-forget），不提供内建的请求-应答模式。为实现 `SendMessage` 的同步语义，需要一个响应通道。
 
-传统方案使用 `std::promise/std::future`，每次调用产生堆分配。重构方案使用**预分配的响应槽池**：
+传统方案使用 `std::promise/std::future`，每次调用产生堆分配。重构方案使用预分配的响应槽池：
 
 ```cpp
 // 单个响应槽：缓存行对齐，防止 false sharing
@@ -566,9 +566,9 @@ cmake .. -DCMAKE_CXX_FLAGS="-DMCCC_QUEUE_DEPTH=4096"
 
 用 MCCC 无锁消息总线重构后：
 
-1. **PostMessage** 直接映射到 `bus.Publish()`，零堆分配，O(1) 入队
-2. **SendMessage** 通过预分配 `ResponsePool` 实现同步返回，替代 `shared_ptr<promise>`
-3. **优先级** 从手动排序升级为 MCCC 内建的 3 级准入控制，同步消息使用 HIGH 优先级
-4. **多生产者** 从 mutex 序列化升级为 CAS 无锁并发
+1. PostMessage 直接映射到 `bus.Publish()`，零堆分配，O(1) 入队
+2. SendMessage 通过预分配 `ResponsePool` 实现同步返回，替代 `shared_ptr<promise>`
+3. 优先级从手动排序升级为 MCCC 内建的 3 级准入控制，同步消息使用 HIGH 优先级
+4. 多生产者从 mutex 序列化升级为 CAS 无锁并发
 
 配套代码 [mccc-message-cpp](https://gitee.com/liudegui/mccc-message-cpp) 提供了完整的实现、示例和测试，可直接编译运行验证。

@@ -4,7 +4,7 @@ date: 2026-02-15T09:40:00
 draft: false
 categories: ["performance"]
 tags: ["ARM", "C++14", "C++17", "callback", "heterogeneous", "lock-free", "message-bus", "newosp", "performance"]
-summary: "通过逐行阅读 eventpp v0.1.3 核心代码，定位到回调遍历加锁、双锁入队、排他锁查 map 等 6 个性能瓶颈。逐一实施优化后，Active Object 吞吐量从 1.5 M/s 提升至 8.5 M/s，改善幅度超过 5 倍。最终通过 processQueueWith 编译期 Visitor 模式绕过全部 5 层间接调用，实现零开销分发 (16.7x 加速)。"
+summary: "通读 eventpp v0.1.3 核心代码，定位回调遍历加锁、双锁入队、排他锁查 map 等 6 个瓶颈。优化后 Active Object 吞吐量从 1.5 M/s 升到 8.5 M/s，并用 processQueueWith 编译期 Visitor 模式去掉 5 层间接调用，提速 16.7x。"
 ShowToc: true
 TocOpen: true
 ---
@@ -199,7 +199,7 @@ process()
             std::function(args...)     // 类型擦除间接调用
 ```
 
-对于**单消费者**场景 (一个线程消费所有事件，事件处理逻辑编译期已知)，上述基础设施开销完全不必要:
+对于单消费者场景 (一个线程消费所有事件，事件处理逻辑编译期已知)，上述基础设施开销完全不必要:
 
 - 不需要 shared_lock，只有一个消费者
 - 不需要 map.find，消费者已知如何处理所有事件
@@ -229,7 +229,7 @@ bool processOneWith(Visitor && visitor);
 
 - 返回 `true` 如果处理了一个事件
 
-**Visitor 协议**: Visitor 接收的第一个参数为事件 ID (EventType)，后续参数与 EventQueue 原型签名中的 Args... 相同。
+Visitor 协议: Visitor 接收的第一个参数为事件 ID (EventType)，后续参数与 EventQueue 原型签名中的 Args... 相同。
 
 ```cpp
 // 函数对象 (推荐: 编译器可内联)
@@ -258,7 +258,7 @@ queue.processQueueWith([](int event, const std::string & data) {
 | `shared_ptr<Node>` 链表遍历 | 每个回调 | **无** |
 | `std::function` 间接调用 | 每个回调 | **无** |
 | Mixin beforeDispatch 检查 | 每条消息 | **无** |
-| Visitor 直接调用 (可内联) | -- | **每条消息** |
+| Visitor 直接调用 (可内联) | - | **每条消息** |
 
 共享的基础设施 (无差异):
 - 队列 swap (lock_guard + std::swap)，两者相同
@@ -314,12 +314,12 @@ void doVisitQueuedEvent(V && visitor, T && item, IndexSequence<Indexes...>)
 | 条件编译 | `if constexpr` | SFINAE / `enable_if` |
 | 索引序列 | `std::index_sequence` | eventpp 自有 `MakeIndexSequence` |
 
-eventpp 的 EventQueue 是**同构**的 (所有事件共享相同回调签名)，不需要 variant/visit。
+eventpp 的 EventQueue 是同构的 (所有事件共享相同回调签名)，不需要 variant/visit。
 Visitor 接收的参数类型在编译期由模板参数确定，天然 C++14 兼容。
 
 #### 与 process() 的关系
 
-- **processQueueWith** 是 `process()` 的**替代品**，不是叠加使用
+- processQueueWith 是 `process()` 的替代品，不是叠加使用
 - 两者消费同一个队列 (queueList)
 - 适用于单消费者 (MPSC) 场景
 - 如需多消费者或动态注册回调，仍使用 `process()`
