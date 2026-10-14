@@ -32,7 +32,7 @@ misc/               -- 杂项 (13 篇)
 | [embedded_usb_dual_video_output.md](architecture/embedded_usb_dual_video_output.md) | 嵌入式双路 USB 视频输出: 一个设备、两个摄像头的同步原理 | 2026-09-20T08:00:00 |
 | [onchip_camera_rtsp_service.md](architecture/onchip_camera_rtsp_service.md) | 单芯片相机上的 RTSP 服务: 一帧画面怎么送到播放器 | 2026-09-20T08:00:00 |
 | [embedded_block_device_write_path.md](architecture/embedded_block_device_write_path.md) | 嵌入式块设备写入路径: 从文件系统到 SD 卡的四层地址翻译 | 2026-09-18T08:00:00 |
-| [mcu_thread_heartbeat_liveness.md](architecture/mcu_thread_heartbeat_liveness.md) | MCU 任务活性监控: 心跳判定、链路进展与硬件看门狗 | 2026-09-14T08:00:00 |
+| [mcu_thread_heartbeat_liveness.md](architecture/mcu_thread_heartbeat_liveness.md) | MCU 任务监控: 怎样发现任务卡死并正确喂狗 | 2026-09-14T08:00:00 |
 | [event_loop_internals_and_rtthread_port.md](architecture/event_loop_internals_and_rtthread_port.md) | 单线程事件循环的内核设计: 机制、移植与适用边界 | 2026-09-08T08:00:00 |
 | [reactor_event_loop_fit_evaluation.md](architecture/reactor_event_loop_fit_evaluation.md) | Reactor 事件循环引入嵌入式模块: 适配性评估与冗余账 | 2026-09-08T08:00:00 |
 | [hardware_software_cache_coherence.md](architecture/hardware_software_cache_coherence.md) | 嵌入式软硬件缓存一致性: 从旁路写入到集中收敛 | 2026-08-27T08:00:00 |
