@@ -4,7 +4,7 @@ date: 2026-02-17T10:20:00
 draft: false
 categories: ["practice"]
 tags: ["ARM", "C++17", "MISRA", "RTOS", "callback", "embedded", "lock-free", "memory-pool", "newosp", "serial", "state-machine", "zero-heap", "POSIX", "telnet", "debug"]
-summary: "工业嵌入式系统需要在 TCP telnet、串口、stdin 等不同环境下统一调试。newosp 的 Shell 模块通过函数指针 I/O 抽象实现多后端统一架构，通过 TCLAP 风格的子命令分发实现运行时控制（日志级别、配置修改、统计重置、生命周期转换），18 个命令覆盖诊断与控制两大需求，全程零堆分配、-fno-exceptions 兼容。"
+summary: "工业嵌入式设备常在 TCP telnet、串口、stdin 等不同环境下调试。newosp 的 Shell 模块用函数指针做 I/O 抽象，一套命令支持多后端，18 个命令覆盖诊断与运行时控制，全程零堆分配、兼容 -fno-exceptions。"
 ShowToc: true
 TocOpen: true
 ---
@@ -28,14 +28,14 @@ newosp 的调试 Shell 模块在一个 header-only 文件中提供完整的嵌�
 | 零侵入桥接 | 模块本身不依赖 shell.hpp，shell_commands.hpp 单向引用模块头文件 |
 | 资源开销 | ConsoleShell 300B 栈 + 0 堆 + 1 线程；GlobalCmdRegistry 64 槽 ~2KB |
 
-**18 个命令总览:**
+18 个命令总览：
 
 | 类型 | 命令 | 功能 |
 |------|------|------|
 | 控制 | `osp_log`, `osp_config`, `osp_bus`, `osp_lifecycle` | 运行时修改日志级别、配置参数、重置统计、状态机转换 |
 | 诊断 | `osp_watchdog`, `osp_faults`, `osp_sysmon` 等 14 个 | 只读查询系统各层状态 |
 
-**设计约束:**
+设计约束：
 - C++17 header-only, `-fno-exceptions -fno-rtti`
 - 零堆分配 (函数指针 + 静态局部变量 + 栈缓冲)
 - 命令签名 `int (*)(int argc, char* argv[])` 与 POSIX main 一致
@@ -72,10 +72,10 @@ newosp 的调试 Shell 模块在一个 header-only 文件中提供完整的嵌�
 ```
 
 四层各司其职:
-- **I/O 抽象层**: 函数指针隔离底层差异，后端可运行时切换
-- **Shell 引擎**: 行编辑、分词、Tab 补全、历史，与后端无关
-- **命令系统**: 注册/查找/分发/参数解析，与 Shell 引擎解耦
-- **应用层**: shell_commands.hpp 桥接模块状态，零侵入
+- I/O 抽象层：函数指针隔离底层差异，后端可运行时切换
+- Shell 引擎：行编辑、分词、Tab 补全、历史，与后端无关
+- 命令系统：注册/查找/分发/参数解析，与 Shell 引擎解耦
+- 应用层：shell_commands.hpp 桥接模块状态，零侵入
 
 ---
 
@@ -241,10 +241,10 @@ int ShellDispatch(int argc, char* argv[],
 ```
 
 行为:
-- **无子命令** (`argc <= 1`): 调用 `default_fn` (保持向后兼容)，若为 nullptr 则打印帮助
-- **`help`**: 自动生成格式化帮助表
-- **匹配子命令**: 调用 `handler(argc-1, argv+1)` (argv 左移，子命令名变 argv[0])
-- **未匹配**: 打印错误提示
+- 无子命令 (`argc <= 1`)：调用 `default_fn` (保持向后兼容)，若为 nullptr 则打印帮助
+- `help`：自动生成格式化帮助表
+- 匹配子命令：调用 `handler(argc-1, argv+1)` (argv 左移，子命令名变 argv[0])
+- 未匹配：打印错误提示
 
 使用示例:
 
@@ -318,7 +318,7 @@ if (!num.has_value() || num.value() > 5U) {
 | **查状态** (只读) | 诊断命令打印统计 | 已解决，14 个诊断命令覆盖 |
 | **改行为** (可控) | 重新编译 + 烧录 + 重启 | 现场调试无法重编译，修改一个日志级别要停机 |
 
-Shell 的控制命令解决第二类需求: 在运行时动态调整系统行为, **仅修改内存，重启恢复原值**, 适合现场调试和问题排查。
+Shell 的控制命令解决第二类需求：在运行时动态调整系统行为，只改内存、重启恢复原值，适合现场调试和问题排查。
 
 ### 5.2 osp_log: 日志级别控制
 
@@ -403,7 +403,7 @@ class ConfigStore {
 };
 ```
 
-**仅修改内存**: `SetString` 不触发文件写入，重启后丢失。这是有意的设计，现场调试改配置不应永久影响设备。
+仅修改内存：`SetString` 不触发文件写入，重启后丢失。这是有意的设计，现场调试改配置不应永久影响设备。
 
 ### 5.4 osp_bus: 统计重置
 
@@ -666,17 +666,17 @@ ConsoleShell/UartShell 比 DebugShell 少 ~4KB 堆和 2 个线程，适合资源
 
 ## 10. 经验总结
 
-1. **函数指针是嵌入式 I/O 抽象的最佳平衡点**. 比虚基类轻量，比模板灵活，对非热路径场景足够
+1. 函数指针是嵌入式 I/O 抽象的最佳平衡点：比虚基类轻量，比模板灵活，对非热路径场景足够
 
-2. **thread-local 是 Shell 会话路由的自然选择**. 每个会话独立线程，天然隔离，无需传参
+2. thread-local 是 Shell 会话路由的自然选择：每个会话独立线程，天然隔离，无需传参
 
-3. **子命令分发要带 default_fn**. `osp_bus` 无参数时仍显示统计，与升级前行为一致，用户无感知升级
+3. 子命令分发要带 default_fn：`osp_bus` 无参数时仍显示统计，与升级前行为一致，用户无感知升级
 
-4. **运行时修改仅限内存**. 现场调试改配置/日志级别不应永久影响设备，重启恢复原值是刻意的安全边界
+4. 运行时修改仅限内存：现场调试改配置/日志级别不应永久影响设备，重启恢复原值是刻意的安全边界
 
-5. **零侵入桥接优于修改模块接口**. 模块不知道 Shell 存在，不需要 Shell 时零开销，移植到无 Shell 平台零改动
+5. 零侵入桥接优于修改模块接口：模块不知道 Shell 存在，不需要 Shell 时零开销，移植到无 Shell 平台零改动
 
-6. **pipe(2) 和 openpty() 是测试 I/O 的利器**. 不需要物理硬件也能测试完整的 Shell 交互流程
+6. pipe(2) 和 openpty() 是测试 I/O 的利器：不需要物理硬件也能测试完整的 Shell 交互流程
 
 ---
 

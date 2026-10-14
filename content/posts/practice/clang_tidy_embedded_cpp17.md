@@ -4,7 +4,7 @@ date: 2026-02-16T11:20:00
 draft: false
 categories: ["practice"]
 tags: ["C++17", "clang-tidy", "static-analysis", "embedded", "CMake", "CI", "ARM", "code-quality"]
-summary: "将两篇 clang-tidy 基础教程整合并扩展为面向嵌入式 C++17 的完整实战指南。涵盖针对 -fno-exceptions/-fno-rtti 场景的精选 check 集合、嵌入式专属 check (concurrency、performance、bugprone)、HeaderFilterRegex 精确控制、CMake CMAKE_CXX_CLANG_TIDY 原生集成、GNU parallel 并行加速、GitHub Actions CI 门禁，以及 NOLINT 注释的正确用法。"
+summary: "把两篇 clang-tidy 教程整合扩展为嵌入式 C++17 实战指南：精选 check 集合、嵌入式专属 check、HeaderFilterRegex 限制范围、CMake 与 CI 集成、parallel 加速和 NOLINT 用法。"
 ShowToc: true
 TocOpen: true
 ---
@@ -19,15 +19,15 @@ TocOpen: true
 
 ## 1. 为什么嵌入式项目需要 clang-tidy
 
-cpplint 和 clang-format 解决的是**风格**问题 (命名、缩进、include 排序)，而 clang-tidy 解决的是**语义**问题:
+cpplint 和 clang-format 解决的是风格问题 (命名、缩进、include 排序)，clang-tidy 解决的是语义问题:
 
 | 工具 | 分析层级 | 能力 |
 |------|---------|------|
 | clang-format | 词法 (token) | 缩进、空格、换行 |
 | cpplint | 正则匹配 | 命名规范、头文件 guard、include 排序 |
-| **clang-tidy** | **AST (抽象语法树)** | 空指针解引用、窄化转换、use-after-move、线程安全 |
+| clang-tidy | AST (抽象语法树) | 空指针解引用、窄化转换、use-after-move、线程安全 |
 
-嵌入式 C++17 项目 (如 newosp) 常用 `-fno-exceptions -fno-rtti` 编译，这意味着:
+嵌入式 C++17 项目 (如 [newosp](https://github.com/DeguiLiu/newosp)) 常用 `-fno-exceptions -fno-rtti` 编译，这意味着:
 - 运行时类型检查缺失，类型错误更难发现
 - 异常路径被截断，错误处理依赖返回值检查
 - `reinterpret_cast`、`placement new` 等底层操作更多
@@ -190,26 +190,26 @@ CheckOptions:
 
 ### 3.1 配置设计原则
 
-**原则 1: 先禁全部 (`-*`)，再精选启用**
+原则 1: 先禁全部 (`-*`)，再精选启用
 
 原始教程和本文都采用 `-*` 起手。理由: clang-tidy 有 500+ check，全部启用会产生大量噪声。嵌入式项目需要精选与目标平台相关的 check。
 
-**原则 2: 禁用异常相关 check**
+原则 2: 禁用异常相关 check
 
 `-fno-exceptions` 项目中，以下 check 会产生误报:
 - `bugprone-exception-escape`: 检测异常泄漏，但异常已禁用
 - `bugprone-unhandled-exception-at-new`: 检测 new 的异常，但使用 placement new
 - `cert-err60-cpp`: 检测异常类拷贝构造，无异常场景不适用
 
-**原则 3: HeaderFilterRegex 必须配置**
+原则 3: HeaderFilterRegex 必须配置
 
 ```yaml
 HeaderFilterRegex: '(include/osp/|include/mccc/|src/)'
 ```
 
-不配置此项 (或设为空)，clang-tidy **只检查源文件，跳过头文件中的警告**。对于 header-only 库这意味着大部分代码不会被检查。设为 `.*` 则会检查系统头文件和第三方库 (Catch2、sockpp 等)，产生大量不可修复的噪声。
+不配置此项 (或设为空)，clang-tidy 只检查源文件，跳过头文件中的告警。对于 header-only 库这意味着大部分代码不会被检查。设为 `.*` 则会检查系统头文件和第三方库 (Catch2、sockpp 等)，产生大量不可修复的噪声。
 
-**原则 4: WarningsAsErrors 精选致命级 check**
+原则 4: WarningsAsErrors 精选致命级 check
 
 只将确定是 bug 的 check 升级为错误 (阻断 CI):
 - `bugprone-use-after-move`: 移动后使用，100% 是 bug
@@ -235,7 +235,7 @@ HeaderFilterRegex: '(include/osp/|include/mccc/|src/)'
 |-------|------|-----------|
 | `concurrency-mt-unsafe` | 检测多线程不安全函数 (strtok, rand, localtime) | 高: 嵌入式多线程/中断环境 |
 
-这个 check 在原始教程中缺失，但对嵌入式极其重要。`strtok`、`rand`、`asctime` 等函数使用静态内部缓冲区，在多线程环境中会产生数据竞争。
+这个 check 在原始教程里没有，对嵌入式场景却很关键。`strtok`、`rand`、`asctime` 等函数使用静态内部缓冲区，在多线程环境中会产生数据竞争。
 
 #### performance 系列
 
@@ -303,9 +303,9 @@ cmake -B build && cmake --build build
 cmake -B build -DENABLE_CLANG_TIDY=ON && cmake --build build
 ```
 
-**优势**: 每个 `.cpp` 文件编译时自动运行 clang-tidy，增量编译只检查修改的文件。无需手动指定文件列表。
+优势: 每个 `.cpp` 文件编译时自动运行 clang-tidy，增量编译只检查修改的文件，无需手动指定文件列表。
 
-注意：`CMAKE_CXX_CLANG_TIDY` 只在 **编译源文件时** 触发。header-only 库如果没有 `.cpp` 文件，需要通过测试文件间接触发检查。
+注意：`CMAKE_CXX_CLANG_TIDY` 只在编译源文件时触发。header-only 库如果没有 `.cpp` 文件，需要通过测试文件间接触发检查。
 
 ### 4.2 自定义 target (适合 CI)
 
@@ -519,9 +519,9 @@ jobs:
 ```
 
 三层质量门禁:
-1. **clang-format**: 格式一致性 (词法级)
-2. **cpplint**: 命名规范、头文件规则 (正则级)
-3. **clang-tidy**: bug 检测、性能分析、现代化建议 (AST 级)
+1. clang-format: 格式一致性 (词法级)
+2. cpplint: 命名规范、头文件规则 (正则级)
+3. clang-tidy: bug 检测、性能分析、现代化建议 (AST 级)
 
 ---
 

@@ -4,13 +4,13 @@ date: 2026-02-16T11:40:00
 draft: false
 categories: ["practice"]
 tags: ["QPC", "Active-Object", "HSM", "RT-Thread", "RTOS", "embedded", "lock-free", "zero-copy", "state-machine", "SPSC", "CAS", "Run-to-Completion", "event-driven"]
-summary: "QP/C (Quantum Platform in C) 是一个面向嵌入式实时系统的事件驱动框架，其核心是 Active Object (主动对象) 并发模型与层次状态机 (HSM)。本文从架构设计出发，深入剖析 QPC 的三大支柱: HSM 的冒泡-继承-覆盖机制与 QHsm/QMsm 双实现策略、QActive 零拷贝无锁事件队列的 SPSC 设计、以及 QActive 在 RT-Thread 上的完整移植方案。通过 1kHz 高频采样案例展示框架的工程优势。"
+summary: "QP/C 是面向嵌入式实时系统的事件驱动框架，核心是 Active Object 并发模型与层次状态机。本文剖析它的三大支柱：HSM 的冒泡-继承-覆盖机制与 QHsm/QMsm 双实现、QActive 零拷贝无锁事件队列的 SPSC 设计，以及在 RT-Thread 上的移植方案。"
 ShowToc: true
 TocOpen: true
 ---
 
 > 相关文章:
-> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，C++17 对 QPC Active Object 理念的重新实现
+> - [newosp 深度解析: C++17 事件驱动架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，C++17 对 QPC Active Object 理念的重新实现（源码: [github.com/DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)）
 > - [C 语言层次状态机框架: 从过程驱动到数据驱动](/tech-notes/posts/pattern/c_hsm_data_driven_framework/)，C 语言 HSM 的另一种设计方法
 > - [无锁编程核心原理](/tech-notes/posts/performance/lockfree_programming_fundamentals/)，QActive 零拷贝队列的无锁理论基础
 > - [SPSC 无锁环形缓冲区设计剖析](/tech-notes/posts/performance/spsc_ringbuffer_design/)，QActive 事件队列的 SPSC 设计详解
@@ -45,15 +45,19 @@ graph TB
     end
     OS["OS Abstraction: 裸机 / FreeRTOS / RT-Thread / QXK"]
     AO & HSM & EQ --> OS
+    classDef core fill:#e0e7ff,stroke:#4f46e5,color:#1e1b4b
+    classDef os fill:#e5e7eb,stroke:#6b7280,color:#111827
+    class A1,A2,H1,H2,Q1,Q2 core
+    class OS os
 ```
 
 ### 1.1 Active Object 模型
 
 Active Object (AO) 是 QP/C 对 Actor 模式的具体实现。每个 AO 是一个自包含的并发构件，封装了:
 
-- **一个层次状态机 (QHsm)**: 作为行为引擎，处理事件并执行状态转换
-- **一个事件队列 (QEQueue)**: 作为"信箱"，接收所有发送给它的事件
-- **一个专属的执行上下文**: 映射为 RTOS 线程或裸机的前后台循环
+- 一个层次状态机 (QHsm)：作为行为引擎，处理事件并执行状态转换
+- 一个事件队列 (QEQueue)：作为"信箱"，接收所有发送给它的事件
+- 一个专属的执行上下文：映射为 RTOS 线程或裸机的前后台循环
 
 AO 的核心设计原则:
 
@@ -133,7 +137,7 @@ static QState Display_active(DisplayAO *me, QEvt const *e) {
 
 ### 2.1 从平面 FSM 到层次 HSM
 
-传统平面状态机的核心问题是**状态爆炸**:
+传统平面状态机的核心问题是状态爆炸：
 
 ```c
 // 平面 FSM: 状态组合呈指数增长
@@ -148,7 +152,7 @@ enum {
 };
 ```
 
-HSM 通过**状态层次**解决此问题。子状态自动继承父状态的行为，只需处理差异化逻辑:
+HSM 通过状态层次解决此问题。子状态自动继承父状态的行为，只需处理差异化逻辑:
 
 ```
 Top (根状态)
@@ -178,13 +182,13 @@ typedef struct QMState {
 
 设计要点:
 
-- **所有指针在编译期生成**: `superstate` 链、处理函数、Entry/Exit/Init 动作全部是静态绑定，零运行时开销
-- **superstate 链深度远小于平面状态数**: 典型嵌入式应用的状态树深度为 3-5 层，而平面状态可能有数十甚至上百个
-- **内存布局紧凑**: `QMState` 数组在链接时连续排列，对 I-Cache 友好
+- 所有指针在编译期生成：`superstate` 链、处理函数、Entry/Exit/Init 动作全部是静态绑定，零运行时开销
+- superstate 链深度远小于平面状态数：典型嵌入式应用的状态树深度为 3-5 层，而平面状态可能有数十甚至上百个
+- 内存布局紧凑：`QMState` 数组在链接时连续排列，对 I-Cache 友好
 
 ### 2.3 事件派发: 冒泡-继承-覆盖
 
-HSM 的事件派发核心是**冒泡 (Bubble)** 机制:
+HSM 的事件派发核心是冒泡 (Bubble) 机制：
 
 ```c
 void QMsm_dispatch_(QHsm * const me, QEvt const * const e) {
@@ -206,7 +210,7 @@ void QMsm_dispatch_(QHsm * const me, QEvt const * const e) {
 }
 ```
 
-这一机制实现了面向对象中的**继承与覆盖**:
+这一机制实现了面向对象中的继承与覆盖：
 
 ```c
 // 父状态: 处理通用事件
@@ -264,7 +268,7 @@ QP/C 提供两种 HSM 实现，适用于不同开发模式:
 | 维护性 | 高 (代码可读性好) | 中 (依赖 QM 工具) |
 | 适用场景 | 原型开发、小型项目 | 生产系统、性能敏感场景 |
 
-**QMsm 的编译期优化原理:**
+QMsm 的编译期优化原理：
 
 ```c
 // QMsm 的转换动作表在编译期由 QM 工具生成
@@ -296,7 +300,7 @@ static QMTranActTable const tatbl_s11_to_s21 = {
 
 ### 3.1 事件传递: 只传指针，不拷贝数据
 
-QP/C 在 AO 之间传递事件时，遵循**零拷贝**原则:
+QP/C 在 AO 之间传递事件时，遵循零拷贝原则：
 
 | 操作 | 成本 | 机制 |
 |------|------|------|
@@ -385,7 +389,7 @@ QEvt const *QActive_get_(QActive *me) {
 
 ### 3.3 携带数据的事件模式
 
-**小数据: 内嵌在事件结构体中**
+小数据：内嵌在事件结构体中
 
 ```c
 typedef struct {
@@ -403,7 +407,7 @@ DataEvt const *de = (DataEvt const *)e;
 process(de->value);  // 直接使用，零拷贝
 ```
 
-**大数据: 外部缓冲 + 指针**
+大数据：外部缓冲 + 指针
 
 当 payload 较大 (几 KB 以上) 时，避免在事件对象内部持有大数组:
 
@@ -425,7 +429,7 @@ QACTIVE_POST(&consumer->super, &e->super, 0);
 
 ### 3.4 动态事件池
 
-QP/C 通过**固定大小事件池**替代 `malloc/free`，实现 O(1) 分配和回收:
+QP/C 通过固定大小事件池替代 `malloc/free`，实现 O(1) 分配和回收：
 
 ```c
 // 初始化: 预分配事件池
@@ -456,7 +460,7 @@ DataEvt *e = Q_NEW(DataEvt, SENSOR_SIG);
 |---------|-------------|------|
 | QActive 对象 | `rt_thread_t` 线程 | 一一对应，每个 AO 创建一个专属线程 |
 | QEQueue 事件队列 | 普通 C 数组 + 指针 | 纯 C 实现，不依赖 `rt_mailbox` |
-| `QActive_ctor()` | -- | 纯 C 构造函数，绑定初始状态处理函数 |
+| `QActive_ctor()` | 无 | 纯 C 构造函数，绑定初始状态处理函数 |
 | `QACTIVE_START()` | `rt_thread_create()` + `rt_thread_startup()` | 创建并启动 AO 线程 |
 | `QActive_get_()` | `rt_thread_suspend()` | 队列空时挂起线程，让出 CPU |
 | `QHSM_DISPATCH()` | 同一线程内函数调用 | 纯函数调用，不涉及 RTOS API |
@@ -678,9 +682,9 @@ SysTick → QF_TICK_X() → sampleEvt.ctr-- → ctr==0
 
 ### 7.1 AO 设计原则
 
-- **单一职责**: 每个 AO 只负责一类紧密相关的业务 (传感器、网络、UI)
-- **粒度适中**: AO 数量建议几十个以内，平衡架构清晰度与资源开销
-- **AO 与普通线程配合**: AO 处理非阻塞事件驱动逻辑；普通线程处理阻塞操作 (文件 I/O、Shell)
+- 单一职责：每个 AO 只负责一类紧密相关的业务 (传感器、网络、UI)
+- 粒度适中：AO 数量建议几十个以内，平衡架构清晰度与资源开销
+- AO 与普通线程配合：AO 处理非阻塞事件驱动逻辑；普通线程处理阻塞操作 (文件 I/O、Shell)
 
 ### 7.2 API 使用要点
 
@@ -693,9 +697,9 @@ SysTick → QF_TICK_X() → sampleEvt.ctr-- → ctr==0
 
 ### 7.3 性能优化
 
-- **批量处理**: 高频事件在 AO 事件循环中一次性处理多个，减少循环开销
-- **长逻辑拆分**: 耗时操作拆分为多步，通过向自身投递后续事件分步完成
-- **队列深度规划**: 根据峰值事件突发预估，`QACTIVE_POST()` 返回 `false` 时需有降级策略
+- 批量处理：高频事件在 AO 事件循环中一次性处理多个，减少循环开销
+- 长逻辑拆分：耗时操作拆分为多步，通过向自身投递后续事件分步完成
+- 队列深度规划：根据峰值事件突发预估，`QACTIVE_POST()` 返回 `false` 时需有降级策略
 
 ## 8. 总结
 
@@ -710,7 +714,7 @@ SysTick → QF_TICK_X() → sampleEvt.ctr-- → ctr==0
 | 调度开销 | 多次上下文切换 | 单次唤醒 + RTC 连续执行 |
 | 扩展性 | 锁竞争随核心数增长 | AO 天然适合多核分布 |
 
-QP/C 的 Active Object 模型通过**线程隔离 + 零拷贝事件队列 + 层次状态机**三位一体的设计，从架构层面消除了传统多线程编程中的数据竞争、锁死锁、优先级反转等问题。HSM 的冒泡-继承-覆盖机制提供了比平面 FSM 更强的行为复用能力，QMsm 的编译期优化使其在资源受限的嵌入式平台上保持极高的运行效率。
+QP/C 的 Active Object 模型通过线程隔离、零拷贝事件队列和层次状态机三位一体的设计，从架构层面消除了传统多线程编程中的数据竞争、锁死锁、优先级反转等问题。HSM 的冒泡-继承-覆盖机制提供了比平面 FSM 更强的行为复用能力，QMsm 的编译期优化使其在资源受限的嵌入式平台上保持极高的运行效率。
 
 对于 RT-Thread 用户，QActive on RT-Thread 方案在保持 QP/C 全部架构优势的同时，无缝集成 RT-Thread 的驱动和生态，是构建事件驱动嵌入式系统的推荐选择。
 

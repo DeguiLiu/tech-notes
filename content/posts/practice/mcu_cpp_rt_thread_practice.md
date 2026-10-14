@@ -20,13 +20,13 @@ TocOpen: true
 
 嵌入式 C 语言面对复杂业务时的痛点很具体：硬件抽象靠 `void*` + 函数指针手工组装，没有类型检查；资源管理靠约定，稍不注意就泄漏；相似逻辑因类型不同复制多份，测试覆盖困难。
 
-C++ 解决这些问题的机制大多是**编译期的**，不依赖运行时：模板在编译期展开，`constexpr` 在编译期计算，RAII 析构函数在作用域结束时自动调用。**这些特性的运行时开销为零**，与 C 代码生成的机器码等价。
+C++ 解决这些问题的机制大多是编译期的，不依赖运行时：模板在编译期展开，`constexpr` 在编译期计算，RAII 析构函数在作用域结束时自动调用。这些特性的运行时开销为零，与 C 代码生成的机器码等价。
 
-引入代价的是运行时特性：异常（`.eh_frame` 段、栈展开）、RTTI（`typeid`、`dynamic_cast`、类型信息表）、虚函数（vtable 指针 + 间接调用）。MCU 固件关掉前两项、限制第三项，C++ 的收益就是纯赚。
+代价来自运行时特性：异常（`.eh_frame` 段、栈展开）、RTTI（`typeid`、`dynamic_cast`、类型信息表）、虚函数（vtable 指针 + 间接调用）。MCU 固件关掉前两项、限制第三项，C++ 的收益就是纯赚。
 
 规范依据：
-- **MISRA C++ 2023**：禁止 `dynamic_cast`（Rule 21.3.1），性能关键路径限制虚函数，Advisory Rule 建议编译期分发优先。
-- **AUTOSAR C++14**：禁用异常（`-fno-exceptions`），禁用 RTTI（`-fno-rtti`），关键任务线程禁止动态内存分配。
+- MISRA C++ 2023：禁止 `dynamic_cast`（Rule 21.3.1），性能关键路径限制虚函数，Advisory Rule 建议编译期分发优先。
+- AUTOSAR C++14：禁用异常（`-fno-exceptions`），禁用 RTTI（`-fno-rtti`），关键任务线程禁止动态内存分配。
 
 ---
 
@@ -108,7 +108,7 @@ LDR  r1, [r0, #offset]  ; 取函数指针（1 次内存读）
 BLX  r1                 ; 间接跳转（分支预测失效）
 ```
 
-与直接调用相比，多 2 次内存读 + 间接跳转，Cortex-M4 无缓存下热路径增加约 3-5 cycles，且**无法内联**，编译器优化截断。
+与直接调用相比，多 2 次内存读 + 间接跳转，Cortex-M4 无缓存下热路径增加约 3-5 cycles，且无法内联，编译器优化截断。
 
 ### 4.2 C 语言 OOP：const 函数指针表
 
@@ -134,7 +134,7 @@ static const struct rt_device_ops uart_ops = {
 };
 ```
 
-无 vtable 指针注入对象头，`sizeof(struct)` 不变，调用开销与虚函数相当，但**可以静态分析和内联**。
+无 vtable 指针注入对象头，`sizeof(struct)` 不变，调用开销与虚函数相当，但可以静态分析和内联。
 
 ### 4.3 C++ 编译期多态：CRTP
 
@@ -294,6 +294,7 @@ adc_samples.push_back(read_adc());
 /* std::sort / std::transform 不分配堆，完全兼容 */
 std::sort(adc_samples.begin(), adc_samples.end());
 auto peak = *std::max_element(adc_samples.begin(), adc_samples.end());
+```
 
 ---
 
@@ -356,7 +357,7 @@ task->process();
 
 ### 7.3 `shared_ptr` 的限制
 
-`std::shared_ptr` 的控制块（引用计数 + 删除器）本身需要堆分配。**严格禁堆场景不可用**。替代方案：
+`std::shared_ptr` 的控制块（引用计数 + 删除器）本身需要堆分配，严格禁堆场景不可用。替代方案：
 - 侵入式引用计数（对象自身含 `refcount` 字段，`boost::intrusive_ptr` 风格）
 - 设计上改为单一所有者（`unique_ptr` + 移动语义）
 
@@ -384,7 +385,7 @@ class SpscRingbuffer {
 
 ### 8.2 FakeTSO：单核 MCU 的编译器屏障优化
 
-多核 ARM（Cortex-A）需要 `memory_order_acquire/release` 生成 DMB 屏障。单核 Cortex-M 上，中断打断主循环时主循环停止，CPU 可见性由硬件保证，**不需要 DMB**，只需防止编译器乱序：
+多核 ARM（Cortex-A）需要 `memory_order_acquire/release` 生成 DMB 屏障。单核 Cortex-M 上，中断打断主循环时主循环停止，CPU 可见性由硬件保证，不需要 DMB，只需防止编译器乱序：
 
 ```cpp
 /* FakeTSO = true 时的 Push：relaxed 原子 + 编译器信号屏障 */
@@ -411,6 +412,7 @@ void ADC_IRQHandler() {
     HAL_ADC_GetValues(buf, 8);
     g_adc_ring.PushBatch(buf, 8);  /* 高频中断（>10 kHz）下优势显著 */
 }
+```
 
 ---
 
@@ -499,7 +501,7 @@ RT-Thread 的 `rt_thread_create`、`rt_malloc` 等内核 API 已在头文件中�
 
 ### 9.3 STL 算法：哪些能用
 
-`<algorithm>` 纯模板算法操作调用者提供的迭代器区间，**不自行分配堆内存**，可用于 `std::array` / `FixedVector`：
+`<algorithm>` 纯模板算法操作调用者提供的迭代器区间，不自行分配堆内存，可用于 `std::array` / `FixedVector`：
 
 ```cpp
 /* 推荐使用 */
@@ -509,7 +511,7 @@ std::transform(a.begin(), a.end(), b.begin(), fn);
 std::any_of / std::all_of / std::count_if / std::fill / std::copy
 ```
 
-**禁止使用**（可能申请临时堆缓冲）：
+禁止使用（可能申请临时堆缓冲）：
 
 | 算法 | 原因 |
 |------|------|
@@ -523,8 +525,8 @@ std::any_of / std::all_of / std::count_if / std::fill / std::copy
 
 | C++ 特性 | MCU/RT-Thread 适用性 | 替代 / 限制 |
 |---------|---------------------|------------|
-| 类与封装 | 推荐 | — |
-| 继承（非虚） | 推荐 | — |
+| 类与封装 | 推荐 | 无 |
+| 继承（非虚） | 推荐 | 无 |
 | 虚函数（热路径） | 禁止 | CRTP / const 函数指针表 |
 | 异常 | 禁止 | `expected<V,E>` / 返回码 |
 | RTTI / `dynamic_cast` | 禁止 | 编译期 `type_traits` |
@@ -543,13 +545,10 @@ std::any_of / std::all_of / std::count_if / std::fill / std::copy
 
 ---
 
-**参考资料**
+参考资料
 
 - [RT-Thread C++ 组件文档](https://github.com/RT-Thread/rt-thread/tree/master/components/libc/cplusplus)
 - [newosp: 嵌入式 C++17 框架（FixedString / FixedPool / SpscRingbuffer / expected）](https://github.com/DeguiLiu/newosp)
 - [eclipse-iceoryx: 零拷贝 IPC 中间件，FixedString 原型](https://github.com/eclipse-iceoryx/iceoryx)
 - [MISRA C++ 2023](https://misra.org.uk/misra-c-plus-plus/)
 - [AUTOSAR C++14 Coding Guidelines](https://www.autosar.org/fileadmin/standards/R22-11/AP/AUTOSAR_RS_CPP14Guidelines.pdf)
-
-```
-```

@@ -11,7 +11,7 @@ TocOpen: true
 
 > 源码仓库: [newosp](https://github.com/DeguiLiu/newosp) | 本文代码引用基于 newosp v0.4.3 (43 headers, 1153 tests)
 
-> 筛选标准: 只保留 C11 在语言层面**无法实现**的能力。
+> 筛选标准: 只保留 C11 在语言层面无法实现的能力。
 > 边界检查、SBO 回调、ARM 内存序、cache line 对齐、`-fno-exceptions` 等 C 均可做到，已移除。
 
 > 姊妹篇: [C11 做不到的事: 10 项 C++17 语言级不可替代能力]({{< ref "cpp17_what_c_cannot_do" >}})，语言层面的系统性对比与完整代码示例。
@@ -97,7 +97,7 @@ using SessionId   = NewType<uint32_t, SessionIdTag>;
 
 C 的 `#ifdef` 只能基于宏开关，无法检测类型属性。
 
-**(a) `include/osp/spsc_ringbuffer.hpp:144-157`**：根据 T 是否 trivially copyable 选择路径
+(a) `include/osp/spsc_ringbuffer.hpp:144-157`：根据 T 是否 trivially copyable 选择路径
 
 ```cpp
 if constexpr (kTriviallyCopyable) {
@@ -111,7 +111,7 @@ if constexpr (kTriviallyCopyable) {
 
 同一文件 184 行 (Pop)、210 行 (PopBatch) 使用相同模式。
 
-**(b) `include/osp/config.hpp:534-560`**：编译期递归展开多后端分派
+(b) `include/osp/config.hpp:534-560`：编译期递归展开多后端分派
 
 ```cpp
 template <typename First, typename... Rest>
@@ -124,7 +124,7 @@ expected<void, ConfigError> DispatchFile(const char* path, ConfigFormat format) 
 }
 ```
 
-**(c) `include/osp/fault_collector.hpp:580`**：根据回调返回类型选择控制流
+(c) `include/osp/fault_collector.hpp:580`：根据回调返回类型选择控制流
 
 ```cpp
 if constexpr (std::is_same_v<decltype(fn(recent_ring_[idx])), bool>) {
@@ -269,4 +269,4 @@ struct NodeBase {
 | 7 | 自动资源清理 | 无析构函数 | `vocabulary.hpp:774-801` |
 | 8 | 参数包展开 + CRTP | 无可变参数模板，函数指针不可内联 | `worker_pool.hpp:519-522` |
 
-这些能力并非孤立使用。以 `AsyncBus` 为例，一次 `Publish` 调用链涉及: 模板实例化生成专用队列代码 (第 6 项) -> `VariantIndex` 编译期校验消息类型 (第 1 项) -> `constexpr` 计算 topic hash (第 5 项) -> `if constexpr` 按类型选择拷贝策略 (第 4 项) -> RAII 保证 envelope 资源自动释放 (第 7 项)。五项能力在同一条热路径上协同工作，形成编译期到运行时的完整安全链。
+这些能力在实际代码里是组合出现的。以 `AsyncBus` 为例，一次 `Publish` 调用链涉及: 模板实例化生成专用队列代码 (第 6 项) -> `VariantIndex` 编译期校验消息类型 (第 1 项) -> `constexpr` 计算 topic hash (第 5 项) -> `if constexpr` 按类型选择拷贝策略 (第 4 项) -> RAII 保证 envelope 资源自动释放 (第 7 项)。五项能力在同一条热路径上协同工作，形成编译期到运行时的完整安全链。

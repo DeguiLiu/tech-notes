@@ -13,7 +13,7 @@ TocOpen: true
 
 ## 延迟卡在 TCP 上
 
-问题归结为两点：TCP 的重传与队头阻塞决定了延迟下界；客户端缓存决定了保密性上限。直播分发最常见的组合是 Nginx-rtmp 模块（支持 RTMP、HLS）和它的扩展 Nginx-http-flv-module，三条链路都绕不开码流走 TCP 这个前提。
+问题归结为两点：TCP 的重传与队头阻塞决定了延迟下界，客户端本地缓存决定了保密性。直播分发最常见的组合是 Nginx-rtmp 模块（支持 RTMP、HLS）和它的扩展 Nginx-http-flv-module，三条链路都绕不开码流走 TCP 这个前提。
 
 RTMP 是 Adobe 为 Flash 平台设计的应用层协议，靠 TCP 保证可靠传输，局域网内延迟一般在 1 到 3 秒；主流浏览器早已放弃 Flash，iOS 端还需要第三方解码器。HLS 走 HTTP/80，穿透防火墙没问题，但服务端要把流切成 ts 小文件、客户端按序播放，延迟普遍在 10 秒以上，还会产生海量小文件。Http-Flv 把 RTMP 码流重新封装成 HTTP 长连接流，浏览器免插件就能播，实时性与 RTMP 相当，底子仍是 TCP，1 到 3 秒的瓶颈没有解决，且客户端本地会缓存流媒体资源，保密性差。
 
@@ -21,24 +21,28 @@ RTMP 是 Adobe 为 Flash 平台设计的应用层协议，靠 TCP 保证可靠�
 
 ```mermaid
 flowchart LR
-    push["推流端"]
-    server["nginx-rtmp-module<br/>流媒体服务器"]
-    pc["PC 播放客户端"]
-    mobile["移动播放客户端"]
-    push --> server
-    server --> pc
-    server --> mobile
+    push["推流端"]:::cli
+    server["nginx-rtmp-module<br/>流媒体服务器"]:::srv
+    pc["PC 播放客户端"]:::cli
+    mobile["移动播放客户端"]:::cli
+    push -->|"RTMP 推流<br/>TCP"| server
+    server -->|"RTMP：1 到 3 秒"| pc
+    server -->|"HLS：10 秒以上"| mobile
+    classDef srv fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef cli fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
 ```
 
 *图 1：Nginx-rtmp 的 RTMP/HLS 分发。*
 
 ```mermaid
 flowchart LR
-    push["推流端"]
-    server["Nginx-http-flv-module<br/>流媒体服务器"]
-    client["PC 浏览器或<br/>移动播放客户端"]
-    push --> server
-    server --> client
+    push["推流端"]:::cli
+    server["Nginx-http-flv-module<br/>流媒体服务器"]:::srv
+    client["PC 浏览器或<br/>移动播放客户端"]:::cli
+    push -->|"RTMP 推流<br/>TCP"| server
+    server -->|"HTTP-FLV：1 到 3 秒<br/>客户端本地缓存"| client
+    classDef srv fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef cli fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
 ```
 
 *图 2：Http-Flv 分发。*
@@ -51,16 +55,18 @@ WebRTC 基于 UDP，面向无连接，规避了 TCP 拥塞控制的开销，且�
 
 ```mermaid
 flowchart LR
-    push["推流端"]
-    server["Nginx-WebRtc-module<br/>流媒体服务器"]
-    client["PC 浏览器或<br/>移动播放客户端"]
-    push --> server
-    server --> client
+    push["推流端"]:::cli
+    server["nginx-rtc-module<br/>流媒体服务器"]:::srv
+    client["PC 浏览器或<br/>移动播放客户端"]:::cli
+    push -->|"RTMP 推流<br/>照旧"| server
+    server -->|"WebRTC over UDP/SRTP<br/>首包约 560 ms"| client
+    classDef srv fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef cli fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
 ```
 
 *图 3：方案总体架构。*
 
-架构中的抽象模块 `Nginx-WebRtc-module` 落地为挂在 OpenResty 1.31.1.1 上的一组模块，对应关系如下：
+图中的 `nginx-rtc-module` 落地为挂在 OpenResty 1.31.1.1 上的一组模块，对应关系如下：
 
 | 方案角色 | 落地实现 | 职责 |
 | --- | --- | --- |
@@ -80,14 +86,14 @@ flowchart LR
 
 ```mermaid
 flowchart TB
-    pusher["推流客户端"]
-    player["rtmp 播放客户端"]
-    n1["(1) nginx 初始化"]
-    n2["(2) nginx_rtmp 模块初始化<br/>读取配置文件"]
-    n3["(3) 握手建立 rtmp 连接"]
-    n4["(4) 初始化网络连接<br/>创建码流传输通道"]
-    n5["(5) 传输媒体数据<br/>推送到播放客户端"]
-    n6["(6) 断开推送"]
+    pusher["推流客户端"]:::cli
+    player["rtmp 播放客户端"]:::cli
+    n1["(1) nginx 初始化"]:::srv
+    n2["(2) nginx_rtmp 模块初始化<br/>读取配置文件"]:::srv
+    n3["(3) 握手建立 rtmp 连接"]:::srv
+    n4["(4) 初始化网络连接<br/>创建码流传输通道"]:::srv
+    n5["(5) 传输媒体数据<br/>推送到播放客户端"]:::srv
+    n6["(6) 断开推送"]:::srv
     n1 --> n2
     n2 --> n3
     n3 --> n4
@@ -96,6 +102,8 @@ flowchart TB
     pusher --> n3
     n3 --> player
     n5 --> player
+    classDef cli fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef srv fill:#dcfce7,stroke:#16a34a,color:#14532d
 ```
 
 *图 4：原有 Nginx-rtmp 流程。*
@@ -104,19 +112,19 @@ flowchart TB
 
 ```mermaid
 flowchart TB
-    pusher["推流客户端"]
-    rtcplayer["rtc 播放客户端"]
-    n1["(1) nginx 初始化"]
-    n2["(2) nginx-rtmp 模块初始化<br/>读取配置文件"]
-    a["a. RTC 服务初始化<br/>注册 HTTP/UDP 服务"]
-    n3["(3) 握手建立 rtmp 连接"]
-    n4["(4) 初始化网络连接<br/>创建码流传输通道"]
-    n6["(6) 传输媒体数据"]
-    n7["(7) 断开推流"]
-    b["b. 建立播放<br/>webrtc 网络连接"]
-    c["c. 转发 rtmp 数据<br/>至 rtc 处理模块"]
-    d["d. 音视频 rtp 数据封装"]
-    e["e. 将 rtp 数据推送至<br/>所有 rtc 订阅者"]
+    pusher["推流客户端"]:::cli
+    rtcplayer["rtc 播放客户端"]:::cli
+    n1["(1) nginx 初始化"]:::srv
+    n2["(2) nginx-rtmp 模块初始化<br/>读取配置文件"]:::srv
+    a["a. RTC 服务初始化<br/>注册 HTTP/UDP 服务"]:::rtc
+    n3["(3) 握手建立 rtmp 连接"]:::srv
+    n4["(4) 初始化网络连接<br/>创建码流传输通道"]:::srv
+    n6["(6) 传输媒体数据"]:::srv
+    n7["(7) 断开推流"]:::srv
+    b["b. 建立播放<br/>webrtc 网络连接"]:::rtc
+    c["c. 转发 rtmp 数据<br/>至 rtc 处理模块"]:::rtc
+    d["d. 音视频 rtp 数据封装"]:::rtc
+    e["e. 将 rtp 数据推送至<br/>所有 rtc 订阅者"]:::rtc
     n1 --> n2
     n2 --> n3
     n3 --> n4
@@ -132,6 +140,9 @@ flowchart TB
     d --> e
     b --> e
     e --> rtcplayer
+    classDef cli fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef srv fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef rtc fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
 ```
 
 *图 5：扩展后的 RTC 工作流程。a 到 e 为新增环节。*
@@ -183,11 +194,13 @@ stream {
 
 ```mermaid
 flowchart LR
-    s1["Nginx 系统配置加载"]
-    s2["nginx-rtmp 模块配置加载"]
-    s3["RTC 服务配置加载"]
+    s1["Nginx 系统配置加载"]:::cfg
+    s2["nginx-rtmp 模块配置加载"]:::cfg
+    s3["RTC 服务配置加载<br/>bridge / http / stream"]:::rtc
     s1 --> s2
     s2 --> s3
+    classDef cfg fill:#cffafe,stroke:#0891b2,color:#164e63
+    classDef rtc fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
 ```
 
 *图 6：系统配置加载顺序。*
@@ -209,15 +222,24 @@ sequenceDiagram
     participant P as 播放客户端
     participant H as 信令模块 ngx_rtc_http_module
     participant S as UDP 服务 ngx_rtc_stream_module
-    P->>H: POST /rtc/v1/play/ 携带播放 URL 与 offer SDP
-    H->>H: 校验 stream key，从进程堆创建 session
-    H-->>P: answer SDP，携带 media 级 a=candidate
-    P->>S: STUN binding request
-    S->>S: 按 ICE ufrag 匹配 session
-    S-->>P: STUN binding success
-    P->>S: DTLS 握手
-    S->>S: 导出 SRTP 密钥，session 订阅 source
-    S-->>P: SRTP 音视频码流
+    rect rgb(219, 234, 254)
+        Note over P,H: 第一段 信令交换 SDP
+        P->>H: POST /rtc/v1/play/ 携带播放 URL 与 offer SDP
+        H->>H: 校验 stream key，从进程堆创建 session
+        H-->>P: answer SDP，携带 media 级 a=candidate
+    end
+    rect rgb(254, 243, 199)
+        Note over P,S: 第二段 ICE 连通性检查
+        P->>S: STUN binding request
+        S->>S: 按 ICE ufrag 匹配 session
+        S-->>P: STUN binding success
+    end
+    rect rgb(220, 252, 231)
+        Note over P,S: 第三段 安全通道与媒体
+        P->>S: DTLS 握手
+        S->>S: 导出 SRTP 密钥，session 订阅 source
+        S-->>P: SRTP 音视频码流
+    end
 ```
 
 *图 7：与 RTC 播放客户端建立连接。*
@@ -235,13 +257,13 @@ sequenceDiagram
 
 ```mermaid
 flowchart LR
-    RTMP["RTMP 推流连接"]:::dist
-    BR["ngx_rtmp_rtc_bridge_module<br/>订阅 VIDEO / AUDIO 事件"]:::br
-    CPY["推送前先拷一份码流给 RTC 服务"]:::br
+    RTMP["RTMP 推流连接"]:::cli
+    BR["ngx_rtmp_rtc_bridge_module<br/>订阅 VIDEO / AUDIO 事件"]:::srv
+    CPY["推送前先拷一份码流给 RTC 服务"]:::srv
     AUD["音频：AAC 转 Opus"]:::core
     VID["视频：NALU 转 RTP<br/>single / STAP-A / FU-A，剔除 B 帧"]:::core
     SRTP["逐 session SRTP 加密发送"]:::core
-    DIST["RTMP 播放客户端<br/>原分发主干不变"]:::dist
+    DIST["RTMP 播放客户端<br/>原分发主干不变"]:::cli
     RTMP --> BR
     BR --> CPY
     CPY --> AUD
@@ -249,9 +271,9 @@ flowchart LR
     AUD --> SRTP
     VID --> SRTP
     RTMP --> DIST
-    classDef br fill:#dbeafe,stroke:#2563eb
-    classDef core fill:#dcfce7,stroke:#16a34a
-    classDef dist fill:#fef3c7,stroke:#d97706
+    classDef cli fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef srv fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef core fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
 ```
 
 *图 8：Rtmp 转 RTC 桥接模块。*
@@ -278,9 +300,9 @@ flowchart LR
 
 ### 三个最容易踩的协议坑
 
-1. **session 不能用 request pool 分配。** session 生命周期跨越 HTTP 请求，返回 answer 之后还要在 UDP 侧完成 DTLS/SRTP。用 `r->pool` 会在响应返回后内存失效，后续 STUN 匹配读到垃圾。正确做法是 `ngx_alloc` 从进程堆分配，配合空闲 reap 定时器回收。
-2. **DTLS server 要显式 `SSL_set_accept_state`。** OpenSSL 不会因为用了 `DTLS_server_method()` 就自动进入 accept 状态，漏掉这一步报 `ssl_read_internal:uninitialized`，握手无感知失败。
-3. **STUN username 的顺序不一定是 RFC 里那个。** UDP 侧要靠 ICE ufrag 从 username 里匹配 session，标准写法是 `client_ufrag:server_ufrag`，但实测 werift 发出来的是 `server_ufrag:client_ufrag`，前半是服务端 ufrag。取错一半，STUN 永远匹配不到 session，媒体零包且没有任何报错。
+1. session 不能用 request pool 分配。session 生命周期跨越 HTTP 请求，返回 answer 之后还要在 UDP 侧完成 DTLS/SRTP。用 `r->pool` 会在响应返回后内存失效，后续 STUN 匹配读到垃圾。正确做法是 `ngx_alloc` 从进程堆分配，配合空闲 reap 定时器回收。
+2. DTLS server 要显式 `SSL_set_accept_state`。OpenSSL 不会因为用了 `DTLS_server_method()` 就自动进入 accept 状态，漏掉这一步报 `ssl_read_internal:uninitialized`，握手无感知失败。
+3. STUN username 的顺序不一定是 RFC 里那个。UDP 侧要靠 ICE ufrag 从 username 里匹配 session，标准写法是 `client_ufrag:server_ufrag`，但实测 werift 发出来的是 `server_ufrag:client_ufrag`，前半是服务端 ufrag。取错一半，STUN 永远匹配不到 session，媒体零包且没有任何报错。
 
 ### 推流端没有 RTC 上行，QoS 得自己造
 
@@ -292,8 +314,8 @@ TWCC、GCC、REMB 这些上行带宽估计在本场景不适用：单向播放�
 
 ### 多 worker 与多分辨率
 
-**多 worker**：信令落在 worker A、UDP 落在 worker B 时，进程内注册表查不到 session。解法是把跨 worker 必需的身份信息（name、SSRC/PT、seq/ts、SPS/PPS、ufrag/pwd、就绪标志、owner worker）放进 `ngx_shm_zone` 加 `ngx_slab_pool`，媒体数据走 per-worker 环形队列，eventfd 在 master fork 前创建、所有 worker 继承后互相唤醒，owner worker 消费环并做 SRTP 加密发送。一条硬约束贯穿始终：DTLS/SRTP/转码器这些私有句柄绝不进 shm，共享结构只放可以 memcpy 进 slab 的字段。
+多 worker：信令落在 worker A、UDP 落在 worker B 时，进程内注册表查不到 session。解法是把跨 worker 必需的身份信息（name、SSRC/PT、seq/ts、SPS/PPS、ufrag/pwd、就绪标志、owner worker）放进 `ngx_shm_zone` 加 `ngx_slab_pool`，媒体数据走 per-worker 环形队列，eventfd 在 master fork 前创建、所有 worker 继承后互相唤醒，owner worker 消费环并做 SRTP 加密发送。一条硬约束贯穿始终：DTLS/SRTP/转码器这些私有句柄绝不进 shm，共享结构只放可以 memcpy 进 slab 的字段。
 
-**多分辨率**：模块内不引 x264（GPL 风险），转码档用一路外部 ffmpeg 级联完成：拉源流转 1080p/720p/540p/360p 四档推回服务器成独立流，每档独立鉴权，播放端改流名即可切档。x264 侧 `zerolatency + bf=0` 保证每一档都保持 WebRTC 可播的无 B 帧低延迟码流；`fps=30` 滤镜放在滤镜链首，否则 testsrc 源经转码后帧率会翻倍。
+多分辨率：模块内不引 x264（GPL 风险），转码档用一路外部 ffmpeg 级联完成：拉源流转 1080p/720p/540p/360p 四档推回服务器成独立流，每档独立鉴权，播放端改流名即可切档。x264 侧 `zerolatency + bf=0` 保证每一档都保持 WebRTC 可播的无 B 帧低延迟码流；`fps=30` 滤镜放在滤镜链首，否则 testsrc 源经转码后帧率会翻倍。
 
 更多实现细节（状态机、GOP 环结构、shm 布局、单测清单）见模块源码 [github.com/DeguiLiu/nginx-rtc-module](https://github.com/DeguiLiu/nginx-rtc-module) 与部署示例 [github.com/DeguiLiu/nginx-rtc-example](https://github.com/DeguiLiu/nginx-rtc-example)。

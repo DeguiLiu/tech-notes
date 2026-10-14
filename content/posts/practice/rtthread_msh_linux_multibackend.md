@@ -4,22 +4,22 @@ date: 2026-02-15T11:20:00
 draft: false
 categories: ["practice"]
 tags: ["ARM", "C++17", "RTOS", "embedded", "lock-free", "newosp", "serial"]
-summary: "RT-Thread 的 MSH (Micro Shell) 是嵌入式领域最成功的命令行交互组件之一。本文剖析 MSH 的核心设计理念，讨论在嵌入式 Linux 上实现同等功能的三种方案 (Embedded CLI 移植、newosp shell、自研 embsh)，并重点介绍 embsh 如何在一个纯头文件库中融合多后端 I/O、telnet 协议、认证、历史导航和 Tab 补全。"
+summary: "RT-Thread 的 MSH 是嵌入式里广泛使用的命令行组件。本文梳理它的设计要点，对比在嵌入式 Linux 上实现同等功能的三种方案，并介绍 embsh 如何在纯头文件库中融合多后端 I/O、telnet 协议、认证、历史导航和 Tab 补全。"
 ShowToc: true
 TocOpen: true
 ---
 
-> RT-Thread 的 MSH (Micro Shell) 是嵌入式领域最成功的命令行交互组件之一。本文剖析 MSH 的核心设计理念，讨论在嵌入式 Linux 上实现同等功能的三种方案 (Embedded CLI 移植、newosp shell、自研 embsh)，并重点介绍 embsh 如何在一个纯头文件库中融合多后端 I/O、telnet 协议、认证、历史导航和 Tab 补全。
+> RT-Thread 的 MSH (Micro Shell) 是嵌入式里广泛使用的命令行组件。它的核心机制值得单独梳理；本文也对比在嵌入式 Linux 上实现同等功能的三种方案（Embedded CLI 移植、[newosp](https://github.com/DeguiLiu/newosp) shell、自研 embsh），并介绍 embsh 如何在纯头文件库中融合多后端 I/O、telnet 协议、认证、历史导航和 Tab 补全。
 
 ## 1. RT-Thread MSH 的设计精髓
 
 RT-Thread MSH 具备以下核心设计:
 
-- **MSH_CMD_EXPORT 宏注册**: 一行宏将函数注册为 Shell 命令，零侵入
-- **argc/argv 标准签名**: `int cmd(int argc, char** argv)`，与 POSIX 一致
-- **多传输后端**: 串口、Telnet、USB CDC 等多种输入源
-- **自动 help**: 内置命令列表，开发者无需手动维护
-- **Tab 补全 + 历史记录**: 交互体验接近 Linux bash
+- MSH_CMD_EXPORT 宏注册：一行宏将函数注册为 Shell 命令，零侵入
+- argc/argv 标准签名：`int cmd(int argc, char** argv)`，与 POSIX 一致
+- 多传输后端：串口、Telnet、USB CDC 等多种输入源
+- 自动 help：内置命令列表，开发者无需手动维护
+- Tab 补全 + 历史记录：交互体验接近 Linux bash
 
 这些设计使得 MSH 成为嵌入式 shell 的标杆。在嵌入式 Linux 平台上，我们需要同等的调试能力。
 
@@ -33,7 +33,7 @@ RT-Thread MSH 具备以下核心设计:
 - 支持命令注册、参数解析、历史记录、Tab 补全
 - 输入源无关: 任意字节流 (UART、TCP、USB CDC)
 
-**局限性**:
+局限性：
 
 | 维度 | Embedded CLI | RT-Thread MSH |
 |------|-------------|---------------|
@@ -66,7 +66,7 @@ uart.Start();
 优点: 多后端、Tab 补全、线程安全注册。
 局限: 与 newosp 耦合 (依赖 platform.hpp + vocabulary.hpp)，无认证，无方向键历史，命令签名无 context 指针。
 
-### 2.3 方案 C: embsh：独立的嵌入式 Shell 库 (推荐)
+### 2.3 方案 C: embsh，独立的嵌入式 Shell 库 (推荐)
 
 [embsh](https://github.com/DeguiLiu/embsh) 融合了 newosp shell (多后端) 和 telsh (IAC + 认证 + 历史) 的优点:
 
@@ -165,11 +165,11 @@ using ReadFn  = ssize_t (*)(int fd, void* buf, size_t len);
 
 embsh 的 line_editor 模块提供:
 
-- **256B 行缓冲区**: 固定大小，零堆分配
-- **方向键导航**: ESC 序列 FSM 解析 `\x1b[A/B/C/D`
-- **16 条历史记录**: 环形缓冲，跳过重复
-- **Tab 补全**: 单匹配自动填充 + 空格，多匹配显示列表 + 最长公共前缀
-- **IAC 过滤**: telnet 协议字节透明处理
+- 256B 行缓冲区：固定大小，零堆分配
+- 方向键导航：ESC 序列 FSM 解析 `\x1b[A/B/C/D`
+- 16 条历史记录：环形缓冲，跳过重复
+- Tab 补全：单匹配自动填充 + 空格，多匹配显示列表 + 最长公共前缀
+- IAC 过滤：telnet 协议字节透明处理
 
 输入处理流程:
 
@@ -193,7 +193,7 @@ embsh 的 UartShell 封装了完整的 termios 配置:
 
 ```cpp
 embsh::UartShell::Config cfg;
-cfg.device = "/dev/ttyPS0";    // Zynq PS UART
+cfg.device = "/dev/ttyPS0";    // 平台串口设备节点
 cfg.baudrate = 115200;
 cfg.prompt = "sensor> ";
 

@@ -9,7 +9,7 @@ ShowToc: true
 TocOpen: true
 ---
 
-> 在[上一篇文章](/tech-notes/posts/practice/cyberrt_datavisitor_mccc_rewrite/)中，我们用无锁 MPSC 消息总线实现了进程内的观察者模式数据分发。但工业嵌入式系统中，数据源和消费者往往运行在不同进程甚至不同容器中。本文介绍 newosp 的 SPMC 共享内存通道，将数据分发从进程内扩展到跨进程，支持一写多读的零拷贝传输。
+> 在[上一篇文章](/tech-notes/posts/practice/cyberrt_datavisitor_mccc_rewrite/)中，我们用无锁 MPSC 消息总线实现了进程内的观察者模式数据分发。但工业嵌入式系统中，数据源和消费者往往运行在不同进程甚至不同容器中。本文介绍 [newosp](https://github.com/DeguiLiu/newosp)（面向嵌入式 Linux 的 C++17 header-only 基础库）的 SPMC 共享内存通道，它把数据分发从进程内扩展到跨进程，支持一写多读的零拷贝传输。
 
 ## 1. 问题: 进程内分发不够用
 
@@ -26,10 +26,10 @@ TocOpen: true
 
 这在单进程架构中工作良好。但当系统规模增长，出现以下需求时，进程内方案遇到瓶颈:
 
-- **故障隔离**: 感知算法崩溃不应影响数据采集进程
-- **独立升级**: 融合模块更新不需要重启整个系统
-- **资源隔离**: 不同消费者需要独立的 CPU/内存配额
-- **多语言**: 数据源是 C++ 驱动，消费者可能是 Python 算法
+- 故障隔离：感知算法崩溃不应影响数据采集进程
+- 独立升级：融合模块更新不需要重启整个系统
+- 资源隔离：不同消费者需要独立的 CPU/内存配额
+- 多语言：数据源是 C++ 驱动，消费者可能是 Python 算法
 
 这些场景需要跨进程的数据分发。
 
@@ -86,10 +86,10 @@ POSIX 共享内存 (/osp_lidar_spmc)
 
 关键设计:
 
-- **Per-consumer tail**: 每个消费者维护独立的读位置，互不干扰。写入时检查最慢消费者的 tail，防止覆盖未读数据。
-- **CAS 原子注册**: 消费者通过 `compare_exchange_strong` 原子操作注册到 `active[]` 数组，无锁、无竞态。
-- **futex 广播**: 写入后 `FUTEX_WAKE` 唤醒所有等待的消费者，而非逐个通知。
-- **长度前缀**: 每条消息前 4 字节 LE 编码长度，支持变长消息。
+- Per-consumer tail：每个消费者维护独立的读位置，互不干扰。写入时检查最慢消费者的 tail，防止覆盖未读数据。
+- CAS 原子注册：消费者通过 `compare_exchange_strong` 原子操作注册到 `active[]` 数组，无锁、无竞态。
+- futex 广播：写入后 `FUTEX_WAKE` 一次性唤醒所有等待的消费者。
+- 长度前缀：每条消息前 4 字节 LE 编码长度，支持变长消息。
 
 ### 3.2 写入流程
 
@@ -276,9 +276,9 @@ if (wr.has_value()) {
 
 两个消费者读取相同的数据，做不同的处理:
 
-**Visitor-Logging**: 每 10 帧输出统计，检测序号间隙，3 秒无数据报 stall。
+Visitor-Logging：每 10 帧输出统计，检测序号间隙，3 秒无数据报 stall。
 
-**Visitor-Fusion**: 计算点云包围盒 (bounding box)，模拟 1-3ms 处理延迟，处理过慢时进入 Overloaded 状态跳帧。
+Visitor-Fusion：计算点云包围盒 (bounding box)，模拟 1-3ms 处理延迟，处理过慢时进入 Overloaded 状态跳帧。
 
 两者完全独立，互不影响。融合模块崩溃不会影响日志模块，反之亦然。
 

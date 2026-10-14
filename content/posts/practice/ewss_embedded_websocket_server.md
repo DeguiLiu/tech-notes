@@ -47,7 +47,7 @@ Server (poll Reactor)
 
 ## 为什么去掉 ASIO
 
-不是 ASIO 不好，而是嵌入式场景的约束不同。
+取舍的原因是嵌入式场景的约束与桌面/服务器不同。
 
 | 维度 | ASIO 方案 | EWSS 方案 |
 |------|-----------|-----------|
@@ -334,7 +334,7 @@ EWSS 的基础类型（`expected`、`optional`、`FixedVector`、`FixedString`�
 
 EWSS 在单线程场景下的吞吐量（~27K msg/s 单客户端，~67K msg/s 多客户端）与 Simple-WebSocket-Server 处于同一量级，但资源占用差距显著：67KB vs 2MB 二进制，12KB vs 动态内存每连接，P50 35us / P99 55us 的确定性延迟 vs 受 GC 和堆分配影响的不确定延迟。
 
-Simple-WebSocket-Server 的优势在多核扩展：4 线程池可以线性提升吞吐量，而 EWSS 的单线程模型在 4-8 客户端后就触及上限。这正是两者的设计定位差异：EWSS 优化的是资源受限场景下的确定性，不是吞吐量天花板。
+两者定位不同：EWSS 追求资源受限场景下的确定性，不追求吞吐量天花板。
 
 ## 设计权衡
 
@@ -354,7 +354,7 @@ EWSS 为嵌入式约束做了明确的取舍：
 
 ## Simple-WebSocket-Server 的优势
 
-公平起见，列出 EWSS 做不到而 Simple-WebSocket-Server 能做的：
+EWSS 做不到而 Simple-WebSocket-Server 能做的部分也列一下：
 
 - 多线程扩展：ASIO 线程池可利用多核
 - 动态缓冲区：处理任意大小的消息

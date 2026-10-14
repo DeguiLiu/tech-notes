@@ -4,7 +4,7 @@ date: 2026-02-17T10:00:00
 draft: false
 categories: ["practice"]
 tags: ["ARM", "C++17", "CRC", "LiDAR", "behavior-tree", "callback", "embedded", "lock-free", "message-bus", "newosp", "scheduler", "serial", "state-machine", "zero-copy"]
-summary: "本文介绍的 newosp 库基于 MIT 协议开源，当前版本 v0.2.0。"
+summary: "newosp 是面向嵌入式 Linux 的 C++17 header-only 基础库，覆盖消息总线、层次状态机、共享内存 IPC、调度器等模块。本文介绍它的设计原则、核心模块和四个工业示例。"
 ShowToc: true
 TocOpen: true
 ---
@@ -21,15 +21,15 @@ ROS2 太重，对资源受限的嵌入式 Linux 平台不友好；自研框架�
 
 ## 核心设计原则
 
-newosp 的设计围绕几个在嵌入式场景下至关重要的原则：
+newosp 的设计围绕几个嵌入式场景下的硬约束：
 
-**栈优先，热路径零堆分配。** 库内提供了 `FixedVector<T, N>`、`FixedString<N>`、`FixedFunction<Sig, Cap>` 等固定容量容器，所有数据都在栈上或静态分配。在实时性要求高的路径上，不会出现 `malloc` 导致的不确定延迟。整个库零 `std::function` 使用，回调统一通过 SBO（Small Buffer Optimization）的 `FixedFunction` 实现。
+栈优先，热路径零堆分配。库内提供了 `FixedVector<T, N>`、`FixedString<N>`、`FixedFunction<Sig, Cap>` 等固定容量容器，所有数据都在栈上或静态分配。在实时性要求高的路径上，不会出现 `malloc` 导致的不确定延迟。整个库零 `std::function` 使用，回调统一通过 SBO（Small Buffer Optimization）的 `FixedFunction` 实现。
 
-**兼容 `-fno-exceptions -fno-rtti`。** 很多嵌入式项目为了减小二进制体积和避免异常处理的运行时开销，会关闭异常和 RTTI。newosp 用 `expected<V, E>` 和 `optional<T>` 做类型安全的错误处理，完全不依赖异常机制。
+兼容 `-fno-exceptions -fno-rtti`。很多嵌入式项目为了减小二进制体积和避免异常处理的运行时开销，会关闭异常和 RTTI。newosp 用 `expected<V, E>` 和 `optional<T>` 做类型安全的错误处理，完全不依赖异常机制。
 
-**零全局状态。** 所有状态封装在对象中，通过 RAII 管理生命周期。Bus 通过依赖注入传入 Node，支持多实例并行，不会出现全局单例导致的测试困难和耦合问题。
+零全局状态。所有状态封装在对象中，通过 RAII 管理生命周期。Bus 通过依赖注入传入 Node，支持多实例并行，不会出现全局单例导致的测试困难和耦合问题。
 
-**编译期分发替代虚函数。** 标签分发、`if constexpr`、CRTP、变参模板......用现代 C++ 的编译期技术替代传统的虚函数 OOP，在保持灵活性的同时实现零开销抽象。`StaticNode` 通过模板参数化 Handler，编译器可生成直接跳转表并内联回调，消除间接调用开销。
+编译期分发替代虚函数。标签分发、`if constexpr`、CRTP、变参模板......用现代 C++ 的编译期技术替代传统的虚函数 OOP，在保持灵活性的同时实现零开销抽象。`StaticNode` 通过模板参数化 Handler，编译器可生成直接跳转表并内联回调，消除间接调用开销。
 
 ## 七层架构一览
 
@@ -176,14 +176,14 @@ Alive (root)
 
 场景：主机通过串口向设备推送固件，支持分块传输、CRC 校验、NAK 重传、超时恢复。
 
-**架构**:
+架构：
 - `protocol.hpp`: 定义帧格式（0xAA 帧头 / 0x55 帧尾）、CRC-CCITT constexpr 查表、OTA 命令集
 - `parser.hpp`: HSM 驱动的 9 状态帧解析器（Idle -> LenLo -> LenHi -> CmdClass -> Cmd -> Data -> CrcLo -> CrcHi -> Tail），逐字节状态转移
 - `host.hpp`: 主机端升级流程，用行为树编排 4 个阶段（SendStart -> SendChunks -> SendEnd -> SendVerify）
 - `device.hpp`: 设备端 6 状态 OTA 状态机（Idle -> Erasing -> Receiving -> Verifying -> Complete/Error），内含 Flash 模拟器
 - `main.cpp`: 用 `SpscRingbuffer` 模拟双向 UART FIFO，注入约 5% 的信道噪声
 
-这个示例的亮点在于 HSM 和 BT 的配合：BT 负责编排"发送启动 -> 分块传输 -> 发送结束 -> 校验"的高层流程，HSM 负责底层的帧解析状态转换和设备端 OTA 状态管理。两者各司其职，代码结构清晰。
+这里的关键是 HSM 和 BT 的分工：BT 负责编排"发送启动 -> 分块传输 -> 发送结束 -> 校验"的高层流程，HSM 负责底层的帧解析状态转换和设备端 OTA 状态管理。两者各司其职，代码结构清晰。
 
 同时集成了 `ThreadWatchdog`（5s 超时检测）、`FaultCollector`（故障上报）、`AsyncBus`（进度/状态变更/完成事件广播）、`DebugShell`（调试命令），展示了一个工业级应用该有的可观测性。
 
@@ -191,53 +191,53 @@ Alive (root)
 
 三进程架构的共享内存通信示例，模拟视频帧的跨进程传输。
 
-**三个进程**:
+三个进程：
 - `shm_producer`: HSM 驱动的帧生产者（8 状态），支持背压检测和自动降速
 - `shm_consumer`: HSM 驱动的帧消费者（8 状态），支持重连重试和帧完整性校验
 - `shm_monitor`: DebugShell 调试监控，提供 telnet 命令实时查看通道状态
 
-**设计要点**:
-- 生产者在 ring buffer 满时不是简单丢弃，而是进入 Paused 状态；连续 3 次满则进入 Throttled 降速状态
+设计要点：
+- 生产者在 ring buffer 满时进入 Paused 状态并暂停取帧，连续 3 次满则转入 Throttled 降速状态
 - 消费者对每一帧做逐字节校验（`(seq_num + offset) & 0xFF`），确保数据完整性
 - 通过 `SpscRingbuffer` 在进程间传递统计快照（`ShmStats`，48 字节 trivially_copyable），监控进程可以实时获取生产者/消费者的运行状态
 - 集成 `ThreadWatchdog`（线程存活监控）和 `FaultCollector`（ring-full、thread-death、frame-invalid 等故障码）
 
-这个示例很好地展示了 newosp 在多进程场景下的能力：共享内存做数据面的零拷贝传输，`SpscRingbuffer` 做控制面的统计信息同步，`DebugShell` 提供运行时可观测性。
+多进程场景下，共享内存承担数据面的零拷贝传输，`SpscRingbuffer` 做控制面的统计信息同步，`DebugShell` 提供运行时可观测性。
 
 ### 3. 流式协议 (streaming_protocol/)
 
 模拟 GB28181/RTSP 风格的视频监控协议，展示 Bus + Node + Timer 的多节点协作。
 
-**4 个节点共享一条 AsyncBus**:
+四个节点共享一条 AsyncBus：
 - `Registrar`: 处理设备注册请求，分配 session_id
 - `HeartbeatMonitor`: 监控心跳延迟，>500ms 告警
 - `StreamController`: 处理流控命令（START/STOP）和流数据
 - `Client`: 发起注册、发送心跳、控制流
 
-**三阶段流程**:
+三阶段流程：
 1. 设备注册（HIGH 优先级消息）
 2. 心跳保活（TimerScheduler 每 50ms 触发）
 3. 流控制（START -> 5 帧数据 -> STOP，数据用 LOW 优先级）
 
-这个示例的价值在于展示了 newosp 的消息优先级机制：注册请求用 HIGH 优先级确保及时处理，流数据用 LOW 优先级避免阻塞控制消息。所有消息类型都是 POD 结构，通过 `std::variant` 统一路由。
+消息优先级在这里体现得很直接：注册请求用 HIGH 优先级确保及时处理，流数据用 LOW 优先级避免阻塞控制消息。所有消息类型都是 POD 结构，通过 `std::variant` 统一路由。
 
 ### 4. 多节点客户端网关 (client_gateway/)
 
 IoT 网关场景，展示 WorkerPool + Node 的分工协作。
 
-**组件分工**:
+组件分工：
 - `Node "gateway"`: 订阅连接/断连事件，管理客户端生命周期
 - `Node "monitor"`: 订阅心跳事件，监控客户端健康状态
 - `WorkerPool`（2 个 worker 线程）: 并行处理 `ClientData` 数据消息
 
-**5 阶段主流程**:
+五阶段主流程：
 1. 连接 4 个客户端
 2. 提交 32 条数据消息（4 clients x 8 msgs），WorkerPool 并行处理
 3. 发送心跳到监控节点
 4. `FlushAndPause` 排空在途工作，汇总处理结果
 5. 有序断连所有客户端
 
-这个示例展示了一个关键模式：用 Node 处理控制面（连接管理、心跳监控），用 WorkerPool 处理数据面（业务数据并行处理）。`FlushAndPause` 确保所有在途工作完成后再进入下一阶段，避免数据丢失。统计信息全部用 `std::atomic` 在栈上分配，零堆开销。
+这里的模式是：Node 处理控制面（连接管理、心跳监控），WorkerPool 处理数据面（业务数据并行处理）。`FlushAndPause` 确保所有在途工作完成后再进入下一阶段，避免数据丢失。统计信息全部用 `std::atomic` 在栈上分配，零堆开销。
 
 ## 测试与质量保证
 

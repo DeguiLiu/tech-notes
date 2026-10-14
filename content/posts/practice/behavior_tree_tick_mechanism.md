@@ -4,7 +4,7 @@ date: 2026-02-16T11:10:00
 draft: false
 categories: ["practice"]
 tags: ["behavior-tree", "embedded", "C++17", "cooperative-multitasking", "async", "architecture", "refactoring", "newosp"]
-summary: "行为树（Behavior Tree）凭借 Tick 心跳机制和 RUNNING 状态，在单核 MCU 上实现了无需多线程的协作式并发。本文从 Tick 运行模型出发，以 newosp 框架的 osp::BehaviorTree 实现为主线，结合 HSM+BT 组合模式和嵌入式视觉平台预览服务重构案例，给出行为树在嵌入式系统中的完整工程实践路径。"
+summary: "行为树凭借 Tick 心跳和 RUNNING 状态，在单核 MCU 上实现无需多线程的协作式并发。本文从 Tick 运行模型出发，以 newosp 的 osp::BehaviorTree 为主线，结合 HSM+BT 组合模式和视觉平台预览服务重构案例，给出嵌入式落地路径。"
 ShowToc: true
 TocOpen: true
 aliases:
@@ -13,7 +13,7 @@ aliases:
 
 行为树（Behavior Tree，BT）起源于游戏 AI，但其 Tick 心跳机制在嵌入式系统中同样适用。在设备启动流程、工业控制任务编排等单核场景中，BT 提供了一种结构化的协作式并发方案：无需多线程，只靠主循环的周期性 `Tick()` 调用就能实现 I/O 并发和复杂决策逻辑。
 
-本文以 [newosp](https://gitee.com/liudegui/newosp) 框架的 `osp::BehaviorTree`（C++17 header-only，`include/osp/bt.hpp`）为主线，结合 HSM+BT 组合模式和嵌入式视觉平台预览服务的真实重构案例，系统讲解 BT 在嵌入式系统中的工程落地。
+本文以 [newosp](https://github.com/DeguiLiu/newosp) 框架的 `osp::BehaviorTree`（C++17 header-only，`include/osp/bt.hpp`）为主线，结合 HSM+BT 组合模式和嵌入式视觉平台预览服务的真实重构案例，系统讲解 BT 在嵌入式系统中的工程落地。
 
 > 相关文章:
 > - [C 语言层次状态机框架: 从过程驱动到数据驱动](/tech-notes/posts/pattern/c_hsm_data_driven_framework/)：HSM 与 BT 互补的架构基础
@@ -38,11 +38,11 @@ rt_err_t system_start()
 
 随着硬件组合增多，这种写法暴露三个结构性缺陷：
 
-**启动瓶颈**：I/O 密集型任务（配置文件加载）与 CPU 密集型任务（寄存器配置）严格串行，CPU 在等待 I/O 期间完全空转。实测某视觉平台启动耗时约 1600ms，其中 I/O 等待占 50% 以上。
+启动瓶颈：I/O 密集型任务（配置文件加载）与 CPU 密集型任务（寄存器配置）严格串行，CPU 在等待 I/O 期间完全空转。实测某视觉平台启动耗时约 1600ms，其中 I/O 等待占 50% 以上。
 
-**容错缺失**：任一步骤失败即整体中断。传感器初始化失败时，系统不能切换到无传感器的安全模式继续运行。
+容错缺失：任一步骤失败即整体中断。传感器初始化失败时，系统不能切换到无传感器的安全模式继续运行。
 
-**条件编译失控**：为适配不同硬件组合，代码中大量嵌套 `#ifdef`，逻辑割裂，测试覆盖率低。
+条件编译失控：为适配不同硬件组合，代码中大量嵌套 `#ifdef`，逻辑割裂，测试覆盖率低。
 
 ### 1.2 行为树的三个解法
 
@@ -205,9 +205,9 @@ struct BtNode {
 ```
 
 这种设计的工程意义：
-- **缓存友好**：节点在内存中连续排列，深度优先遍历时 cache miss 率低
-- **零堆分配**：`MaxNodes` 和 `OSP_BT_MAX_CHILDREN` 编译期确定，tick 路径无 `new/malloc`
-- **确定性内存**：整棵树的 RAM 占用在编译期可计算
+- 缓存友好：节点在内存中连续排列，深度优先遍历时 cache miss 率低
+- 零堆分配：`MaxNodes` 和 `OSP_BT_MAX_CHILDREN` 编译期确定，tick 路径无 `new/malloc`
+- 确定性内存：整棵树的 RAM 占用在编译期可计算
 
 ### 3.2 类型安全 Context
 
@@ -243,7 +243,7 @@ tree.SetRoot(root);
 
 ### 4.1 为什么需要组合
 
-BT 和 HSM 不是竞争关系，而是互补：
+BT 和 HSM 互补：
 
 | 职责 | HSM | BT |
 |------|-----|-----|
@@ -352,23 +352,27 @@ HSM 的 `InitializingEntry` 设置 `ctx.initialized = true`，BT 的 `CheckSenso
 
 ```mermaid
 graph TD
-    A[Root: Sequence] --> B[1. Parallel: 系统校验]
-    A --> C[2. Parallel: 服务初始化]
-    A --> D[3. Sequence: 流配置]
-    A --> E[4. Parallel: 服务启动]
+    A[Root: Sequence]:::clsRoot --> B[1. Parallel: 系统校验]:::clsStage
+    A --> C[2. Parallel: 服务初始化]:::clsStage
+    A --> D[3. Sequence: 流配置]:::clsStage
+    A --> E[4. Parallel: 服务启动]:::clsStage
 
-    B --> B1[Condition: 系统信息有效]
-    B --> B2[Condition: DDR 就绪]
+    B --> B1[Condition: 系统信息有效]:::clsLeaf
+    B --> B2[Condition: DDR 就绪]:::clsLeaf
 
-    C --> C1[Selector: 传感器初始化]
-    C --> C2[Selector: 图像处理器初始化]
-    C --> C3[Action: 异步配置文件加载]
+    C --> C1[Selector: 传感器初始化]:::clsLeaf
+    C --> C2[Selector: 图像处理器初始化]:::clsLeaf
+    C --> C3[Action: 异步配置文件加载]:::clsLeaf
 
-    D --> D1[Action: 接口配置]
-    D --> D2[Action: 缓冲区分配]
+    D --> D1[Action: 接口配置]:::clsLeaf
+    D --> D2[Action: 缓冲区分配]:::clsLeaf
 
-    E --> E1[Action: 启动传感器]
-    E --> E2[Action: 启动图像处理器]
+    E --> E1[Action: 启动传感器]:::clsLeaf
+    E --> E2[Action: 启动图像处理器]:::clsLeaf
+
+    classDef clsRoot fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef clsStage fill:#e0e7ff,stroke:#4f46e5,color:#312e81
+    classDef clsLeaf fill:#dcfce7,stroke:#16a34a,color:#14532d
 ```
 
 用 newosp API 构建：
@@ -492,9 +496,9 @@ gantt
 | 手写 if-else（基准） | 30 | 36 |
 
 关键结论：
-- 一次完整树 tick 约 **97ns**（8 节点混合树），相对手写 if-else 约 3-4 倍开销
-- 在 10ms tick 间隔下，框架开销占 tick 预算 **< 0.001%**
-- BT 不适合 > 500Hz 的控制环路（如 PID），推荐架构：**决策层（BT，10-100Hz）+ 控制层（直接状态机或 PID，1kHz+）**
+- 一次完整树 tick 约 97ns（8 节点混合树），相对手写 if-else 约 3-4 倍开销
+- 在 10ms tick 间隔下，框架开销占 tick 预算 < 0.001%
+- BT 不适合 > 500Hz 的控制环路（如 PID），推荐架构：决策层（BT，10-100Hz）+ 控制层（直接状态机或 PID，1kHz+）
 
 ### 6.2 内存预算
 
@@ -505,7 +509,7 @@ gantt
 | `BtNode<Context>` x 32 | ~32 x 56B = 1.8KB |
 | `repeat_counters_` x 32 | 128B |
 | 树元数据 | ~16B |
-| **合计** | **~2KB RAM** |
+| 合计 | ~2KB RAM |
 
 编译期可计算，无运行时分配。
 
@@ -549,7 +553,7 @@ osp::NodeStatus GoodAction(PreviewContext& ctx) {
 
 ### 7.1 BT vs FSM 选型
 
-2025 年 IEEE TASE 对比研究（[arXiv:2405.16137](https://arxiv.org/html/2405.16137v1)）的核心结论：**机器人执行任务的行为结果与策略表示无关，但随任务复杂度增加，维护 BT 比维护 FSM 更容易。**
+2025 年 IEEE TASE 对比研究（[arXiv:2405.16137](https://arxiv.org/html/2405.16137v1)）的核心结论：机器人执行任务的行为结果与策略表示无关，但随任务复杂度增加，维护 BT 比维护 FSM 更容易。
 
 Polymath Robotics 的工程经验也印证了这一点：FSM 在状态数超过 20 后，转换矩阵的维护成本呈指数增长。
 
@@ -565,19 +569,19 @@ Polymath Robotics 的工程经验也印证了这一点：FSM 在状态数超过 
 
 不建议一次性重写，推荐四阶段迁移：
 
-**阶段一 包装验证**：将现有线性流程整体包装为一个 Action 节点，验证 BT 框架可运行，不改变任何业务逻辑。
+阶段一 包装验证：将现有线性流程整体包装为一个 Action 节点，验证 BT 框架可运行，不改变任何业务逻辑。
 
-**阶段二 异步化**：将耗时最长的步骤（配置文件加载）改为异步 Action，引入第一个 `kRunning` 状态。
+阶段二 异步化：将耗时最长的步骤（配置文件加载）改为异步 Action，引入第一个 `kRunning` 状态。
 
-**阶段三 容错化**：引入 Selector 节点替换 `if-else` 错误处理，实现自动降级。
+阶段三 容错化：引入 Selector 节点替换 `if-else` 错误处理，实现自动降级。
 
-**阶段四 并发化**：引入 Parallel 节点实现并发初始化，完成启动耗时优化。
+阶段四 并发化：引入 Parallel 节点实现并发初始化，完成启动耗时优化。
 
 Polymath Robotics 的迁移经验：先用一个简单场景（如 PING/PONG 测试）验证 BT 可行性，再迁移核心系统。
 
 ### 7.3 相关资源
 
-- [newosp](https://gitee.com/liudegui/newosp)：C++17 嵌入式事件驱动框架（含 `osp::BehaviorTree`）
+- [newosp](https://github.com/DeguiLiu/newosp)：C++17 嵌入式事件驱动框架（含 `osp::BehaviorTree`，镜像: [Gitee](https://gitee.com/liudegui/newosp)）
 - [bt-cpp](https://gitee.com/liudegui/bt-cpp)：C++14 行为树库（header-only，MIT）
 - [BehaviorTree.CPP](https://behaviortree.dev/docs/4.0.2/intro)：C++ 生态事实标准
 - [micro_behaviortree_cpp](https://github.com/Kotakku/micro_behaviortree_cpp)：BT.CPP 嵌入式裁剪版
@@ -586,4 +590,4 @@ Polymath Robotics 的迁移经验：先用一个简单场景（如 PING/PONG 测
 
 ---
 
-行为树 Tick 机制的价值在于用可忽略的运行时开销换取显著的架构清晰度。在 newosp 框架中，`osp::BehaviorTree` 的 flat-array 设计保证了零堆分配和确定性内存，与 `osp::StateMachine` 的 HSM+BT 组合模式让系统级状态管理和运行态任务编排各司其职。迁移的关键不是一次性重写，而是从最痛的瓶颈点开始，渐进式引入异步节点和 Selector 子树。
+行为树 Tick 机制的价值在于用可忽略的运行时开销换取显著的架构清晰度。在 newosp 框架中，`osp::BehaviorTree` 的 flat-array 设计保证了零堆分配和确定性内存，与 `osp::StateMachine` 的 HSM+BT 组合模式让系统级状态管理和运行态任务编排各司其职。迁移的关键是从最痛的瓶颈点开始，渐进式引入异步节点和 Selector 子树。

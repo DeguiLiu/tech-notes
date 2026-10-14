@@ -4,7 +4,7 @@ date: 2026-02-17T09:50:00
 draft: false
 categories: ["practice"]
 tags: ["C++17", "MCCC", "FixedFunction", "lock-free", "message-bus", "zero-copy", "variant", "embedded"]
-summary: "MCCC 系列第三篇。以 C++14 消息总线的四大堆分配瓶颈为出发点，逐项展示 C++17 的替代方案: std::function -> FixedFunction (SBO + static_assert)、unordered_map -> VariantIndex 固定数组、shared_ptr -> Envelope 内嵌 Ring Buffer、std::string/vector -> FixedString/FixedVector。每项改造附带代码对比、编译期保障机制和性能实测数据。"
+summary: "MCCC 系列第三篇。从 C++14 消息总线的四个堆分配瓶颈出发，逐项给出 C++17 替代方案: FixedFunction、VariantIndex 固定数组、Envelope 内嵌 Ring Buffer、FixedString/FixedVector，并附代码对比与性能实测数据。"
 ShowToc: true
 TocOpen: true
 ---
@@ -13,7 +13,7 @@ TocOpen: true
 >
 > 前篇: [C++14 消息总线的工程优化与性能瓶颈分析](/tech-notes/posts/performance/cpp14_message_bus_optimization/)
 >
-> MCCC 的设计决策后来被 [newosp](https://github.com/DeguiLiu/newosp) 框架采纳并演化。
+> MCCC 的设计决策后来被 [newosp](https://github.com/DeguiLiu/newosp)（面向嵌入式 Linux 的 C++17 header-only 基础库）采纳并演化。
 
 ## 背景: C++14 版本留下的四个堆分配瓶颈
 
@@ -37,7 +37,7 @@ TocOpen: true
 C++14 版本的每次 `publishMessage` 都可能触发堆分配:
 
 ```cpp
-// C++14 版本 -- 两处潜在堆分配
+// C++14 版本：两处潜在堆分配
 std::vector<MessageCallback> pendingCallbacks;          // vector 扩容
 pendingCallbacks.push_back(item->messageCallback);      // function 拷贝
 ```
@@ -49,7 +49,7 @@ pendingCallbacks.push_back(item->messageCallback);      // function 拷贝
 mccc-bus 实现了 `FixedFunction<Sig, Capacity>`，将 SBO 容量提升到 64 字节，超容量在编译期直接拒绝:
 
 ```cpp
-// mccc.hpp -- FixedFunction 核心结构
+// mccc.hpp：FixedFunction 核心结构
 template <typename Sig, uint32_t Capacity = 64U>
 class FixedFunction;
 
@@ -83,9 +83,9 @@ public:
 
 关键设计:
 
-- **编译期容量检查**: `static_assert(sizeof(Decayed) <= Capacity)` 确保永不堆分配
-- **函数指针 Ops 表**: `invoke/destroy/move` 三个函数指针替代虚基类，消除 vtable 间接寻址
-- **`-fno-exceptions` 兼容**: 不依赖 `std::bad_function_call`，空调用返回默认值
+- 编译期容量检查：`static_assert(sizeof(Decayed) <= Capacity)` 确保永不堆分配
+- 函数指针 Ops 表：`invoke/destroy/move` 三个函数指针替代虚基类，消除 vtable 间接寻址
+- `-fno-exceptions` 兼容：不依赖 `std::bad_function_call`，空调用返回默认值
 
 ### 1.3 对比
 
@@ -146,7 +146,7 @@ struct VariantIndex<T, std::variant<Types...>> {
 回调表从哈希表变为固定大小数组:
 
 ```cpp
-// 运行时分发退化为数组下标访问 -- O(1) 且完全确定
+// 运行时分发退化为数组下标访问：O(1) 且完全确定
 std::array<CallbackSlot, MCCC_MAX_MESSAGE_TYPES> callback_table_;
 
 template <typename T, typename Func>
@@ -154,7 +154,7 @@ SubscriptionHandle Subscribe(Func&& func) {
     constexpr size_t type_idx = VariantIndex<T, PayloadVariant>::value;
     static_assert(type_idx < MCCC_MAX_MESSAGE_TYPES,
         "Type index exceeds MCCC_MAX_MESSAGE_TYPES");
-    // callback_table_[type_idx] -- 一次数组下标访问
+    // callback_table_[type_idx]：一次数组下标访问
 }
 ```
 
@@ -204,7 +204,7 @@ using SubscriptionItemPtr = std::shared_ptr<SubscriptionItem>;
 mccc-bus 将消息封装 (`MessageEnvelope`) 直接内嵌到 Ring Buffer 中:
 
 ```cpp
-// 消息信封 -- 内嵌在 Ring Buffer 槽位中
+// 消息信封：内嵌在 Ring Buffer 槽位中
 template <typename PayloadVariant>
 struct MessageEnvelope {
     MessageHeader header;       // ID, 时间戳, 优先级
@@ -212,7 +212,7 @@ struct MessageEnvelope {
     // defaulted move，零拷贝发布
 };
 
-// Ring Buffer 槽位 -- envelope 直接内嵌，非指针
+// Ring Buffer 槽位：envelope 直接内嵌，非指针
 struct MCCC_ALIGN_CACHELINE RingBufferNode {
     std::atomic<uint32_t> sequence{0U};
     MessageEnvelope<PayloadVariant> envelope;  // 内嵌，非 shared_ptr
@@ -258,7 +258,7 @@ std::vector<int32_t> subscribedMessageIds;  // 堆分配
 mccc-bus 实现了 `FixedString<N>` 和 `FixedVector<T, N>`:
 
 ```cpp
-// FixedString -- 编译期字面量长度检查
+// FixedString：编译期字面量长度检查
 template <uint32_t Capacity>
 class FixedString {
     char buf_[Capacity + 1U]{};
@@ -275,7 +275,7 @@ public:
     }
 };
 
-// FixedVector -- 栈上固定容量
+// FixedVector：栈上固定容量
 template <typename T, uint32_t Capacity>
 class FixedVector {
     alignas(T) uint8_t storage_[sizeof(T) * Capacity]{};
@@ -316,7 +316,7 @@ C 的 `strncpy(buf, "sensor", sizeof(buf))` 在超长时静默截断，不报任
 
 ## 五、C++17 特性在四项改造中的作用
 
-上述四项改造不是孤立的替换，它们依赖 C++17 的几个关键特性协同工作:
+四项改造依赖 C++17 的几个关键特性协同工作:
 
 ### 5.1 std::variant：编译期类型路由的基础
 
@@ -383,7 +383,7 @@ C++17 的改造不仅是数据结构替换，还依赖 RAII 保证资源安全:
 ### 6.1 Component 自动退订
 
 ```cpp
-// component.hpp -- RAII 自动退订
+// component.hpp：RAII 自动退订
 virtual ~Component() {
     for (const auto& handle : handles_) {
         BusType::Instance().Unsubscribe(handle);
@@ -397,7 +397,7 @@ Component& operator=(const Component&) = delete;
 ### 6.2 锁外析构防死锁
 
 ```cpp
-// mccc.hpp -- 锁外析构保证顺序
+// mccc.hpp：锁外析构保证顺序
 bool Unsubscribe(const SubscriptionHandle& handle) noexcept {
     CallbackType old_callback;  // 在锁外析构
     {
@@ -419,9 +419,9 @@ bool Unsubscribe(const SubscriptionHandle& handle) noexcept {
 |------|:---:|:---:|:---:|:---:|
 | 单线程吞吐量 | 0.56 M/s | 27.7 M/s | 33.0 M/s | 49-59x |
 | 多线程吞吐量 (8T) | 0.36 M/s | 20.6 M/s | 31.1 M/s | 57-86x |
-| 热路径堆分配 | 2-4 次/publish | **零** | **零** | -- |
-| P50 延迟 | 不可预测 | 585 ns | -- | -- |
-| P99 延迟 | 不可预测 | 933 ns | -- | -- |
+| 热路径堆分配 | 2-4 次/publish | **零** | **零** | 不适用 |
+| P50 延迟 | 不可预测 | 585 ns | 未测 | 不适用 |
+| P99 延迟 | 不可预测 | 933 ns | 未测 | 不适用 |
 
 多线程场景下 MCCC 吞吐量是 C++14 版本的 57-86 倍。四项改造的各自贡献:
 
@@ -440,14 +440,14 @@ bool Unsubscribe(const SubscriptionHandle& handle) noexcept {
 
 | 阶段 | 文章 | 核心方案 | 吞吐量 |
 |------|------|---------|:------:|
-| C++11 | [从零实现线程安全消息总线](/tech-notes/posts/performance/cpp11_threadsafe_pubsub_bus/) | mutex + std::function + std::map | -- |
+| C++11 | [从零实现线程安全消息总线](/tech-notes/posts/performance/cpp11_threadsafe_pubsub_bus/) | mutex + std::function + std::map | 不适用 |
 | C++14 | [工程优化与性能瓶颈分析](/tech-notes/posts/performance/cpp14_message_bus_optimization/) | 锁外回调 + 单 mutex + joinable 线程 | 0.36 M/s (8T) |
 | C++17 | 本文 | FixedFunction + VariantIndex + Envelope 内嵌 | 31.1 M/s (8T) |
 
 每一步都有明确的问题驱动:
 
-1. **C++11 -> C++14**: 解决正确性问题 (重入死锁、锁序、资源泄漏)
-2. **C++14 -> C++17**: 解决性能问题 (堆分配、锁竞争、缓存不友好)
+1. C++11 -> C++14：解决正确性问题 (重入死锁、锁序、资源泄漏)
+2. C++14 -> C++17：解决性能问题 (堆分配、锁竞争、缓存不友好)
 
 C++17 提供的 `std::variant`、`if constexpr`、`std::is_same_v` 等特性，使得编译期类型路由、栈上类型擦除和固定容量容器成为可能。这些能力在 C++14 中要么无法实现 (`std::variant`)，要么需要大量样板代码 (SFINAE 替代 `if constexpr`)。
 

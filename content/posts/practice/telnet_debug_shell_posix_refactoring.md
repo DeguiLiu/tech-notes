@@ -4,14 +4,14 @@ date: 2026-02-15T11:30:00
 draft: false
 categories: ["practice"]
 tags: ["C++17", "callback", "embedded", "lock-free", "logging", "newosp", "state-machine"]
-summary: "在嵌入式 Linux 产品开发中，telnet 调试 shell 是一个常见需求：通过网络连接到设备，执行诊断命令、查看运行状态、修改配置参数。本文为 C++17 header-only 纯 POSIX 实现的过程，最终产物是 [telsh](https://gitee.com/liudegui/telsh) 项目。"
+summary: "嵌入式 Linux 设备常需要 telnet 调试 shell：远程执行诊断命令、查看状态、修改参数。本文给出 C++17 header-only 纯 POSIX 实现过程，产物为 [telsh](https://gitee.com/liudegui/telsh)。"
 ShowToc: true
 TocOpen: true
 ---
 
 ## 背景
 
-在嵌入式 Linux 产品开发中，telnet 调试 shell 是一个常见需求：通过网络连接到设备，执行诊断命令、查看运行状态、修改配置参数。本文为 C++17 header-only 纯 POSIX 实现的过程，最终产物是 [telsh](https://gitee.com/liudegui/telsh) 项目。
+在嵌入式 Linux 产品上，telnet 调试 shell 是高频需求：通过网络连到设备，执行诊断命令、查看运行状态、修改配置参数。实现不依赖 boost，只用 POSIX socket，产物是 [telsh](https://gitee.com/liudegui/telsh) 项目。
 
 
 ## 方案
@@ -28,16 +28,16 @@ TocOpen: true
 ```
 telsh/
   include/
-    osp/                        -- 复用自 newosp 项目
-      platform.hpp              -- 平台检测、断言
-      vocabulary.hpp            -- FixedFunction、FixedString
-      log.hpp                   -- 日志宏
+    osp/：复用自 newosp 项目
+      platform.hpp：平台检测、断言
+      vocabulary.hpp：FixedFunction、FixedString
+      log.hpp：日志宏
     telsh/
-      command_registry.hpp      -- 命令注册 (64 条, 零堆分配)
-      telnet_session.hpp        -- 会话管理 (IAC/认证/历史)
-      telnet_server.hpp         -- 服务器 (固定 session 池)
-  tests/                        -- Catch2 测试 (28 cases)
-  examples/                     -- 示例
+      command_registry.hpp：命令注册 (64 条, 零堆分配)
+      telnet_session.hpp：会话管理 (IAC/认证/历史)
+      telnet_server.hpp：服务器 (固定 session 池)
+  tests/：Catch2 测试 (28 cases)
+  examples/：示例
 ```
 
 ### 关键设计决策
@@ -114,7 +114,7 @@ inline int ShellSplit(char* cmdline, char* argv[], int max_args);
 
 ## 从 newosp 复用的组件
 
-telsh 从 [newosp](https://github.com/DeguiLiu/newosp) 项目拷贝了 3 个 header-only 文件作为基础设施：
+telsh 从 [newosp](https://github.com/DeguiLiu/newosp)（面向嵌入式 Linux 的 C++17 header-only 基础库）拷贝了 3 个 header-only 文件作为基础设施：
 
 - `platform.hpp` (169 行)，平台检测、`OSP_ASSERT` 宏、编译器提示
 - `vocabulary.hpp` (858 行)，`FixedFunction`、`FixedString`、`ScopeGuard`

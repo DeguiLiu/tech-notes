@@ -230,12 +230,12 @@ std::thread worker([&stop_worker, &combined]() noexcept {
 
 ## 5. 两种方案选型
 
-**Component 版**：需要运行时灵活性
+Component 版：需要运行时灵活性
 - 订阅者集合在运行期动态变化
 - 需要 `shared_ptr` 生命周期管理
 - 组件可能被多个模块引用
 
-**StaticComponent 版**：追求极致性能
+StaticComponent 版：追求极致性能
 - 订阅者集合在编译期确定
 - 嵌入式实时系统，对延迟敏感
 - Handler 调用需要被编译器内联

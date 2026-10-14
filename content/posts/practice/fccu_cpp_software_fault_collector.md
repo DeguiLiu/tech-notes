@@ -21,7 +21,7 @@ TocOpen: true
 
 ### 什么是 FCCU
 
-FCCU (Fault Collection and Control Unit) 是汽车/工业 MCU 中常见的硬件模块，典型如 NXP S32K3 和 Infineon AURIX TC3xx 系列中的 FCCU 外设。其核心职责:
+FCCU (Fault Collection and Control Unit) 是汽车和工业 MCU 上常见的硬件模块，负责把分散的故障信号汇总成一份可查询的状态。其核心职责:
 
 - 统一收集全系统故障信号 (软件异常、硬件中断、看门狗超时)
 - 按优先级分类缓存、状态维护
@@ -89,7 +89,7 @@ fccu-cpp 的目标: header-only、零堆分配、裸机友好 (无 std::thread)�
 
 ### 组件复用关系
 
-fccu-cpp 不重复造轮子，而是组合已有组件:
+fccu-cpp 直接组合已有组件，不重复实现基础设施:
 
 | 组件 | 仓库 | 在 fccu-cpp 中的角色 |
 |------|------|---------------------|
@@ -218,10 +218,10 @@ Idle ──────────────> Active ────────
 ```
 
 状态语义:
-- **Idle**: 无活跃故障，系统正常
-- **Active**: 有非关键故障在处理
-- **Degraded**: 检测到 Critical 级故障，限制功能
-- **Shutdown**: 收到关停请求，停止故障处理
+- Idle：无活跃故障，系统正常
+- Active：有非关键故障在处理
+- Degraded：检测到 Critical 级故障，限制功能
+- Shutdown：收到关停请求，停止故障处理
 
 ### Per-Fault 状态机
 
@@ -376,10 +376,10 @@ fccu-cpp 与 newosp `fault_collector.hpp` 共享设计模式，但定位不同:
 | 平台 | Linux (依赖 std::thread) | 裸机友好 (无 OS 依赖) |
 
 选择建议:
-- **已使用 newosp 生态**: 直接使用 newosp 内置的 FaultCollector
-- **裸机/RTOS 项目**: 使用 fccu-cpp
-- **需要形式化状态管理**: 使用 fccu-cpp (HSM 保证状态合法性)
-- **多生产者场景**: 使用 newosp (MPSC 队列) 或 fccu-cpp + mccc 前端
+- 已使用 newosp 生态：直接使用 newosp 内置的 FaultCollector
+- 裸机/RTOS 项目：使用 fccu-cpp
+- 需要形式化状态管理：使用 fccu-cpp (HSM 保证状态合法性)
+- 多生产者场景：使用 newosp (MPSC 队列) 或 fccu-cpp + mccc 前端
 
 ## 构建与验证
 
@@ -404,9 +404,9 @@ cmake -B build -DFCCU_GITHUB_MIRROR="https://ghfast.top/"
 
 fccu-cpp 的核心设计原则:
 
-- **统一收集**: 全系统故障通过 `ReportFault()` 统一入口上报
-- **优先级分流**: 4 级 SPSC 队列 + 准入控制，关键故障不被淹没
-- **Hook 后处理**: Handled/Escalate/Defer/Shutdown 四路分发，灵活可扩展
-- **形式化状态管理**: 两层 HSM 杜绝非法状态组合
-- **零堆分配**: 模板参数化编译期配置，所有存储栈/静态分配
-- **可选集成**: mccc 总线通知和 ztask 周期调度按需引入，不引入不付开销
+- 统一收集：全系统故障通过 `ReportFault()` 统一入口上报
+- 优先级分流：4 级 SPSC 队列 + 准入控制，关键故障不被淹没
+- Hook 后处理：Handled/Escalate/Defer/Shutdown 四路分发，灵活可扩展
+- 形式化状态管理：两层 HSM 杜绝非法状态组合
+- 零堆分配：模板参数化编译期配置，所有存储栈/静态分配
+- 可选集成：mccc 总线通知和 ztask 周期调度按需引入，不引入不付开销

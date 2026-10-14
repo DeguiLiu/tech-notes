@@ -4,7 +4,7 @@ date: 2026-02-18T10:00:00+08:00
 categories: ["ipc"]
 tags: ["shared-memory", "ring-buffer", "cross-language", "C++", "Python", "lock-free", "zero-copy", "industrial-vision"]
 draft: false
-summary: "工业视觉系统中，C++ 采集 1080p/4K 视频，Python 处理深度学习。传统 TCP/socket 方案的序列化开销高达 10ms，共享内存是唯一能做到真正零拷贝的方案。本文详解 cpp_py_shmbuf 的设计：POSIX 共享内存 + 无锁字节环形缓冲 + 跨语言 POD 协议，30 FPS 1080p 仅占 CPU < 1%。"
+summary: "工业视觉系统中 C++ 采集 1080p/4K 视频、Python 做深度学习，socket 方案序列化开销高达 10ms，共享内存是唯一能做到零拷贝的选择。本文详解 cpp_py_shmbuf：POSIX 共享内存 + 无锁字节环形缓冲 + 跨语言 POD 协议。"
 ShowToc: true
 TocOpen: true
 ---
@@ -32,10 +32,10 @@ TocOpen: true
 [云端/本地存储]
 ```
 
-**为什么这样分工**:
-- **C++ 采集**: 接管相机驱动、硬件同步、帧率控制，毫秒级精度
-- **Python 处理**: 快速原型迭代，丰富的 AI/CV 库 (TensorFlow, OpenCV)
-- **IPC 瓶颈**: 进程边界的数据传递，1080p BGR 帧 = 6.2 MB，30 FPS = 180 MB/s
+为什么这样分工:
+- C++ 采集: 接管相机驱动、硬件同步、帧率控制，毫秒级精度
+- Python 处理: 快速原型迭代，丰富的 AI/CV 库 (TensorFlow, OpenCV)
+- IPC 瓶颈: 进程边界的数据传递，1080p BGR 帧 = 6.2 MB，30 FPS = 180 MB/s
 
 ### 1.2 四种 IPC 方案的对比
 
@@ -43,14 +43,14 @@ TocOpen: true
 
 | 方案 | 机制 | 拷贝次数 | 序列化开销 | 延迟 | 可行性 |
 |------|------|--------|----------|------|--------|
-| **TCP socket** | 内核缓冲 | 4 (user→kernel→kernel→user) | 无 | 低 | 勉强 (CPU 30%+) |
-| **Unix domain socket** | 内核缓冲 | 2 | 无 | 低 | 可行 (CPU 15%) |
-| **Protobuf + TCP** | 编解码 | 2 + 编码 | 高 (6MB→10ms) | 高 | 不可行 (CPU 50%+) |
-| **共享内存** | 虚拟地址映射 | **0 (同一物理页)** | **无** | **纳秒** | **理想** (CPU <1%) |
+| TCP socket | 内核缓冲 | 4 (user→kernel→kernel→user) | 无 | 低 | 勉强 (CPU 30%+) |
+| Unix domain socket | 内核缓冲 | 2 | 无 | 低 | 可行 (CPU 15%) |
+| Protobuf + TCP | 编解码 | 2 + 编码 | 高 (6MB→10ms) | 高 | 不可行 (CPU 50%+) |
+| 共享内存 | 虚拟地址映射 | 0 (同一物理页) | 无 | 纳秒 | 理想 (CPU <1%) |
 
-**关键区别**:
+关键区别:
 - 前三种方案都涉及内核态/用户态切换或序列化编解码
-- 共享内存: 两个进程的虚拟地址指向同一块物理内存，写入方的 `memcpy` 对消费方立即可见，**无内核参与，无数据拷贝**
+- 共享内存: 两个进程的虚拟地址指向同一块物理内存，写入方的 `memcpy` 对消费方立即可见，没有内核参与，也没有数据拷贝
 
 ### 1.3 为什么不用现成的 IPC 库
 
@@ -61,7 +61,7 @@ TocOpen: true
 | gRPC | 网络 RPC 框架，IPC 只是副产品，序列化开销存在 | 高 |
 | Redis | 外部进程依赖、不适合嵌入式 | 高 |
 
-**cpp_py_shmbuf 的定位**: 仅针对 SPSC (Single Producer, Single Consumer) 场景的最小可行实现，零依赖，跨语言原生支持。
+cpp_py_shmbuf 的定位: 仅针对 SPSC (Single Producer, Single Consumer) 场景的最小可行实现，零依赖，跨语言原生支持。
 
 ---
 
@@ -69,13 +69,13 @@ TocOpen: true
 
 ### 2.1 跨语言的原子性约束
 
-C++ 的 `std::atomic<uint32_t>` 在共享内存中对 Python **不可见**。Python 的 `struct.pack_into` 操作的是原始字节，无法理解 C++ 原子操作的语义。
+C++ 的 `std::atomic<uint32_t>` 放到共享内存后对 Python 不可见。Python 的 `struct.pack_into` 操作的是原始字节，无法理解 C++ 原子操作的语义。
 
 ```
 共享内存是 POD (Plain Old Data)，不能包含 C++ 对象。
 ```
 
-**解决方案: 原始字节 + 约定协议**
+解决方案是原始字节加约定协议:
 
 ```cpp
 // C++ 端: 原始 uint32_t
@@ -90,9 +90,9 @@ struct RingHeader {
 struct.pack_into('<I', buf, 0, head_value)  # 同样的小端 uint32
 ```
 
-**内存屏障保证**:
-- **C++ 端**: `atomic_thread_fence(acquire/release)` 在关键操作前后插入屏障
-- **Python 端**: CPython GIL (全局解释器锁) + x86/ARM 上对齐 `uint32` 写入天然原子性
+内存屏障保证:
+- C++ 端: `atomic_thread_fence(acquire/release)` 在关键操作前后插入屏障
+- Python 端: CPython GIL (全局解释器锁) + x86/ARM 上对齐 `uint32` 写入天然原子性
 
 ### 2.2 消除竞态的 buf_full flag
 
@@ -113,7 +113,7 @@ full:   head == tail && buf_full
 [时刻 4] Consumer 继续执行，但已过时的状态导致错误处理
 ```
 
-**新设计: 借鉴 ringbuffer 的单调递增索引**
+新设计借鉴 ringbuffer 的单调递增索引:
 
 ```cpp
 available_to_read  = head - tail              // 可读字节数
@@ -123,11 +123,11 @@ full:  (head - tail) == capacity
 ```
 
 关键优势:
-1. **索引单调递增**, 永不重置为 0
-2. **自然溢出安全**: `uint32_t` 自然溢出在 4GB 处，对于 MB 级缓冲区完全安全
-3. **消除 flag**: 用数学关系（差值）代替竞态 flag，天然避免竞态
+1. 索引单调递增, 永不重置为 0
+2. 自然溢出安全: `uint32_t` 自然溢出在 4GB 处，对于 MB 级缓冲区完全安全
+3. 消除 flag: 用数学关系（差值）代替竞态 flag，天然避免竞态
 
-**数学证明**:
+数学验证:
 
 ```
 假设 capacity = 16 (mask = 0xF)
@@ -156,7 +156,7 @@ full:  (head - tail) == capacity
 
 ### 2.3 消息格式的设计
 
-为了支持变长消息，采用 **长度前缀** 格式:
+为了支持变长消息，采用长度前缀格式:
 
 ```
 [4 字节 LE 长度][payload]
@@ -166,7 +166,7 @@ full:  (head - tail) == capacity
                (Little-endian 5)
 ```
 
-**为什么是 4 字节而非变长编码**:
+用 4 字节而非变长编码的原因:
 1. 固定大小，无需扫描，快速
 2. 便于 Python `struct.unpack` 直接解析
 3. 足以表示 2GB 单条消息（4GB 容量的缓冲区实际容量会更小）
@@ -201,10 +201,10 @@ full:  (head - tail) == capacity
 └─────────────────────────────────────────────────┘
 ```
 
-**设计权衡**:
-- **head/tail 分别由单端独占写入**: 天然避免 false sharing (不需要锁)
-- **capacity 只读**: 避免运行时修改，简化同步逻辑
-- **16 字节头部**: 无缓存行对齐 (arm-64 缓存行 64B，无必要)
+设计权衡:
+- head/tail 分别由单端独占写入: 天然避免 false sharing (不需要锁)
+- capacity 只读: 避免运行时修改，简化同步逻辑
+- 16 字节头部: 无缓存行对齐 (arm-64 缓存行 64B，无必要)
 
 ### 3.2 C++ 实现框架
 
@@ -327,7 +327,7 @@ class ShmConsumer:
 
 ### 3.4 内存序保证
 
-**C++ Producer 写入**:
+C++ Producer 写入:
 
 ```cpp
 bool ByteRingBuffer::Write(const void* data, uint32_t len) {
@@ -356,7 +356,7 @@ bool ByteRingBuffer::Write(const void* data, uint32_t len) {
 }
 ```
 
-**Python Consumer 读取**:
+Python Consumer 读取:
 
 ```python
 def read(self) -> Optional[bytes]:
@@ -388,11 +388,11 @@ def read(self) -> Optional[bytes]:
 | 4 KB | 3.2 GB/s (830K msg/s) | 5.7 GB/s (1.5M msg/s) | 169 ns |
 | 6 MB (1080p) | 2.5 GB/s (423 FPS) | 4.4 GB/s (763 FPS) | - |
 
-**1080p 30 FPS 的可行性**:
+1080p 30 FPS 的可行性:
 - 所需带宽: 1920×1080×3 × 30 = 180 MB/s
 - 跨线程能力: 4.4 GB/s
-- 占用比例: 180 / 4400 = **4%**
-- 估计 CPU 占用: **< 1%** (剩余容量充足)
+- 占用比例: 180 / 4400 = 4%
+- 估计 CPU 占用: < 1% (剩余容量充足)
 
 ### 4.2 对标 socket 方案
 
@@ -424,7 +424,7 @@ TCP socket (loopback) 方案:
 [本地/云端推理]
 ```
 
-**关键指标**: 30 FPS 无帧丢失，端到端延迟 < 50ms
+关键指标: 30 FPS 无帧丢失，端到端延迟 < 50ms
 
 ### 5.2 多模态传感器融合 (LiDAR + 相机 + 毫米波)
 
@@ -460,13 +460,13 @@ TCP socket (loopback) 方案:
 
 | 约束 | 原因 | 违反后果 |
 |------|------|--------|
-| **同一架构** (不跨字节序) | uint32_t LE 直接读写 | 数据损坏 |
-| **对齐 uint32 读写** | x86/ARM 对齐写原子 | 撕裂写 (partial write) |
-| **CPython (有 GIL)** | struct.pack_into 的原子性保证 | PyPy 下竞态 |
-| **SPSC 模式** | 只有一个生产者、一个消费者 | 竞态导致数据丢失 |
-| **同一物理机** | 共享内存仅限单机 | 网络通信需改方案 |
+| 同一架构 (不跨字节序) | uint32_t LE 直接读写 | 数据损坏 |
+| 对齐 uint32 读写 | x86/ARM 对齐写原子 | 撕裂写 (partial write) |
+| CPython (有 GIL) | struct.pack_into 的原子性保证 | PyPy 下竞态 |
+| SPSC 模式 | 只有一个生产者、一个消费者 | 竞态导致数据丢失 |
+| 同一物理机 | 共享内存仅限单机 | 网络通信需改方案 |
 
-**若需跨越这些约束**:
+若需跨越这些约束:
 - 多消费者 → [cpp-ipc](https://github.com/mutouyun/cpp-ipc) 的 MPMC
 - 网络通信 → zeromq / gRPC
 - PyPy 支持 → 加 `multiprocessing.Lock`
@@ -476,7 +476,7 @@ TCP socket (loopback) 方案:
 
 ## 7. 总结与对标
 
-**cpp_py_shmbuf 的定位**: 工业嵌入式中 **SPSC 场景的最优 IPC**，专注于零拷贝、零依赖、跨语言原生。
+cpp_py_shmbuf 面向工业嵌入式的 SPSC 场景，专注零拷贝、零依赖和跨语言原生支持。
 
 | 特性 | cpp_py_shmbuf | Boost.Interprocess | cpp-ipc | Socket |
 |------|----------------|-------------------|---------|--------|
@@ -488,7 +488,7 @@ TCP socket (loopback) 方案:
 | 编译耗时 | 秒级 | 分钟级 | 秒级 | - |
 | 推荐场景 | SPSC 实时 | 通用共享内存 | MPMC 实时 | 远程通信 |
 
-**相关技术参考**:
+相关技术参考:
 - [ringbuffer 设计](https://gitee.com/liudegui/ringbuffer)，单调递增索引、power-of-2 mask
 - [激光雷达 Pipeline](/tech-notes/posts/architecture/lidar_pipeline_newosp/)，真零拷贝的 Handle 传递
-- [newosp 并发架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，AsyncBus MPSC 消息总线
+- [newosp 并发架构](/tech-notes/posts/architecture/newosp_event_driven_architecture/)，AsyncBus MPSC 消息总线（源码: [github.com/DeguiLiu/newosp](https://github.com/DeguiLiu/newosp)）
