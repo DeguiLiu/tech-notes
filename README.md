@@ -93,6 +93,7 @@ misc/               -- 杂项 (13 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [ztask_scheduler.md](practice/ztask_scheduler.md) | ztask: 不依赖操作系统、无堆无锁的定时任务调度器 | 2026-10-16T21:30:00 |
 | [display_pipeline_atomic_reconfigure.md](practice/display_pipeline_atomic_reconfigure.md) | 运行期重配输出链路: 哪些状态要一起改、失败了怎么退 *(草稿)* | 2026-10-12T10:00:00 |
 | [mcu_periodic_service_concurrency.md](practice/mcu_periodic_service_concurrency.md) | MCU 周期服务的共享状态: 读改写原子性、拒绝重入与锁的位置 | 2026-09-22T08:00:00 |
 | [usb_uvc_enumeration_and_negotiation.md](practice/usb_uvc_enumeration_and_negotiation.md) | USB 视频设备枚举与能力协商: 描述符、Probe 与 Commit | 2026-09-18T08:00:00 |
@@ -121,7 +122,6 @@ misc/               -- 杂项 (13 篇)
 | [telnet_debug_shell_posix_refactoring.md](practice/telnet_debug_shell_posix_refactoring.md) | 嵌入式 Telnet 调试 Shell 重构: 纯 POSIX 轻量化实现 | 2026-02-15T11:30:00 |
 | [rtthread_msh_linux_multibackend.md](practice/rtthread_msh_linux_multibackend.md) | 将 RT-Thread MSH 移植到 Linux: 嵌入式调试 Shell 的多后端设计 | 2026-02-15T11:20:00 |
 | [cpp14_pluggable_log_library_design.md](practice/cpp14_pluggable_log_library_design.md) | 轻量级 C++14 日志库设计: 可插拔后端与零依赖架构 | 2026-02-15T11:10:00 |
-| [ztask_scheduler.md](practice/ztask_scheduler.md) | ztask: 零动态分配的裸机合作式任务调度器设计分析 | 2026-02-15T11:00:00 |
 | [ztask_cpp_modernization.md](practice/ztask_cpp_modernization.md) | ztask 调度器的 C++14 重写: 类型安全、RAII 与模板化改造 | 2026-02-15T10:50:00 |
 | [mccc_bus_api_reference.md](practice/mccc_bus_api_reference.md) | MCCC 消息总线 API 全参考: 类型、接口与配置 | 2026-02-15T10:40:00 |
 
