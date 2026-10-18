@@ -1,6 +1,6 @@
 ---
-title: "PTP 精度优化: 从毫秒到微秒，哪些杠杆真的有用"
-date: 2026-10-19T00:10:00
+title: "PTP 授时精度优化: 时间戳、缓冲对齐与长稳验证"
+date: 2026-10-19T00:30:00
 draft: false
 categories: ["performance"]
 tags: ["PTP", "time-sync", "hardware-timestamp", "PHC", "DMA", "socket", "netem", "embedded", "performance"]
@@ -9,7 +9,7 @@ ShowToc: true
 TocOpen: true
 ---
 
-# PTP 精度优化：从毫秒到微秒，哪些杠杆真的有用
+# PTP 授时精度优化：时间戳、缓冲对齐与长稳验证
 
 > **概述：** PTP 精度不是靠一个参数调出来的。时间戳打在哪、网卡和 PHY 是否支持硬件时间戳、数据缓冲是否对齐、丢包后能否恢复、socket 长时间运行会不会堵住，都会改变最终误差。这篇按“先决定上限，再降低抖动，最后保证交付”的顺序，拆开这些杠杆的真实收益和代价。
 
