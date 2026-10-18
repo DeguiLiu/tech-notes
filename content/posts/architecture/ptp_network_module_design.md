@@ -654,6 +654,8 @@ flowchart TB
 
 ### 参考资料
 
+如果只读一份公开资料，建议从 [linuxptp 文档](https://linuxptp.nwtime.org/documentation/) 开始：`ptp4l`、`phc2sys`、`pmc` 的配置、状态查询和工具说明都在这里。
+
 - [Linux kernel: Timestamping](https://docs.kernel.org/networking/timestamping.html)
 - [Linux kernel: PTP hardware clock infrastructure](https://docs.kernel.org/driver-api/ptp.html)
 - [linuxptp 项目文档](https://linuxptp.nwtime.org/)
