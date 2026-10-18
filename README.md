@@ -5,7 +5,7 @@
 ## 目录结构
 
 ```
-architecture/       -- 架构设计 (24 篇公开, 6 篇草稿)
+architecture/       -- 架构设计 (26 篇公开, 6 篇草稿)
 performance/        -- 性能优化 (32 篇公开, 1 篇草稿)
 practice/           -- 工程实践 (30 篇公开, 1 篇草稿)
 pattern/            -- 设计模式 (11 篇)
@@ -13,14 +13,15 @@ interview/          -- 面试题 (2 篇)
 misc/               -- 杂项 (13 篇)
 ```
 
-共 **121** 篇文章 (113 篇公开, 8 篇草稿)
+共 **122** 篇文章 (114 篇公开, 8 篇草稿)
 
 ## 文章索引
 
-### architecture/ -- 架构设计 (25 篇)
+### architecture/ -- 架构设计 (26 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [gnss_ptp_time_sync_principles.md](architecture/gnss_ptp_time_sync_principles.md) | GNSS 与 PTP 时间同步原理: 嵌入式软件工程师视角 | 2026-10-18T22:50:00 |
 | [ptp_network_module_design.md](architecture/ptp_network_module_design.md) | PTP 网络模块设计: 车载传感器的授时链路 | 2026-10-18T20:35:00 |
 | [triple_frame_buffer_consistency_risk.md](architecture/triple_frame_buffer_consistency_risk.md) | 三帧缓冲地址的三层责任: 声明区间、计算长度、逐帧校验 *(草稿)* | 2026-10-12T10:00:00 |
 | [two_level_dma_triple_buffer.md](architecture/two_level_dma_triple_buffer.md) | 两级三帧缓冲: 一级按输入算尺寸、二级按输出算 *(草稿)* | 2026-10-12T10:00:00 |

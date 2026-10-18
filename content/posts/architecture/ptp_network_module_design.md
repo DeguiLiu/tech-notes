@@ -669,5 +669,6 @@ flowchart TB
 
 ### 相关文章
 
+- [GNSS 与 PTP 时间同步原理：嵌入式软件工程师视角](https://deguiliu.github.io/tech-notes/posts/architecture/gnss_ptp_time_sync_principles/)
 - [Linux 编程：嵌入式 ARM 平台 Linux 网络实时性能优化](https://deguiliu.github.io/tech-notes/posts/performance/arm_linux_network_optimization/)
 - [C++ 零堆零拷贝：事件只构造一次，全程只传指针](https://deguiliu.github.io/tech-notes/posts/performance/zero_heap_zero_copy_event_passing/)
