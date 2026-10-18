@@ -21,7 +21,7 @@ misc/               -- 杂项 (13 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
-| [ptp_network_module_design.md](architecture/ptp_network_module_design.md) | PTP 网络模块设计: 激光雷达与红外模组的授时链路 | 2026-10-18T20:35:00 |
+| [ptp_network_module_design.md](architecture/ptp_network_module_design.md) | PTP 网络模块设计: 车载传感器的授时链路 | 2026-10-18T20:35:00 |
 | [triple_frame_buffer_consistency_risk.md](architecture/triple_frame_buffer_consistency_risk.md) | 三帧缓冲地址的三层责任: 声明区间、计算长度、逐帧校验 *(草稿)* | 2026-10-12T10:00:00 |
 | [two_level_dma_triple_buffer.md](architecture/two_level_dma_triple_buffer.md) | 两级三帧缓冲: 一级按输入算尺寸、二级按输出算 *(草稿)* | 2026-10-12T10:00:00 |
 | [riscv_firmware_boot_chain.md](architecture/riscv_firmware_boot_chain.md) | RISC-V 应用核的启动链路: 从 Reset_Handler 到调度器启动 | 2026-10-12T09:00:00 |
