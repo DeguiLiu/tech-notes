@@ -457,6 +457,13 @@ PTP 报文应使用独立优先级或队列，避免排在大帧和突发数据�
 
 **调参后的验证：** 每次只改一个变量，记录 p99/p99.9、最大抖动、NIC/softnet/socket 三层丢包、CPU 和温度；至少做 24 小时长稳、断电重启、网线拔插、对端停止发送和突发流量测试。参数要写入镜像或启动配置并能回退；只有目标板、目标内核和目标流量模型上通过测试的参数，才能进入量产配置。
 
+## 相关文章
+
+- [Linux 网络编程排障与高性能传输](https://deguiliu.github.io/tech-notes/posts/performance/linux_network_troubleshooting_guide/)
+- [零堆分配与零拷贝事件传递](https://deguiliu.github.io/tech-notes/posts/performance/zero_heap_zero_copy_event_passing/)
+- [单线程事件循环的内核设计：libev 机制与 RT-Thread 移植](https://deguiliu.github.io/tech-notes/posts/architecture/event_loop_internals_and_rtthread_port/)
+- [Reactor 事件循环引入嵌入式模块：适配性评估](https://deguiliu.github.io/tech-notes/posts/architecture/reactor_event_loop_fit_evaluation/)
+
 ## 参考资料
 
 - [Linux kernel: Scaling in the Linux Networking Stack](https://docs.kernel.org/networking/scaling.html)
