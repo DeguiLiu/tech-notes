@@ -58,7 +58,7 @@ misc/               -- 杂项 (13 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
-| [ptp_precision_optimization.md](performance/ptp_precision_optimization.md) | PTP 精度优化: 从毫秒到微秒，哪些杠杆真的有用 | 2026-10-18T23:55:00 |
+| [ptp_precision_optimization.md](performance/ptp_precision_optimization.md) | PTP 精度优化: 从毫秒到微秒，哪些杠杆真的有用 | 2026-10-19T00:10:00 |
 | [qnx_ptpd_time_sync_accuracy.md](performance/qnx_ptpd_time_sync_accuracy.md) | QNX 上的 PTPD 授时精度验证: 从 8 ms 时间戳台阶到百微秒级 | 2026-10-18T23:30:00 |
 | [cpp_coroutine_waiting_task_scheduling.md](performance/cpp_coroutine_waiting_task_scheduling.md) | C++ 协程调度: 为什么等待密集型任务不必各占一个线程 | 2026-10-17 |
 | [uvc_hardware_direct_write_path.md](performance/uvc_hardware_direct_write_path.md) | UVC 视频的硬件直写通路: 端点 FIFO、丢帧判断与适用边界 *(草稿)* | 2026-10-12T08:00:00 |
