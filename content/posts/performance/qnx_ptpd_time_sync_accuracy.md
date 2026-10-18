@@ -51,17 +51,17 @@ TocOpen: true
 | 观测工具 | `so_timestamp`、`ptpd2` 统计日志、`clockdiff` |
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"sans-serif","fontSize":"12px","lineColor":"#455A64"},"flowchart":{"htmlLabels":false,"padding":48,"nodeSpacing":50,"rankSpacing":60}}}%%
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"sans-serif","fontSize":"18px","lineColor":"#455A64"},"flowchart":{"htmlLabels":true,"padding":24,"nodeSpacing":50,"rankSpacing":60}}}%%
 flowchart TB
-    GM["主时钟"]
+    GM["Linux 主时钟<br/>ptp4l"]
     SW["交换机"]
-    QNX["从时钟"]
-    APP["业务"]
-    TOOL["工具"]
-    GM -->|Sync| SW
-    SW -->|Sync| QNX
-    QNX -->|Delay| SW
-    SW -->|Delay| GM
+    QNX["QNX 从时钟<br/>ptpd2"]
+    APP["业务应用"]
+    TOOL["测量工具<br/>so_timestamp / clockdiff"]
+    GM -->|Sync / Follow_Up| SW
+    SW -->|Sync / Follow_Up| QNX
+    QNX -->|Delay_Req| SW
+    SW -->|Delay_Req| GM
     QNX --> APP
     TOOL -.->|读取| QNX
     classDef master fill:#EDE9FE,stroke:#6D28D9,stroke-width:2px,color:#111827
@@ -85,17 +85,17 @@ flowchart TB
 | 精度改善，但 `iperf` 掉速 | `ClockPeriod` | 恢复 tick 或临时调整 |
 
 ```mermaid
-%%{init: {"theme":"base","themeVariables":{"fontFamily":"sans-serif","fontSize":"12px","lineColor":"#455A64"},"flowchart":{"htmlLabels":false,"padding":48,"nodeSpacing":40,"rankSpacing":50}}}%%
+%%{init: {"theme":"base","themeVariables":{"fontFamily":"sans-serif","fontSize":"18px","lineColor":"#455A64"},"flowchart":{"htmlLabels":true,"padding":24,"nodeSpacing":40,"rankSpacing":50}}}%%
 flowchart TD
-    A["启动?"] -->|否| B["锁/权限"]
-    A -->|是| C["收包?"]
-    C -->|否| D["EINTR"]
-    C -->|是| E["台阶?"]
-    E -->|是| F["缓存"]
-    E -->|否| G["差值大?"]
-    G -->|是| H["调度"]
-    G -->|否| I["掉速?"]
-    I -->|是| J["节拍"]
+    A["ptpd2 能启动?"] -->|否| B["文件锁/权限"]
+    A -->|是| C["能收到包?"]
+    C -->|否| D["select EINTR"]
+    C -->|是| E["offset 走台阶?"]
+    E -->|是| F["socket 时间戳缓存"]
+    E -->|否| G["clockdiff 偏大?"]
+    G -->|是| H["调度/链路/晶振"]
+    G -->|否| I["iperf 掉速?"]
+    I -->|是| J["ClockPeriod"]
     I -->|否| K["通过"]
     classDef bad fill:#FEE2E2,stroke:#DC2626,stroke-width:2px,color:#111827
     classDef check fill:#E0F2FE,stroke:#0284C7,stroke-width:2px,color:#111827
