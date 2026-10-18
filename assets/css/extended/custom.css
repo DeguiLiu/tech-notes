@@ -1,6 +1,7 @@
-/* Wider reading column: 720px -> 960px (about 1.33x) */
+/* Wider reading column: 720px -> 1080px (1.5x) */
 :root {
-  --main-width: 960px;
+  --main-width: 1080px;
+  --nav-width: 1080px;
 }
 
 /* academic style for Chinese content */
