@@ -58,7 +58,7 @@ misc/               -- 杂项 (13 篇)
 |------|------|------|
 | [cpp_coroutine_waiting_task_scheduling.md](performance/cpp_coroutine_waiting_task_scheduling.md) | C++ 协程调度: 为什么等待密集型任务不必各占一个线程 | 2026-10-17 |
 | [uvc_hardware_direct_write_path.md](performance/uvc_hardware_direct_write_path.md) | UVC 视频的硬件直写通路: 端点 FIFO、丢帧判断与适用边界 *(草稿)* | 2026-10-12T08:00:00 |
-| [zero_heap_zero_copy_event_passing.md](performance/zero_heap_zero_copy_event_passing.md) | 零堆分配与零拷贝事件传递: 单次构造、指针流转与回收契约 | 2026-09-10T08:00:00 |
+| [zero_heap_zero_copy_event_passing.md](performance/zero_heap_zero_copy_event_passing.md) | C++ 零堆零拷贝: 事件只构造一次，全程只传指针 | 2026-10-18T08:10:00 |
 | [linux_network_troubleshooting_guide.md](performance/linux_network_troubleshooting_guide.md) | Linux 网络编程排障与高性能传输: 从丢包诊断到零拷贝实战 | 2026-02-20T14:00:00 |
 | [object_pool_hidden_costs.md](performance/object_pool_hidden_costs.md) | 对象池在嵌入式热路径上的三个隐性成本 | 2026-02-17T09:30:00 |
 | [memory_barrier_hardware.md](performance/memory_barrier_hardware.md) | 内存屏障的硬件原理: 从 Store Buffer 到 ARM DMB/DSB/ISB | 2026-02-17T09:20:00 |
@@ -76,7 +76,7 @@ misc/               -- 杂项 (13 篇)
 | [cpp_singleton_thread_safety_dclp.md](performance/cpp_singleton_thread_safety_dclp.md) | C++ 单例模式的线程安全实现: 从 DCLP 的历史缺陷到 C++11 的修复 | 2026-02-16T09:50:00 |
 | [cpp_performance_memory_branch_compiler.md](performance/cpp_performance_memory_branch_compiler.md) | C/C++ 性能优化实战: 内存布局、分支预测与编译器调优 | 2026-02-16T09:40:00 |
 | [cpp14_message_bus_optimization.md](performance/cpp14_message_bus_optimization.md) | C++14 消息总线的工程优化与性能瓶颈分析 | 2026-02-16T09:30:00 |
-| [arm_linux_network_optimization.md](performance/arm_linux_network_optimization.md) | ARM-Linux 网络性能优化实战: 从中断到零拷贝的全链路调优 | 2026-02-16T09:20:00 |
+| [arm_linux_network_optimization.md](performance/arm_linux_network_optimization.md) | Linux 编程: 嵌入式 ARM 平台网络实时性能优化 | 2026-10-18T08:20:00 |
 | [parallel_matmul_benchmark.md](performance/parallel_matmul_benchmark.md) | C++17 并行矩阵乘法: 从单线程到多进程共享内存的性能实测 | 2026-02-15T10:30:00 |
 | [message_bus_competitive_benchmark.md](performance/message_bus_competitive_benchmark.md) | C++ 消息总线性能实测: 6 个开源方案的吞吐量与延迟对比 | 2026-02-15T10:20:00 |
 | [message_bus_benchmark_methodology.md](performance/message_bus_benchmark_methodology.md) | 如何公平地对比消息总线性能: 基准测试方法论与陷阱 | 2026-02-15T10:10:00 |
@@ -130,7 +130,7 @@ misc/               -- 杂项 (13 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
-| [compile_time_aop_invariants.md](pattern/compile_time_aop_invariants.md) | 编译期 AOP: 把横切不变式收进循环骨架 | 2026-09-10T08:00:00 |
+| [compile_time_aop_invariants.md](pattern/compile_time_aop_invariants.md) | 编译期 AOP: 把横切不变式收进循环骨架 | 2026-10-18T08:00:00 |
 | [compile_time_polymorphism.md](pattern/compile_time_polymorphism.md) | C++ 编译期多态: 用模板替代虚函数的机制与代价 | 2026-09-10T08:00:00 |
 | [crtp_principle.md](pattern/crtp_principle.md) | CRTP 原理: 基类如何在编译期知道子类 | 2026-09-10T08:00:00 |
 | [pimpl_modern_cpp_embedded.md](pattern/pimpl_modern_cpp_embedded.md) | PIMPL 的三种现代实现: 从堆分配到栈内联 | 2026-02-17T08:50:00 |

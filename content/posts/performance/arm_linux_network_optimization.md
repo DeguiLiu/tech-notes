@@ -1,733 +1,467 @@
 ---
-title: "ARM-Linux 网络性能优化实战: 从中断到零拷贝的全链路调优"
-date: 2026-02-16T09:20:00
+title: "Linux 编程: 嵌入式 ARM 平台网络实时性能优化"
+date: 2026-10-18T08:20:00
 draft: false
 categories: ["performance"]
-tags: ["ARM", "Linux", "network", "performance", "UDP", "IRQ", "NAPI", "DMA", "zero-copy", "XDP", "ethtool", "sysctl", "PREEMPT_RT", "embedded", "real-time", "GRO", "RSS", "RPS"]
-summary: "面向 ARM-Linux 嵌入式系统的网络性能优化系统指南。从数据包接收全链路出发，覆盖 CPU 频率管理、中断亲和性与分流（RSS/RPS/RFS）、NAPI 轮询、Ring Buffer 调优、协议栈 sysctl 参数、硬件卸载（GRO/TSO/Checksum）、DMA 与零拷贝、Busy Polling 低延迟技术、XDP 快速路径、实时调度（SCHED_FIFO/PREEMPT_RT）等十余个维度的工程实践。每项优化均标注适用场景、ARM 特有注意事项和副作用。"
+tags: ["ARM", "Linux", "network", "performance", "UDP", "IRQ", "NAPI", "RPS", "RFS", "zero-copy", "poll", "embedded", "real-time", "PTP", "lwIP"]
+summary: "面向工业传感器平台的 ARM Linux 网络实时优化：先讲应用层收包、poll/select、队列、内存池和零拷贝，再逐项说明 IRQ/NAPI、RPS/RFS、缓冲区、CPU 隔离和 PTP 参数的理由。"
 ShowToc: true
 TocOpen: true
 ---
 
->
-> 参考:
-> - [Linux Network Performance Ultimate Guide](https://ntk148v.github.io/posts/linux-network-performance-ultimate-guide/)
-> - [Monitoring and Tuning the Linux Networking Stack](https://blog.packagecloud.io/monitoring-tuning-linux-networking-stack-receiving-data/)
-> - [Linux Kernel: Scaling in the Networking Stack](https://docs.kernel.org/networking/scaling.html)
-> - [ARM: Optimize Network Interrupt Handling on Arm Servers](https://learn.arm.com/learning-paths/servers-and-cloud-computing/irq-tuning-guide/patterns/)
-> - [Red Hat: Network Performance Tuning Guide](https://access.redhat.com/sites/default/files/attachments/20150325_network_performance_tuning.pdf)
+**结论：网络实时性能首先取决于应用怎么收包、怎么排队、怎么分配内存，然后才是内核参数。对同一路传感器数据流，即使 SoC 有多个核，也应把收包、组包和发送固定在一个 CPU 核；多核用于不同数据流或不同职责。推荐顺序是：单一收包线程 + 阻塞 `recvmmsg`（多 fd 用 `poll`，fd 少且编号受控可用 `select`） → 批量收发 → 有界队列与队列满处理 → 内存池/零拷贝 → IRQ/NAPI/包分发 → CPU 隔离与实时调度 → 定时器。**
 
-## 1. 数据包接收全链路概览
+本文以 UDP 为主，示例假定多核 ARM Linux、网卡名为 `eth0`。嵌入式平台的约束与服务器不同：RAM 小、通常没有 swap、DMA/CMA 连续内存有限、cache 一致性要自己处理、内核和驱动来自厂商 BSP，实时性还受功耗和散热限制。下面的参数和命令要按板级实际情况替换，不能直接照搬。
 
-优化网络性能的前提是理解数据包从网卡到应用层的完整路径。以下是 Linux 接收侧（RX）的关键阶段：
+本文借用 lwIP 的五个设计原则：
 
+1. 用描述符传递数据，不在每一层复制 payload；
+2. 用一个明确的执行上下文串行化协议处理，减少锁竞争；
+3. 中断或驱动入口只做最小工作，耗时处理放到线程；
+4. 用固定池和有界队列管理内存，而不是在热路径临时分配；
+5. 明确缓冲区所有权和回收责任，避免共享数据被提前释放。
+
+## 1. 工业传感器平台：约束与目标
+
+### 1.1 工业传感器平台的约束
+
+工业传感器平台通常有固定或准固定采样周期、长期无人值守、看门狗、无风扇散热和受限 RAM。网络侧数据形态差异很大：红外模组经网络输出时往往是整帧数据拆成多个包，单帧几十 KB 到数百 KB；激光雷达常见高速点云数据报，包速率高、可能短时突发；温度、振动和控制命令则可能是低频小包。优化目标不是峰值吞吐，而是可预测的 p99 延迟、明确的丢包策略、不会因内存不足被系统杀死，并能长期稳定运行。
+
+| 数据类型 | 典型形态 | 优化重点 |
+| --- | --- | --- |
+| 红外模组 | 经网络输出时为整帧数据，单帧几十 KB 到数百 KB，帧率通常固定 | 大缓冲、帧重组、零拷贝、带宽和内存上限 |
+| 激光雷达 | 点云数据报，常见接近 MTU，包速率高，可能短时突发 | 批量收包、丢包统计、时间戳和队列深度 |
+| 温度、振动、控制命令 | 低频小包 | 低延迟、优先级、队列满时的丢弃策略 |
+
+这类平台的 Linux 往往来自厂商 BSP，内核版本、网卡驱动、PREEMPT_RT 和 AF_XDP 支持都不完整。下面的参数示例只表示调整方向，必须用板级基线和 A/B 测试确认，不能当成通用默认值。
+
+### 1.2 三个指标不能混在一起
+
+| 指标 | 关注点 | 常见工具 |
+| --- | --- | --- |
+| 吞吐 | 单位时间处理多少包/字节 | `iperf3 -u`、应用计数 |
+| 延迟 | 单包从发送到接收的时间 | `sockperf`、硬件时间戳 |
+| 抖动 | p99、p99.9、最大值与平均值的差距 | `sockperf`、`cyclictest` |
+| 丢包 | NIC ring、softnet backlog、socket 缓冲 | `ethtool -S`、`/proc/net/softnet_stat`、`nstat` |
+| CPU | 总占用、softirq、单核饱和度 | `top`、`perf`、`mpstat` |
+
+实时控制更关心 p99/p99.9 和最大抖动；吞吐测试必须同时记录丢包和 CPU，否则“吞吐高”可能只是把包丢在了更早的环节。
+
+### 1.3 应用架构：单一收包线程 + 有界队列
+
+多线程同时读写同一个 UDP socket，会引入锁竞争和唤醒抖动。更可控的结构是：每个接收队列由一个收包线程负责批量收包；单路或少量固定 socket 用阻塞 `recvmmsg`，多 fd 时优先用 `poll`，fd 少且编号受控可用 `select`。收到的消息进入有界队列，CPU 密集型处理交给工作线程。队列满时明确丢弃、降级或让上游降速，而不是无限堆积。
+
+**核绑定规则：同一路传感器数据流的收包、组包、发送固定在一个 CPU 核。** 多核用于不同数据流、不同网卡队列，或控制、日志、看门狗等不同职责；不是把同一路流拆到多个核。这样做的原因是同一路流的数据和元数据留在同一核的缓存中，避免跨核队列、锁竞争、缓存失效和包序抖动。单路流处理不过来时，优先优化零拷贝、批量和处理耗时；不要靠增加线程把同一路流拆散。
+
+```mermaid
+flowchart LR
+    NIC["NIC / NAPI"] --> Q0["RX 队列 0"]
+    NIC --> Q1["RX 队列 1"]
+
+    subgraph C0[核 0]
+        direction TB
+        EP0["收包线程"] --> RQ0["有界队列 A"]
+        RQ0 --> W0["组包 / 发送 A"]
+    end
+
+    subgraph C1[核 1]
+        direction TB
+        EP1["收包线程"] --> RQ1["有界队列 B"]
+        RQ1 --> W1["组包 / 发送 B"]
+    end
+
+    Q0 --> EP0
+    Q1 --> EP1
+
+    classDef kernel fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#111827
+    classDef receiver fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#111827
+    classDef queue fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#111827
+    classDef handler fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#111827
+    class NIC,Q0,Q1 kernel
+    class EP0,EP1 receiver
+    class RQ0,RQ1 queue
+    class W0,W1 handler
 ```
-NIC Hardware
-    |
-    | DMA write to Ring Buffer (pre-allocated sk_buff)
-    |
-    v
-HardIRQ (driver ISR)
-    |
-    | napi_schedule() -- 触发 SoftIRQ
-    |
-    v
-SoftIRQ (NET_RX_SOFTIRQ)
-    |
-    | NAPI poll: driver->poll() 批量收包
-    | GRO 聚合
-    |
-    v
-netif_receive_skb()
-    |
-    | RPS/RFS 分发到目标 CPU
-    |
-    v
-Protocol Stack (IP -> UDP/TCP)
-    |
-    | Socket Buffer (sk->sk_receive_queue)
-    |
-    v
-Application (recvmsg / read)
-```
 
-每个阶段都可能成为瓶颈。优化的核心原则是：**减少每个阶段的 CPU 开销，减少数据拷贝次数，减少跨 CPU 缓存失效**。
+*图 1：每个核独立完成收包、入队、组包和发送。收包线程可用阻塞 `recvmmsg`；多 fd 时优先用 `poll`，fd 少且编号受控可用 `select`。*
 
-## 2. CPU 频率管理
-
-ARM 处理器普遍支持动态电压频率调节（DVFS）。默认的 `ondemand` 或 `schedutil` 调速器在网络 I/O 密集场景下存在问题：**网络中断和协议处理属于 I/O 密集型负载，但 CPU 利用率指标可能不高，导致调速器不升频**。
-
-### 2.1 问题表现
-
-`ondemand` 调速器仅观察 CPU 负载（`%busy`），不考虑 I/O 等待。网络收包主要在 SoftIRQ 上下文执行，CPU 利用率统计可能不准确。结果：CPU 运行在低频率下处理网络包，吞吐量受限。
-
-在 ARM Cortex-A 系列上，这个问题尤为突出，因为 ARM SoC 的频率范围通常很宽（如 408 MHz ~ 1.8 GHz），低频与高频之间的性能差距达 4x 以上。
-
-### 2.2 优化方案
+### 1.4 基线测量
 
 ```bash
-# 查看当前调速器
-cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+# UDP 吞吐与丢包
+iperf3 -u -c <server_ip> -b 1G -l 1400 -t 60
 
-# 设置为 performance 模式（锁定最高频率）
-echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+# 延迟与抖动（工具按板级可用性选择）
+sockperf ping-pong -i <server_ip> -p 12345 -m 1400
 
-# 永久生效（systemd 系统）
-# 在 /etc/rc.local 或 udev 规则中设置
-```
+# 调度延迟
+cyclictest -m -p 80 -i 1000 -l 10000 -a 2
 
-### 2.3 ARM 特有说明
-
-现代 ARM 处理器（Cortex-A7/A53/A72）具备良好的时钟门控（clock gating）机制。实测表明：
-
-- **空闲功耗差异极小**：Cortex-A7 在 408 MHz 和 1008 MHz 空闲时功耗几乎相同
-- **"Race to idle" 策略有效**：高频快速完成任务后进入 WFI（Wait For Interrupt）低功耗状态，总能耗可能更低
-
-因此，**对于非电池供电的嵌入式设备，`performance` 调速器是网络密集场景的推荐选项**。
-
-副作用：电池供电设备需要评估功耗影响。可折中使用 `ondemand` 并设置 `io_is_busy=1`：
-
-```bash
-echo 1 > /sys/devices/system/cpu/cpufreq/ondemand/io_is_busy
-```
-
-## 3. 中断优化
-
-网络中断是整个接收路径的起点。默认配置下，中断处理效率低下是 ARM-Linux 网络性能的首要瓶颈。
-
-### 3.1 中断合并（Interrupt Coalescing）
-
-默认情况下，每个数据包触发一次硬中断。在高流量场景下，每秒数十万次中断会耗尽 CPU 资源。
-
-```bash
-# 查看当前合并参数
-ethtool -c eth0
-
-# 设置合并参数：每 50us 或每 64 个帧触发一次中断
-ethtool -C eth0 rx-usecs 50 rx-frames 64
-
-# 启用自适应合并（驱动自动调整）
-ethtool -C eth0 adaptive-rx on
-```
-
-**吞吐量 vs 延迟权衡**：
-
-| 参数 | 高吞吐量场景 | 低延迟场景 |
-|------|------------|-----------|
-| `rx-usecs` | 50-100 | 0-10 |
-| `rx-frames` | 64-256 | 1-16 |
-| `adaptive-rx` | on | off |
-
-ARM 注意事项：ARM SoC 上的以太网控制器（如 Marvell mvneta、Allwinner EMAC）通常只有一个 RX 队列，中断合并对这些设备尤为重要。关闭自适应模式（AIC）在某些场景下反而能提供更稳定的性能。
-
-### 3.2 中断亲和性（IRQ Affinity）
-
-将网络中断绑定到特定 CPU 核心，避免在多核之间随机迁移导致的缓存失效。
-
-```bash
-# 查看网卡中断号
-grep eth0 /proc/interrupts
-
-# 假设中断号为 42，绑定到 CPU 1（bitmask: 0x2）
-echo 2 > /proc/irq/42/smp_affinity
-
-# 或使用 CPU 列表格式
-echo 1 > /proc/irq/42/smp_affinity_list
-```
-
-**原则**：
-
-1. 网络中断和处理该网络数据的应用线程应绑定到同一个 CPU 或同一 NUMA 节点
-2. 不同网卡的中断应分散到不同 CPU
-3. 禁用 `irqbalance` 守护进程（它会动态迁移中断，在网络密集场景下反而有害）
-
-```bash
-systemctl stop irqbalance
-systemctl disable irqbalance
-```
-
-### 3.3 RSS、RPS 与 RFS
-
-当 NIC 只有单队列（ARM 嵌入式常见），所有包的中断由同一个 CPU 处理，协议栈处理也在同一个 CPU，其他核心空闲。这时需要 **RPS**（Receive Packet Steering）将协议处理分散到多核。
-
-```
-              硬件单队列
-                 |
-           HardIRQ (CPU 0)
-                 |
-           NAPI poll (CPU 0)
-                 |
-          ┌──────┼──────┐
-          v      v      v
-        CPU 1  CPU 2  CPU 3     <-- RPS 按流哈希分发
-          |      |      |
-       Protocol Stack 并行处理
-```
-
-```bash
-# 启用 RPS：将 RX 队列 0 的处理分散到 CPU 0-3（bitmask: 0xf）
-echo f > /sys/class/net/eth0/queues/rx-0/rps_cpus
-
-# 设置 RPS 流表大小（建议 32768）
-echo 32768 > /proc/sys/net/core/rps_sock_flow_entries
-echo 2048 > /sys/class/net/eth0/queues/rx-0/rps_flow_cnt
-```
-
-**RFS**（Receive Flow Steering）在 RPS 基础上更进一步：将包导向**正在消费该流数据的应用所在 CPU**，提升数据缓存命中率。RPS 和 RFS 通常配合使用。
-
-**RSS**（Receive Side Scaling）是硬件多队列方案，如果 NIC 支持，优先使用 RSS：
-
-```bash
-# 查看队列数
-ethtool -l eth0
-
-# 设置 RX 队列数（匹配 CPU 核心数）
-ethtool -L eth0 combined 4
-```
-
-| 方案 | 实现层 | 前提条件 | ARM 可用性 |
-|------|--------|----------|-----------|
-| RSS | 硬件 | NIC 支持多队列 + MSI-X | 高端 SoC（如 i.MX8） |
-| RPS | 软件 | 内核 CONFIG_RPS | 所有 ARM Linux |
-| RFS | 软件 | RPS + 应用使用 connect() | 所有 ARM Linux |
-
-## 4. NAPI 轮询与 SoftIRQ 调优
-
-NAPI（New API）是 Linux 网络栈的核心优化机制：收到第一个包时触发硬中断，随后切换到轮询模式批量收包，避免高频中断风暴。
-
-### 4.1 NAPI Budget 调优
-
-```bash
-# 每次 SoftIRQ 处理的最大包数（默认 300）
-sysctl -w net.core.netdev_budget=600
-
-# SoftIRQ 处理超时（微秒，默认 2000）
-sysctl -w net.core.netdev_budget_usecs=4000
-
-# 单个 NAPI poll 的 weight（驱动层参数，通常默认 64）
-# 需要在驱动代码中修改，或通过驱动模块参数设置
-```
-
-ARM 注意事项：ARM 处理器的单核性能通常低于 x86，SoftIRQ 处理速度较慢。适当增大 `netdev_budget` 可以让每次轮询处理更多包，但不能过大，否则会饿死其他 SoftIRQ（如定时器）。建议从 300 开始逐步增加到 600-1200 进行测试。
-
-### 4.2 Busy Polling（低延迟模式）
-
-Busy Polling 让应用线程在 `recvmsg()` 等待数据时直接轮询 NIC 的 NAPI 队列，绕过 SoftIRQ 调度延迟。
-
-```bash
-# 全局启用（单位：微秒）
-sysctl -w net.core.busy_read=50
-sysctl -w net.core.busy_poll=50
-```
-
-或在代码中按 socket 启用：
-
-```c
-int val = 50;  /* 微秒 */
-setsockopt(fd, SOL_SOCKET, SO_BUSY_POLL, &val, sizeof(val));
-```
-
-**性能数据**（参考 Cloudflare 和 FIX Protocol 基准）：
-
-| 指标 | 无 Busy Poll | 有 Busy Poll |
-|------|------------|-------------|
-| 平均延迟 | 47.5 us | 16.4 us |
-| 最大延迟 | 166 us | 131 us |
-
-约 **3x 平均延迟改善**。
-
-副作用：CPU 核心在等待数据期间持续占用（忙等待），功耗显著增加。适用于延迟敏感型应用（如工业控制 UDP 响应），不适用于电池供电场景。
-
-**ARM 嵌入式实测**：在 DE0-Nano-SoC（ARM Cortex-A9）上，基础 Linux UDP 延迟为 0.5 ms，通过 Busy Polling + CPU 绑定可降至 0.1 ms 以内。
-
-## 5. Ring Buffer 与 Backlog 调优
-
-### 5.1 NIC Ring Buffer
-
-Ring Buffer 是 NIC 与内核之间的 DMA 缓冲区，存储待处理的数据包描述符。Ring Buffer 满时，新到达的包会被丢弃。
-
-```bash
-# 查看当前 Ring Buffer 大小和最大值
-ethtool -g eth0
-
-# 增大 Ring Buffer（如果硬件允许）
-ethtool -G eth0 rx 4096 tx 4096
-```
-
-**诊断丢包**：
-
-```bash
-# 查看 NIC 统计中的丢包
-ethtool -S eth0 | grep -i drop
-ethtool -S eth0 | grep -i discard
-
-# 查看系统级统计
+# 网卡统计、softnet 丢包、协议栈错误
+ethtool -S eth0
 cat /proc/net/softnet_stat
-# 第一列: 处理包数 第二列: 丢包数 第三列: time_squeeze（budget 用尽次数）
+nstat -az
 ```
 
-权衡：大 Ring Buffer 增加吞吐量但也增加最大延迟（更多包在队列中等待）。低延迟场景应使用较小的 Ring Buffer 配合更频繁的中断。
+每次只改一个变量，记录吞吐、p99、丢包和 CPU。没有基线，就无法判断参数是改善了延迟，还是只是把瓶颈推到了下一层。
 
-### 5.2 Backlog 队列
+有了指标和架构约束，下一章看 lwIP 的五个原则如何映射到 Linux。
 
-Backlog 队列位于 Ring Buffer 之后、协议栈之前，是 RPS 分发的目标缓冲区。
+## 2. 架构原则：lwIP 的五个设计
 
-```bash
-# 增大 backlog 队列（默认 1000）
-sysctl -w net.core.netdev_max_backlog=25000
-```
+lwIP 是资源受限环境里的 TCP/IP 协议栈，它的很多选择可以直接映射到 Linux 应用设计。
 
-**何时增大**：当 `/proc/net/softnet_stat` 第二列非零时，说明 backlog 满导致丢包，应增大。
+| lwIP 机制 | 解决的问题 | Linux 对应做法 |
+| --- | --- | --- |
+| `pbuf` 链 | 用描述符串起多段数据，减少 payload 复制 | 驱动 ring/skb；用户态 `PACKET_MMAP`、`AF_XDP`、`MSG_ZEROCOPY` |
+| `tcpip_thread` + mailbox | 单线程串行化协议栈，减少锁 | 一个收包线程/队列；多 fd 时用 `poll`，fd 少且编号受控可用 `select`，不要让多线程抢同一个 socket |
+| `netif->input` / `tcpip_input` | 驱动入口只投递，耗时处理在协议线程 | 内核 NAPI/softirq；应用非阻塞、批量收包 |
+| `PBUF_POOL` / `MEMP_NUM_PBUF` | 固定池、有界内存 | 静态缓冲池、`SO_RCVBUF`、ring/UMEM（用户态内存区）容量 |
+| `pbuf_ref`/`pbuf_free`、`TCP_WRITE_FLAG_COPY` | 明确所有权和零拷贝契约 | `MSG_ZEROCOPY` 完成通知、`PACKET_MMAP` ring 所有权 |
 
-## 6. 协议栈 sysctl 参数调优
+### 2.1 描述符传递，而不是逐层复制
 
-### 6.1 Socket Buffer
+lwIP 用 `pbuf` 描述一段数据，多个 `pbuf` 可以串成一个包；`pbuf_cat`/`pbuf_chain` 只链接描述符，`pbuf_copy` 才真正复制。Linux 内核里对应的是 skb 和驱动 ring；用户态要减少拷贝，可以走 `PACKET_MMAP`、`AF_XDP` 或 `MSG_ZEROCOPY`。
 
-```bash
-# UDP/TCP 接收缓冲区最大值
-sysctl -w net.core.rmem_max=16777216    # 16 MB
-sysctl -w net.core.wmem_max=16777216    # 16 MB
+关键不是“零拷贝”这个词，而是所有权：缓冲区由谁分配、谁锁定、什么时候可以释放。lwIP 用 `pbuf_ref`/`pbuf_free` 管这件事，Linux 零拷贝接口用完成通知和 ring 状态管这件事。
 
-# UDP 接收缓冲区默认值
-sysctl -w net.core.rmem_default=1048576  # 1 MB
+### 2.2 单线程串行化，减少锁竞争
 
-# TCP 缓冲区自动调优（min, default, max）
-sysctl -w net.ipv4.tcp_rmem="4096 1048576 16777216"
-sysctl -w net.ipv4.tcp_wmem="4096 1048576 16777216"
-```
+lwIP 在 OS 模式下把协议处理集中到 `tcpip_thread`，驱动或应用通过 mailbox、`tcpip_callback` 投递任务。Linux 应用可以借用这个思路：一个 socket 由一个收包线程负责，其他线程只消费队列中的消息，不直接抢 socket。
 
-ARM 注意事项：嵌入式设备 RAM 有限（通常 256 MB - 2 GB），不应盲目套用服务器级参数。建议：
+多线程收同一个 socket 通常不会更快，反而会增加锁竞争、唤醒抖动和缓存失效。需要多核并行时，优先用多个 socket + `SO_REUSEPORT`，或者一个收包线程加多个工作线程。
 
-| 设备 RAM | rmem_max 建议值 | 说明 |
-|----------|----------------|------|
-| 256 MB | 2 MB | 保守设置 |
-| 512 MB | 4-8 MB | 平衡 |
-| 1 GB+ | 16 MB | 高吞吐量 |
+### 2.3 中断入口最小化
 
-### 6.2 TCP 拥塞控制
+lwIP 的驱动入口只把 pbuf 交给协议栈，解析、回调和业务处理不在中断里做。Linux 内核已经用 NAPI 把大部分收包工作移到 softirq；应用层同样要避免在信号处理、定时器回调或高优先级线程里做阻塞操作。
 
-```bash
-# 查看可用算法
-sysctl net.ipv4.tcp_available_congestion_control
+### 2.4 固定池和有界队列
 
-# BBR 拥塞控制（Linux 4.9+，部分场景提升 2-25x）
-sysctl -w net.ipv4.tcp_congestion_control=bbr
-sysctl -w net.core.default_qdisc=fq
-```
+lwIP 用 `PBUF_POOL_SIZE`、`MEMP_NUM_PBUF`、`TCP_SND_BUF`、`UDP_RECVMBOX_SIZE` 控制内存和队列。Linux 应用要对应地设置静态缓冲池、`SO_RCVBUF`、`netdev_max_backlog`、ring/UMEM（用户态内存区）容量，并为队列满设计丢弃、降级或让上游降速的策略。
 
-BBR 由 Google 开发，在高延迟和有丢包的链路上表现优异。但在 ARM 嵌入式的局域网场景（低延迟、低丢包），默认的 `cubic` 通常已经足够。
+这五个原则落到 Linux 应用层，就是下一章的 socket 初始化、收包循环、内存池、零拷贝和队列处理。
 
-### 6.3 其他关键参数
+## 3. 应用层：收包、队列与零拷贝
 
-```bash
-# TCP 窗口缩放（高带宽必须开启）
-sysctl -w net.ipv4.tcp_window_scaling=1
+### 3.1 socket 初始化
 
-# TCP 连接复用
-sysctl -w net.ipv4.tcp_tw_reuse=1
-
-# 禁用不需要的协议（减少协议栈开销）
-sysctl -w net.ipv6.conf.all.disable_ipv6=1
-
-# 增大连接跟踪表（如果使用 conntrack/NAT）
-sysctl -w net.netfilter.nf_conntrack_max=131072
-# 或者完全禁用 conntrack（不需要 NAT/状态防火墙时）
-# modprobe -r nf_conntrack
-```
-
-## 7. 硬件卸载功能
-
-现代 NIC 可以将部分协议处理卸载到硬件，释放 CPU 资源。
-
-### 7.1 查看和管理卸载
-
-```bash
-# 查看所有卸载特性
-ethtool -k eth0
-
-# 常用卸载开关
-ethtool -K eth0 rx-checksumming on     # 接收校验和卸载
-ethtool -K eth0 tx-checksumming on     # 发送校验和卸载
-ethtool -K eth0 gro on                 # Generic Receive Offload
-ethtool -K eth0 tso on                 # TCP Segmentation Offload
-ethtool -K eth0 sg on                  # Scatter-Gather
-```
-
-### 7.2 各卸载特性说明
-
-| 特性 | 作用 | ARM 可用性 |
-|------|------|-----------|
-| **Checksum Offload** | NIC 硬件计算 IP/TCP/UDP 校验和 | 多数 ARM NIC 支持 |
-| **GRO** (Generic Receive Offload) | 将多个小包在软件层合并为大包再上送协议栈 | 所有 Linux（软件实现） |
-| **LRO** (Large Receive Offload) | 硬件层合并，但可能违反 RFC | 部分高端 NIC |
-| **TSO** (TCP Segmentation Offload) | NIC 硬件做 TCP 分段 | 部分 ARM NIC |
-| **GSO** (Generic Segmentation Offload) | 软件层推迟分段到最后一刻 | 所有 Linux |
-| **Scatter-Gather** | 非连续内存直接发送，减少拷贝 | 多数 ARM NIC |
-
-**GRO 是 ARM 嵌入式最有价值的卸载**：它是纯软件实现，不依赖硬件支持，通过合并 TCP/UDP 数据包减少协议栈处理次数。
-
-**排错提示**：如果遇到网络性能异常，尝试关闭所有卸载作为基线测试，然后逐个开启定位问题：
-
-```bash
-ethtool -K eth0 gro off tso off sg off rx off tx off
-```
-
-## 8. DMA 与零拷贝
-
-### 8.1 DMA 基础
-
-NIC 通过 DMA 直接将数据写入内核内存，绕过 CPU。DMA 性能取决于：
-
-- **缓冲区分配策略**：`dma_alloc_coherent`（一致性映射，无需手动同步）vs `dma_map_single`（流式映射，需显式同步）
-- **缓冲区对齐**：ARM 要求 DMA 缓冲区按 `ARCH_DMA_MINALIGN`（通常为 cache line 大小）对齐
-- **Cache 一致性**：ARM 非一致性 DMA 需要显式 `dma_sync_single_for_cpu/device` 调用
-
-### 8.2 ARM 特有的 DMA 注意事项
-
-```
-CPU Cache          Main Memory         NIC DMA
-    |                  |                   |
-    |<-- cache line -->|                   |
-    |                  |<-- DMA write -----|
-    |                  |                   |
-    |--- 需要 invalidate cache 才能看到 DMA 数据 ---|
-```
-
-ARM 的 DMA 一致性问题：
-
-1. NIC DMA 写入主存后，CPU Cache 可能仍持有旧数据
-2. 需要在 DMA 完成后调用 `dma_sync_single_for_cpu()` 使 Cache 失效
-3. `dma_alloc_coherent` 分配的内存默认映射为 uncacheable，避免一致性问题但降低 CPU 访问速度
-
-**优化建议**：对于高频访问的 DMA 缓冲区（如网络接收），使用流式 DMA 映射 + 显式同步，比 coherent mapping 性能更好。
-
-### 8.3 零拷贝技术
-
-传统数据路径需要多次拷贝：
-
-```
-NIC -> DMA -> Kernel Buffer -> copy_to_user -> App Buffer
-         (1)                      (2)
-```
-
-零拷贝技术减少或消除第 (2) 次拷贝：
-
-| 技术 | 原理 | 适用场景 |
-|------|------|----------|
-| `mmap` | 内核缓冲区直接映射到用户空间 | 自定义驱动 |
-| `sendfile` | 内核内直接从文件到 socket，不经过用户空间 | 文件传输 |
-| `MSG_ZEROCOPY` | 发送时不拷贝用户数据 | 大包发送 |
-| AF_XDP | 用户空间直接访问 NIC ring buffer | 高性能收发 |
-
-**ARM `mmap` 注意事项**：Linux 在 ARM/ARM64 上默认将 DMA mmap 映射为 non-cacheable（避免 Cache 别名问题）。如需 cacheable 映射（性能更好但需要手动同步），可使用 `u-dma-buf` 驱动的 `quirk-mmap` 选项。
-
-## 9. XDP 快速数据路径
-
-XDP（eXpress Data Path）在数据包到达协议栈**之前**，在驱动 NAPI poll 循环内执行 eBPF 程序处理数据包。
-
-```
-传统路径:  NIC -> DMA -> Ring Buffer -> sk_buff 分配 -> 协议栈
-XDP 路径:  NIC -> DMA -> Ring Buffer -> XDP 程序 -> [DROP/TX/REDIRECT/PASS]
-                                          ^
-                                     无 sk_buff 分配
-```
-
-### 9.1 XDP 模式
-
-| 模式 | 执行位置 | 性能 | 要求 |
-|------|----------|------|------|
-| Native XDP | 驱动 NAPI poll 内 | 最高 | 驱动支持 |
-| Generic XDP | `napi_gro_receive` 之后 | 较低 | 所有 NIC |
-
-### 9.2 ARM 上的 Native XDP
-
-多个 ARM SoC 的以太网驱动已支持 Native XDP：
-
-- **Marvell mvneta**（Armada 38x/37x）：`mvneta_run_xdp()` 在 sk_buff 分配前执行
-- **FreeScale/NXP DPAA2**：i.MX8 系列
-- **TI CPSW**：AM335x/AM57x
-
-```bash
-# 加载 XDP 程序（示例：丢弃所有 UDP 端口 9999 的包）
-ip link set dev eth0 xdp obj xdp_filter.o sec xdp
-
-# 查看 XDP 状态
-ip link show eth0
-```
-
-XDP 适合的 ARM 嵌入式场景：
-
-- **DDoS 过滤**：在驱动层丢弃攻击流量，不消耗协议栈资源
-- **数据包转发**：XDP_TX 直接从 NIC 重新发出，绕过整个协议栈
-- **流量采样**：XDP_REDIRECT 到 AF_XDP socket 的零拷贝接收
-
-副作用：需要内核编译支持 eBPF 和 XDP；Generic XDP 的性能优势有限。
-
-## 10. 实时调度与内存锁定
-
-对于延迟敏感的网络应用（工业控制、机器人、激光雷达），还需要从调度器层面保证确定性。
-
-### 10.1 SCHED_FIFO + CPU 绑定
-
-```bash
-# 将网络处理进程设为 FIFO 实时调度，优先级 80
-chrt -f 80 ./my_udp_server
-
-# 绑定到 CPU 2
-taskset -c 2 chrt -f 80 ./my_udp_server
-```
-
-在代码中：
+UDP socket 的阻塞方式要和收包循环匹配。使用 `poll`/`select` 时保持非阻塞，并在 `recvmmsg` 中带 `MSG_DONTWAIT`：
 
 ```c
-#include <sched.h>
-#include <sys/mman.h>
+/* poll/select 模式：非阻塞 socket */
+int fd = socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
 
-/* 锁定所有内存，防止缺页中断 */
-mlockall(MCL_CURRENT | MCL_FUTURE);
+int rcvbuf = 4 * 1024 * 1024;
+setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
 
-/* 设置 SCHED_FIFO 优先级 80 */
-struct sched_param param;
-param.sched_priority = 80;
-sched_setscheduler(0, SCHED_FIFO, &param);
-
-/* 绑定到 CPU 2 */
-cpu_set_t cpuset;
-CPU_ZERO(&cpuset);
-CPU_SET(2, &cpuset);
-sched_setaffinity(0, sizeof(cpuset), &cpuset);
+int lowat = 1;
+setsockopt(fd, SOL_SOCKET, SO_RCVLOWAT, &lowat, sizeof(lowat));
 ```
 
-### 10.2 PREEMPT_RT 内核
+`SO_RCVBUF` 要小于等于 `net.core.rmem_max`；`SO_RCVLOWAT` 决定何时唤醒，设得太大会增加延迟，设得太小会增加唤醒次数。低延迟场景通常从 1 开始，再根据批量处理能力调整。
 
-Linux 6.12 起，PREEMPT_RT 已合入主线内核，支持 ARM64 和 RISC-V。
+如果使用 3.2 节的阻塞 `recvmmsg`，socket 不要设置 `SOCK_NONBLOCK`；如果使用 `poll`/`select`，则保持非阻塞。两种模式不要混用，否则阻塞收包会立刻返回 `EAGAIN`。
 
-PREEMPT_RT 的关键改进：
-
-- 将 spinlock 替换为可抢占的 mutex
-- 所有中断处理线程化（可被 SCHED_FIFO 任务抢占）
-- 最坏调度延迟从标准内核的数毫秒降至 **100 us 以下**
-
-```bash
-# 检查内核是否支持 PREEMPT_RT
-uname -a  # 应包含 PREEMPT_RT 或 PREEMPT RT
-cat /sys/kernel/realtime  # 输出 1 表示 RT 内核
-```
-
-**ARM PREEMPT_RT 延迟实测**（cyclictest，SCHED_FIFO 优先级 80）：
-
-| 内核 | 无负载 (max) | 重负载 (max) |
-|------|-------------|-------------|
-| 标准内核 | 50 us | 717 us |
-| PREEMPT_RT | 32 us | 279 us |
-
-### 10.3 RT 内核调优要点
-
-```bash
-# 禁用调试选项（严重影响延迟）
-# 内核编译时确保关闭：
-# CONFIG_DEBUG_LOCKDEP=n
-# CONFIG_DEBUG_PREEMPT=n
-# CONFIG_DEBUG_OBJECTS=n
-# CONFIG_SLUB_DEBUG=n
-
-# 隔离 CPU 核心（不运行普通任务）
-# 内核启动参数：
-# isolcpus=2,3 nohz_full=2,3 rcu_nocbs=2,3
-```
-
-## 11. 内存管理优化
-
-### 11.1 禁用 Swap
-
-Swap 导致的缺页中断会引入不可预测的延迟（毫秒级），在实时网络系统中不可接受。
-
-```bash
-# 立即禁用
-swapoff -a
-
-# 永久禁用：编辑 /etc/fstab 注释 swap 行
-
-# 或者设置 swappiness=0（尽量不用但不完全禁止）
-sysctl -w vm.swappiness=0
-echo "vm.swappiness = 0" >> /etc/sysctl.conf
-```
-
-| 方案 | 行为 | 适用场景 |
-|------|------|----------|
-| `swapoff -a` | 完全禁用 swap | RAM 充足的嵌入式系统 |
-| `swappiness=0` | 极力避免但不禁止 | RAM 紧张但需要兜底 |
-
-### 11.2 内存锁定
-
-使用 `mlockall()` 防止实时进程的内存被换出或触发缺页：
+多个工作线程的场景可以用 `SO_REUSEPORT`，让每个工作线程有独立 socket：
 
 ```c
-/* 在 main() 起始处调用 */
-if (mlockall(MCL_CURRENT | MCL_FUTURE) != 0) {
-    perror("mlockall failed");
+int one = 1;
+setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &one, sizeof(one));
+```
+
+`SO_REUSEPORT` 由内核按四元组哈希分流，不是让多个线程共享同一个 socket。工作线程数量不要超过可用 CPU 核数。
+
+### 3.2 收包循环：recvmmsg、poll 与 select
+
+单路或少量固定 socket、独占核心的传感器任务，优先用阻塞 `recvmmsg`。它少一层事件循环，路径更短，也更容易分析 p99。多个固定 fd 用 `poll`；fd 很少且编号受控时可以用 `select`。
+
+| 方式 | 适用场景 | 优点 | 代价 |
+| --- | --- | --- | --- |
+| 阻塞 `recvmmsg` | 单 socket 或固定少量 socket，独占线程 | 路径短、实现简单 | 退出和多 fd 需要额外机制 |
+| `poll` | 少量到中等数量 fd，外加 eventfd 退出 | 不依赖 `FD_SETSIZE`，可同时等多个 fd | fd 多时线性扫描 |
+| `select` | fd 数量少且 fd 编号小于 `FD_SETSIZE` | 兼容性最好 | `fd_set` 默认上限 1024，fd 编号可能超限；每次调用要重建集合 |
+| `io_uring` | 高批量、内核和驱动支持 | 减少 syscall 和唤醒 | BSP 支持不确定，复杂度高 |
+| `SO_BUSY_POLL` | 专用核、极低延迟 | 降低唤醒延迟 | 持续占用 CPU，增加功耗和发热 |
+
+单路收包的最短路径（阻塞 socket，不要设置 `SOCK_NONBLOCK`）：
+
+```c
+for (;;) {
+    int m = recvmmsg(fd, msgs, BATCH, 0, NULL);
+    if (m > 0) {
+        process_batch(msgs, m);
+        continue;
+    }
+    if (m < 0 && errno == EINTR) {
+        continue;
+    }
+    if (m < 0) {
+        handle_error();
+        break;
+    }
 }
 ```
 
-## 12. 应用层优化
+阻塞循环需要有明确的退出方式：由另一个线程 `shutdown`/`close`，或设置 `SO_RCVTIMEO`，或用 `eventfd` 唤醒。不要在信号处理函数里做业务处理。
 
-### 12.1 Socket 选项
-
-```c
-/* 增大接收缓冲区 */
-int rcvbuf = 4 * 1024 * 1024;  /* 4 MB */
-setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
-
-/* 启用时间戳（减少系统调用获取时间的开销） */
-int ts = 1;
-setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPNS, &ts, sizeof(ts));
-
-/* UDP: 使用 connect() 建立绑定（启用 RFS，减少路由查找） */
-connect(fd, (struct sockaddr*)&dest, sizeof(dest));
-```
-
-### 12.2 批量收发
+多个固定 fd 用 `poll`，`stop_fd` 可由 `eventfd` 创建，并把退出事件放进同一个等待集合：
 
 ```c
-/* recvmmsg: 一次系统调用接收多个包 */
-struct mmsghdr msgs[BATCH_SIZE];
-/* ... 初始化 msgs ... */
-int count = recvmmsg(fd, msgs, BATCH_SIZE, MSG_WAITFORONE, NULL);
+struct pollfd pfds[2] = {
+    { .fd = fd,      .events = POLLIN },
+    { .fd = stop_fd, .events = POLLIN },
+};
 
-/* sendmmsg: 一次系统调用发送多个包 */
-int sent = sendmmsg(fd, msgs, count, 0);
+for (;;) {
+    int n = poll(pfds, 2, timeout_ms);
+    if (n < 0) {
+        if (errno == EINTR) continue;
+        handle_error();
+        break;
+    }
+    if (pfds[1].revents & POLLIN) {
+        break;
+    }
+    if (pfds[0].revents & POLLIN) {
+        for (;;) {
+            int m = recvmmsg(fd, msgs, BATCH, MSG_DONTWAIT, NULL);
+            if (m > 0) {
+                process_batch(msgs, m);
+                continue;
+            }
+            if (m < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+                break;
+            }
+            if (m < 0 && errno == EINTR) {
+                continue;
+            }
+            handle_error();
+            break;
+        }
+    }
+}
 ```
 
-`recvmmsg`/`sendmmsg` 减少系统调用次数，在 ARM 上效果明显（ARM 的系统调用开销高于 x86）。
+`revents` 还要检查 `POLLERR`/`POLLHUP`，不能只看 `POLLIN`。
 
-### 12.3 GRO 与 UDP
+`select` 也能处理少量 fd，但它受 `FD_SETSIZE` 限制，且限制的是 fd 编号，不只是并发数量。嵌入式设备并发 socket 通常不超过 1024，但进程还可能打开日志、设备节点、eventfd 等其他 fd，编号超过 1023 时 `select` 会失败或行为不可靠。因此优先 `poll`，`select` 只用于 fd 很少且编号可控的旧代码。
 
-Linux 内核支持 UDP GRO（Generic Receive Offload for UDP），将多个相同流的 UDP 包合并为一个大包上送应用层：
+`recvmmsg` 减少 syscall 次数，但不是零拷贝。每个 `mmsghdr` 的 `msg_len` 要检查；收到超长 UDP 包时用 `MSG_TRUNC` 判断是否被截断。发送侧对应 `sendmmsg`，适合一次提交多个小包。
+
+`SO_RCVLOWAT` 可以配合批量处理，让一次唤醒处理更多包；但它会增加等待时间，必须用 p99 验证。
+
+只有在完整 Linux 且 fd 数量很大、增删频繁、事件率很高时，才需要把 `epoll` 作为可选方案评估；它不是嵌入式 ARM 或 lwIP/RTOS 的通用前提。轮询方式本身不是问题，前提是 fd 数量、事件率和每次处理的耗时有测量依据。
+
+### 3.3 多核与 socket 分工
+
+三种常见结构：
+
+- **单一收包线程**：一个线程阻塞 `recvmmsg`；多个固定 fd 用 `poll`，fd 很少且编号受控可用 `select`。适合控制类、包量中等的场景。
+- **每核一个 socket**：每个工作线程用 `SO_REUSEPORT` 绑定同一端口，内核按四元组哈希分流。同一路流仍然落在同一个 socket、同一个核；不同流才分散到多个核。
+- **一个收包线程 + 多个工作线程**：收包线程只做分类和入队，工作线程做解析、计算和发送。同一路流应固定给同一个工作线程和同一个核，不能按包轮询到多个工作线程。
+
+不要默认“线程越多吞吐越高”。线程数超过可用核心数会增加上下文切换和缓存失效；RPS/RFS 和 `SO_REUSEPORT` 也不能替代有界队列和队列满处理。
+
+### 3.4 内存池与零拷贝
+
+**内存池**
+
+热路径不要调用 `malloc/free`。启动时分配固定大小的缓冲池或 ring，运行时只做入池/出池：
 
 ```c
-/* 启用 UDP GRO */
-int val = 1;
-setsockopt(fd, IPPROTO_UDP, UDP_GRO, &val, sizeof(val));
+struct packet_buf {
+    uint8_t data[2048];
+    size_t len;
+};
+
+static struct packet_buf pool[POOL_SIZE];
 ```
 
-配合 GRO，应用层一次 `recvmsg` 可以收到合并后的大包，减少系统调用次数和协议栈处理开销。
+用 `posix_memalign`/`aligned_alloc` 按缓存行或 DMA 要求对齐；用 `mmap` + `MAP_POPULATE` 预缺页。实时线程可用 `mlockall` 锁定内存，需要足够的 `RLIMIT_MEMLOCK` 或 `CAP_IPC_LOCK`；无 swap 的板卡无需 `swapoff`，有 swap 时关闭并保留物理内存余量，避免内存耗尽。队列必须有界，池耗尽时明确丢弃、降级或让上游降速。
 
-## 13. 诊断方法论
+**零拷贝路径**
 
-优化前必须先定位瓶颈。以下工具和方法论按诊断顺序排列：
+```mermaid
+flowchart LR
+    NIC["NIC / DMA"] --> RING["RX ring"]
+    RING --> NAPI["NAPI / skb"]
+    NAPI --> STACK["IP / UDP"]
+    STACK --> SK["socket 队列"]
+    SK -->|"CPU copy"| APP["recvmsg / recvmmsg"]
 
-### 13.1 快速检查清单
+    RING -. "PACKET_MMAP" .-> PMAP["用户态 ring"]
+    RING -. "AF_XDP" .-> XDP["UMEM / XDP ring"]
+    TXBUF["应用发送缓冲区"] -. "发送：MSG_ZEROCOPY" .-> STACK
+
+    classDef path fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#111827
+    classDef user fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#111827
+    classDef zero fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#111827
+    classDef tx fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#111827
+    class NIC,RING,NAPI,STACK,SK path
+    class APP user
+    class PMAP,XDP zero
+    class TXBUF tx
+```
+
+*图 2：普通 socket 路径与三种零拷贝路径。零拷贝减少 CPU 拷贝，但不消除 DMA、协议栈和缓冲区生命周期成本。*
+
+| 路径 | 减少的拷贝 | 代价 | 适用场景 |
+| --- | --- | --- | --- |
+| `PACKET_MMAP`/TPACKET_V3 | 内核到用户的包拷贝 | 绕过协议栈、ring 管理、`CAP_NET_RAW` | 自定义协议、专用收发 |
+| `AF_XDP` | 内核到用户、部分 skb 开销 | 驱动支持、UMEM 管理 | 高吞吐、可绕过协议栈 |
+| `MSG_ZEROCOPY` | 发送时用户到内核的拷贝 | 缓冲区页锁定、完成通知 | 大块发送 |
+| `sendfile`/`splice` | 文件页缓存到 socket 的用户拷贝 | 主要面向 TCP | 文件流发送 |
+| `recvmmsg`/`sendmmsg` | 不减少数据拷贝 | 只减少 syscall | 批量收发 |
+
+`MSG_ZEROCOPY` 示例：
+
+```c
+int one = 1;
+setsockopt(fd, SOL_SOCKET, SO_ZEROCOPY, &one, sizeof(one));
+send(fd, buf, len, MSG_ZEROCOPY);
+```
+
+发送缓冲区在完成通知到达前不能修改或释放，完成事件从 `MSG_ERRQUEUE` 读取。小包使用零拷贝往往不划算，因为页锁定和完成通知的成本会超过拷贝本身。
+
+`PACKET_MMAP` 和 `AF_XDP` 绕过标准 UDP 栈，适合自定义协议或专用采集；需要标准 socket 语义、TCP 重传和拥塞控制时，不要为了“零拷贝”绕开协议栈。嵌入式 BSP 的驱动未必支持 AF_XDP 零拷贝模式，选型前先确认内核版本和网卡能力。
+
+### 3.5 定时器与唤醒
+
+事件循环里不要用 `sleep` 轮询。使用 `poll` 时，定时任务用 `timerfd`，与 socket 一起放进同一个等待集合；只用阻塞 `recvmmsg` 时，用 `SO_RCVTIMEO` 或独立定时线程。跨线程唤醒用 `eventfd` 或 pipe。实时线程用绝对时间睡眠，避免相对睡眠累积漂移：
+
+```c
+clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next, NULL);
+```
+
+实时线程的 CPU 隔离和调度优先级放到第 4 章说明；内存锁定见 3.4 节。
+
+### 3.6 队列满时的处理策略
+
+任何队列都必须有上限，并明确满了怎么办：
+
+- 丢弃最旧包：降低延迟，适合实时控制；
+- 丢弃最新包：保留历史，适合记录类业务；
+- 阻塞生产者：只适合非实时线程，不能在 ISR 或收包线程里阻塞；
+- 降级处理：降低采样率或分辨率，保证关键路径。
+
+队列深度要按突发长度和 p99 目标计算。队列越深，抗突发能力越强，但排队延迟和内存占用也越高。丢包计数要暴露到监控，否则优化无法闭环。
+
+应用层的收包、队列和内存结构确定后，下一章再逐项说明内核参数为什么这样设。
+
+## 4. 内核层：参数、中断与实时调度
+
+**本章要点：工业传感器平台调内核参数的目标是降低 p99、避免内存耗尽、保证长期稳定，不是追求峰值吞吐。每个参数都要有测量依据和回退方案。**
+
+### 4.1 先固定平台假设
+
+以下以 2/4 核 ARM、无 swap、内存受限、UDP 传感器数据加控制命令的工业板卡为例。不同板卡的网卡队列数、IRQ 数、内核版本和驱动能力不同，参数值只表示方向。
+
+工业场景的判断标准与服务器不同：
+
+- 采样周期固定，尾延迟比平均吞吐重要；
+- 不同传感器数据形态不同：红外模组多为整帧大块数据，激光雷达多为高速小/中包，状态量为低频小包；不能只按小包设计；
+- 设备可能无风扇，busy poll 和实时调度会带来功耗和温升；
+- 长期无人值守，内存耗尽、看门狗复位和配置漂移比峰值性能更不可接受；
+- 厂商 BSP 可能缺少多队列、RPS、AF_XDP 或硬件时间戳。
+
+### 4.2 网络内存与队列参数
+
+| 参数 | 作用 | 为什么在传感器平台调整 | 代价与边界 |
+| --- | --- | --- | --- |
+| `net.core.rmem_max` | 允许应用设置更大的 `SO_RCVBUF` | 短时突发时吸收排队，避免 socket 层丢包 | 只设上限，不自动放大 socket；按最大突发乘并发 socket 数估算 |
+| `net.core.wmem_max` | 允许更大的 `SO_SNDBUF` | 控制命令或批量遥测短时突发 | 内存占用；发送队列过大会增加排队延迟 |
+| `net.core.rmem_default` | 未显式设置 socket 的默认接收缓冲 | 减少每个应用重复设置 | 默认值过大会浪费内存；建议应用显式设置 |
+| `net.core.netdev_max_backlog` | RPS/NAPI 的 softnet backlog 上限 | 突发时避免 softnet 层直接丢包 | 增加内存和排队延迟；单核或低流量可保持默认 |
+| `net.core.netdev_budget` | 单次 softirq 处理包数预算 | 降低可减少 softirq 占用时间，改善调度延迟 | 过低会在突发时处理不完；按 p99 和 dropped 调整 |
+| `net.core.netdev_budget_usecs` | 单次 softirq 时间预算 | 限制 softirq 占用 CPU 的时长 | 过低增加唤醒次数，过高增加调度延迟 |
+| `net.ipv4.udp_mem` | UDP 全局内存压力阈值 | 出现 `UdpRcvbufErrors` 且内存充足时再调 | 会挤占其他内存；不能替代应用读取速度 |
+| `net.core.busy_poll`/`busy_read` | socket 忙轮询，降低唤醒延迟 | 控制类小包、专用 CPU 核 | 持续消耗 CPU、功耗和发热；需要驱动支持 |
+| `net.core.rps_sock_flow_entries` | RFS 流表规模 | 多核时让包跟随应用所在 CPU，提升缓存局部性 | 占用内存；只在启用 RPS/RFS 时有意义 |
+
+`net.core.rmem_max` 和 `wmem_max` 不是越大越好。先测出最大突发长度，再按“突发包数 × 包大小 × 并发 socket 数”估算；同时给其他进程和页缓存留出余量。工业设备内存受限，缓冲区过大只会把丢包变成排队延迟，最后仍可能在别处丢。
+
+`netdev_budget` 和 `netdev_budget_usecs` 也不要照搬服务器值。传感器采样周期固定时，softirq 长时间占用 CPU 会推迟控制线程；可以适当降低预算，让 softirq 更早让出 CPU，但突发时可能处理不完。是否调整看 `/proc/net/softnet_stat` 的 dropped 和 p99，而不是只看吞吐。
+
+### 4.3 中断、NAPI 与包分发
+
+NAPI 是驱动收包机制，不是 `ethtool` 的开关。大多数驱动默认使用 NAPI；能调的是中断合并、IRQ 亲和性和包分发。
+
+| 参数/操作 | 作用 | 工业传感器场景的理由 | 代价 |
+| --- | --- | --- | --- |
+| `ethtool -C rx-usecs` | 合并 RX 中断 | 采样周期固定、包量中等时，低合并可降低尾延迟；高包量时适度合并降低 CPU | 过低增加中断和 CPU，过高增加排队延迟 |
+| `smp_affinity_list` | 绑定 IRQ 到 CPU | 避免 IRQ 在核间迁移，稳定缓存和调度 | 绑错核会与控制线程、工作线程争 CPU |
+| RSS/RPS/RFS | 多核分流 | 4 核平台可把不同队列/流分给多个收包线程；RFS 提升缓存局部性 | 单核/双核收益有限；跨核缓存未命中和调度开销 |
+| XPS | 选择 TX 队列/CPU | 发送控制命令时减少跨核迁移 | 配置复杂，需网卡多队列支持 |
+
+低延迟控制链路要把同一路流的 RX IRQ、收包线程、组包线程和 TX 路径绑到同一个核，控制线程可以放到另一个隔离核。高吞吐采集链路可以让多队列 IRQ 分散到多个核，再由 `SO_REUSEPORT` 每个核一个 socket；这里的分散单位是“流/队列”，不是同一路流里的单个包。
+
+RSS 和 `SO_REUSEPORT` 都按流哈希选择队列/socket，同一路流通常固定在一个核；RPS 是软件分流，可能把处理移到别的核，RFS 用来让处理跟随应用所在核。XPS 选择发送队列/CPU，应与接收和组包所在核对齐，避免发送时再次跨核。
+
+单核或双核工业板卡通常不需要 RPS/RSS。把 IRQ 和应用都挤到同一个核，或把中断分到另一个核但共享缓存，可能比默认更差；必须测 p99 和 CPU。
+
+### 4.4 CPU 隔离、实时调度与内核编译选项
+
+只有在核数足够时才考虑隔离。4 核平台可以留一个管理核处理内核线程、日志和看门狗，把控制/网络线程放到隔离核：
+
+```text
+isolcpus=2,3 nohz_full=2,3 rcu_nocbs=2,3
+```
 
 ```bash
-# 1. 查看 NIC 丢包
-ethtool -S eth0 | grep -iE "drop|error|discard|miss"
-
-# 2. 查看 SoftIRQ 统计
-cat /proc/net/softnet_stat
-# 每行对应一个 CPU，格式: [processed] [dropped] [time_squeeze]
-
-# 3. 查看 socket 缓冲区溢出
-cat /proc/net/snmp | grep Udp
-# UdpInErrors, RcvbufErrors, SndbufErrors
-
-# 4. 查看中断分布
-cat /proc/interrupts | grep eth
-
-# 5. 查看 CPU 使用率（关注 softirq 比例）
-mpstat -P ALL 1
-
-# 6. 查看网络流量
-sar -n DEV 1
+taskset -c 2 chrt -f 80 ./sensor_app
 ```
 
-### 13.2 瓶颈定位矩阵
+`chrt -f 99` 容易饿死内核线程，不建议直接使用。保留 `sched_rt_runtime_us` 的内核运行时间，不要为了“更实时”把它设为 -1；否则一次死循环就可能让看门狗无法运行。
 
-| 现象 | 可能原因 | 对应优化 |
-|------|----------|----------|
-| `ethtool -S` 显示 rx_dropped | Ring Buffer 满 | 增大 Ring Buffer / 增大 NAPI budget |
-| `softnet_stat` 第 2 列非零 | Backlog 满 | 增大 `netdev_max_backlog` |
-| `softnet_stat` 第 3 列非零 | SoftIRQ budget 耗尽 | 增大 `netdev_budget` |
-| `/proc/net/snmp` RcvbufErrors | Socket 缓冲区满 | 增大 `rmem_max` / 应用层加速处理 |
-| 中断集中在单个 CPU | 无 RPS / RSS 配置 | 启用 RPS 或 RSS |
-| `mpstat` 显示 `%soft` 高 | 协议栈处理瓶颈 | GRO / Busy Poll / XDP |
-| CPU 频率低于最高值 | 调速器未升频 | 设置 `performance` 调速器 |
+| 编译选项 | 理由 | 代价 |
+| --- | --- | --- |
+| `CONFIG_PREEMPT_RT` | 控制循环需要更小的调度延迟 | 吞吐下降、驱动兼容性风险；需 `cyclictest` 验证 |
+| `CONFIG_HIGH_RES_TIMERS` | 周期采样、超时和定时器需要微秒级精度 | 短周期定时器会增加唤醒；不是所有定时器都需要高精度 |
+| `CONFIG_HZ=1000` | 1 ms 级周期任务更容易对齐 | tick 开销增加；有 hrtimer 时不是唯一手段 |
+| `CONFIG_NO_HZ_IDLE` | 空闲时停止 tick，降低功耗和空闲抖动 | 对满载网络路径帮助有限 |
+| `CONFIG_NO_HZ_FULL` + `CONFIG_RCU_NOCB_CPU` | 隔离核减少 tick 和 RCU 回调干扰 | 配置复杂，必须配合 `isolcpus`/`nohz_full` |
+| `CONFIG_NET_RX_BUSY_POLL` | 支持 `SO_BUSY_POLL` 低延迟收包 | 持续占用 CPU，增加功耗和发热 |
+| `CONFIG_XDP_SOCKETS` | 支持 AF_XDP | 驱动和内核版本要求高，开发复杂度大 |
 
-## 14. 完整优化配置模板
+`CONFIG_HZ` 不是越大越好。传感器周期如果是 1 ms，1000 Hz tick 可以和周期对齐；但 hrtimer 也能提供高精度定时，是否提高 HZ 要看 tick 开销和测量结果。`PREEMPT_RT` 也不是默认选项：它降低调度延迟，但会牺牲吞吐，并可能暴露厂商驱动的锁/中断问题。
 
-以下是一个面向 ARM-Linux 嵌入式高吞吐量 UDP 场景的系统配置模板：
+### 4.5 PTP 与硬件时间戳
+
+工业传感器常需要把多路红外、激光雷达或控制事件的采样时间放在同一时间轴上。只用应用层 `clock_gettime` 记录时间，会受线程调度、排队和中断延迟影响，误差可能大于传感器周期。PTP（Precision Time Protocol，精确时间协议）用来解决这个问题。
+
+PTP 不传输传感器数据，只让网络中的设备交换很小的对时报文，估算链路延迟和时钟偏差。网络里有一个提供基准时间的主时钟，其他设备作为从时钟跟随它。Sync、Follow_Up、Delay_Req 等报文很小，但会按所选 profile（同步配置）周期发送；高精度 profile 下发送更频繁。它优化的是时间一致性，不是吞吐。
+
+要达到微秒级精度，时间戳必须在网卡或 PHY（网口物理层芯片）收到、发出报文时记录，而不是等数据送到应用层再记录。相关组件各管一件事：
+
+| 组件 | 作用 |
+| --- | --- |
+| PHC | 网卡上的硬件时钟，PTP 用它维护高精度时间 |
+| 硬件时间戳 | 记录报文到达或离开网卡/PHY 的时刻 |
+| `ptp4l` | 按 PTP 协议和主时钟交换报文、计算偏差 |
+| `phc2sys` | 把 PHC 时间同步到 Linux 系统时钟 |
+
+内核和驱动需要相应能力：
+
+- `CONFIG_PTP_1588_CLOCK` 提供 PTP 时钟框架；
+- 网卡驱动要提供 PHC 和硬件时间戳；
+- PHY 时间戳需要 `CONFIG_NETWORK_PHY_TIMESTAMPING`；
+- 应用通过 `SO_TIMESTAMPING` 请求硬件时间戳，驱动通常用 `SIOCSHWTSTAMP` 配置哪些报文需要打时间戳。
+
+先确认网卡能力：
 
 ```bash
-#!/bin/bash
-# ARM-Linux Network Performance Tuning Script
-# Target: High-throughput UDP on embedded systems
-
-IFACE="eth0"
-
-# --- CPU Frequency ---
-echo performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
-
-# --- IRQ Affinity ---
-systemctl stop irqbalance 2>/dev/null
-# 假设 eth0 中断号通过 grep 获取
-IRQ=$(grep ${IFACE} /proc/interrupts | awk '{print $1}' | tr -d ':' | head -1)
-echo 1 > /proc/irq/${IRQ}/smp_affinity_list
-
-# --- RPS (单队列 NIC 分散到多核) ---
-echo f > /sys/class/net/${IFACE}/queues/rx-0/rps_cpus
-echo 32768 > /proc/sys/net/core/rps_sock_flow_entries
-echo 4096 > /sys/class/net/${IFACE}/queues/rx-0/rps_flow_cnt
-
-# --- Ring Buffer ---
-ethtool -G ${IFACE} rx 4096 tx 4096 2>/dev/null
-
-# --- Interrupt Coalescing ---
-ethtool -C ${IFACE} adaptive-rx on 2>/dev/null
-
-# --- Offloads ---
-ethtool -K ${IFACE} gro on 2>/dev/null
-ethtool -K ${IFACE} rx-checksumming on tx-checksumming on 2>/dev/null
-
-# --- Kernel Parameters ---
-sysctl -w net.core.rmem_max=8388608
-sysctl -w net.core.wmem_max=8388608
-sysctl -w net.core.rmem_default=1048576
-sysctl -w net.core.netdev_max_backlog=25000
-sysctl -w net.core.netdev_budget=600
-sysctl -w net.core.netdev_budget_usecs=4000
-sysctl -w net.ipv4.tcp_window_scaling=1
-sysctl -w vm.swappiness=0
-
-# --- (可选) Busy Polling ---
-# sysctl -w net.core.busy_read=50
-# sysctl -w net.core.busy_poll=50
-
-echo "Network tuning applied for ${IFACE}"
+ethtool -T eth0
 ```
 
-## 15. 总结
+PTP 报文应使用独立优先级或队列，避免排在大帧和突发数据后面。它不需要跟随数据流放大 `SO_RCVBUF`，但需要稳定的时间戳路径和较低的排队延迟。如果只有单设备、没有多传感器时间对齐需求，PTP 可能不必要；用单调时钟记录本机时间即可。
 
-ARM-Linux 网络性能优化是一个多维度的工程问题，需要从硬件、驱动、内核、协议栈和应用层协同调优。
+**调参后的验证：** 每次只改一个变量，记录 p99/p99.9、最大抖动、NIC/softnet/socket 三层丢包、CPU 和温度；至少做 24 小时长稳、断电重启、网线拔插、对端停止发送和突发流量测试。参数要写入镜像或启动配置并能回退；只有目标板、目标内核和目标流量模型上通过测试的参数，才能进入量产配置。
 
-**高收益优化**（建议优先实施）：
+## 参考资料
 
-1. CPU 调速器设为 `performance`（ARM 嵌入式设备几乎无副作用）
-2. 中断亲和性 + 禁用 irqbalance（消除缓存失效）
-3. RPS 多核分流（单队列 ARM NIC 的必需项）
-4. Socket 缓冲区和 Backlog 调优（按设备 RAM 比例设置）
-5. GRO 开启（纯软件实现，零成本）
-
-**中等收益优化**（按需评估）：
-
-6. Ring Buffer 增大 + 中断合并调优
-7. NAPI budget 增大
-8. 禁用 Swap / `swappiness=0`
-9. `recvmmsg`/`sendmmsg` 批量收发
-
-**高级优化**（延迟敏感场景）：
-
-10. Busy Polling（3x 延迟改善，但增加 CPU 功耗）
-11. SCHED_FIFO + mlockall + CPU 隔离
-12. PREEMPT_RT 内核
-13. XDP 快速数据路径
-
-核心原则：永远先诊断再优化。使用 `ethtool -S`、`/proc/net/softnet_stat`、`mpstat` 定位实际瓶颈，然后针对性地应用上述优化。盲目套用参数可能适得其反。
+- [Linux kernel: Scaling in the Linux Networking Stack](https://docs.kernel.org/networking/scaling.html)
+- [Linux kernel: High Resolution Timers](https://docs.kernel.org/timers/highres.html)
+- [Linux kernel: MSG_ZEROCOPY](https://docs.kernel.org/networking/msg_zerocopy.html)
+- [Linux kernel: AF_XDP](https://docs.kernel.org/networking/af_xdp.html)
+- [Linux kernel: Packet MMAP](https://docs.kernel.org/networking/packet_mmap.html)
+- [Linux kernel: Timestamping](https://docs.kernel.org/networking/timestamping.html)

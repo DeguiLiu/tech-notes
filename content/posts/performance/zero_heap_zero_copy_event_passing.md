@@ -1,56 +1,135 @@
 ---
-title: "零堆分配与零拷贝事件传递: 单次构造、指针流转与回收契约"
-date: 2026-09-10T08:00:00
+title: "C++ 零堆零拷贝: 事件只构造一次，全程只传指针"
+date: 2026-10-18T08:10:00
 draft: false
 categories: ["performance"]
-tags: ["C++17", "zero-copy", "memory-pool", "event-driven"]
-summary: "事件在固定池中只构造一次，提交、排队、派发和回收阶段仅传递指针，并以引用计数、固定容量和所有权转移约束生命周期。"
+tags: ["C++17", "zero-copy", "zero-heap", "memory-pool", "event-driven", "embedded", "refcount", "ownership"]
+summary: "coact 在固定事件池中构造事件和 payload，后续提交、排队、派发和回收只传 Event*；用侵入式引用计数和所有权转移管理多 AO 共享与回收，并对照 lwIP pbuf、libev watcher 说明边界。"
 ShowToc: true
 TocOpen: true
 ---
 
-事件驱动框架里的零拷贝与 DMA 无关：事件对象与 payload 只在固定池中构造一次，后续提交、排队、派发和回收全程传递同一个 `Event*`。零堆分配提供稳定地址，引用计数管理共享生命周期，所有权转移则规定谁能继续访问。
+> [coact](https://github.com/DeguiLiu/coact) 是一个面向 RT-Thread（嵌入式实时操作系统）单核 MCU（单片机）的 C++17 事件框架，核心组件包括事件池、协调器、暂存/派发器和活动对象（AO），目标是在不使用堆分配的情况下完成事件调度。
+>  本文只讨论两个性质：零堆和零拷贝。零堆指运行期不调用 `malloc/free` 这类动态内存分配；零拷贝指事件 payload 不复制。队列 push/pop 仍会移动 `Event*`、目标 ID 和时间戳，这不属于 payload 拷贝。
 
-## 事件系统中的零拷贝边界
+**一句话结论：事件和 payload 只构造一次；后续链路只传 `Event*`；多个 AO 共享时靠引用计数，最后一个消费者归还池块。**
 
-先划清边界。传统"零拷贝"指网卡/磁盘 DMA 绕过 CPU 把数据直写到用户态缓冲区，省的是内核态到用户态的 `memcpy`。coact 是面向 RT-Thread 单核 MCU 的 header-first C++17 事件框架（[github.com/DeguiLiu/coact](https://github.com/DeguiLiu/coact)），它要处理的拷贝在别处：一个事件从 ISR/任务投递到目标活动对象（Active Object，AO）手里，中间要经过协调器、暂存队列、派发器好几站，如果每一站都把事件或 payload 复制一份，MCU 的 RAM 和 CPU 都不够用。
+先明确几个词：
 
-coact 的答案是把"复制事件"这个动作彻底删掉，靠三件事：事件池让对象只有唯一一块存储，引用计数让多个目标共享同一块而不复制，整条链路只传指针。
+| 词 | 含义 |
+| --- | --- |
+| 事件 | 一条待处理的消息，例如“收到一帧数据”或“定时器到期” |
+| payload | 事件携带的数据本身 |
+| 事件池 | 预先切好的固定大小内存块，运行期不向堆申请内存 |
+| `Event*` | 指向事件块的指针，不复制事件内容 |
+| 描述符/句柄 | 记录“数据在哪、有多长、还有谁在用”的小结构 |
+| AO | 活动对象（Active Object），有自己处理逻辑的接收者 |
+| ISR | 中断服务程序，硬件事件触发的那段代码 |
+| 引用计数 | 还有几个使用者要这块数据 |
+## 1. 零堆零拷贝是什么
+
+**本章要点：coact 要省的是事件在 ISR、队列和 AO 之间重复复制的成本，同时避免运行期堆分配。**
+
+在嵌入式系统里，事件是“发生了什么”的记录。它可能来自中断服务程序（ISR），也可能来自普通任务；目标通常是活动对象（Active Object，AO），也就是有自己处理逻辑的接收者。事件从生产者到 AO，通常要经过协调器、暂存队列和派发器。
+
+假设传感器中断收到一帧数据，要同时通知显示 AO 和日志 AO。如果每个目标各复制一份，一帧数据就变成两份；目标越多，内存和复制次数越多。coact 的做法是让两个 AO 拿到同一个 `Event*`，数据只保留一份。
+
+传统“零拷贝”通常指 DMA 绕过 CPU，把网卡或磁盘数据直接写入用户态缓冲区，省掉内核态到用户态的 `memcpy`。coact 处理的是另一条链路：事件在 ISR、任务、队列和 AO 之间传递。它要省掉的不是 DMA 那一段，而是事件在每个环节被重复复制的成本。
+
+零堆和零拷贝是两件事，但在这里互相依赖：
+
+| 问题 | 机制 | 结果 |
+| --- | --- | --- |
+| 地址不能变 | `EventPool` 固定块 | 池块地址稳定，指针可跨上下文传递 |
+| 不能向堆申请 | 事件池 + 预分配队列 | 运行期没有 `malloc/free` |
+| 多个目标共享 | `ref_ctr` 引用计数 | 多个 AO 持有同一个 `Event*` |
+| 谁负责回收 | 所有权转移 | 最后一个消费者调用 `event_gc` 归还池块 |
+
+因此，零拷贝不是单一函数，而是三个约束共同作用的结果：地址稳定、共享生命周期、所有权明确。
+
+### 1.1 lwIP 和 libev 的零拷贝位置
+
+lwIP 的零拷贝主要发生在 pbuf 层。pbuf 是网络包描述符，记录一段 payload 的地址、长度和下一段；多个 pbuf 可以串成一个包，协议栈转发时只移动描述符或调整 payload 指针，不复制整包。`PBUF_REF` 让 pbuf 直接引用外部缓冲区，`PBUF_ROM` 引用只读数据，`pbuf_cat`/`pbuf_chain` 只链接描述符，`tcp_write` 不带 `TCP_WRITE_FLAG_COPY` 时也直接引用应用缓冲区。这样做的原因是网络包经常由多段数据组成，复制到连续内存会增加 CPU 和 RAM 开销；代价是缓冲区生命周期必须覆盖 pbuf。
+
+libev 没有数据层的零拷贝实现；它避免的是把 payload 复制进事件队列。`ev_io`、`ev_timer`、`ev_async` 是 watcher，只记录 fd、定时器或通知，不保存 payload；事件循环的 pending 队列只放 watcher。回调执行时，数据仍在应用缓冲区或环形队列里，由应用读取。这样做的原因是事件循环要同时管理大量事件，如果每个事件都携带 payload，就需要额外分配和复制；代价是应用必须自己管理缓冲区生命周期，且 `read` 时可能发生一次内核到用户缓冲区的复制。
+
+| 系统 | 零拷贝发生点 | 避免的复制 | 为什么 |
+| --- | --- | --- | --- |
+| lwIP | pbuf 链、`PBUF_REF`/`PBUF_ROM`、`tcp_write` 不带 COPY | 协议层间 payload 复制，分片合并到连续内存 | 包常由多段组成，减少 CPU 和 RAM 开销 |
+| libev | watcher 和 pending 队列只保存观察项 | 不把 payload 复制进事件队列 | 一个循环管理大量事件，数据由应用缓冲区管理 |
+
+## 2. 复制和堆分配的成本
+
+**本章要点：每个环节都复制会让内存和延迟随环节数、目标数增长；堆分配还会带来失败和碎片。**
+
+生产者构造事件后，如果协调器、暂存队列、派发器每个环节都复制一份：
+
+```text
+生产者 -> 构造 Event
+协调器 -> 复制 Event
+暂存队列 -> 复制 Event
+派发器 -> 复制 Event
+AO -> 处理副本
+```
+
+这条路径有三个直接成本：
+
+- 每次复制都要占用 RAM，payload 越大，峰值占用越高；
+- 复制发生在中断或调度路径上，增加延迟和抖动；
+- 多目标投递时，目标数乘以复制次数，内存和 CPU 成本一起放大。
+
+如果改用运行期 `malloc` 分配事件，还会引入另一组问题：
+
+- 分配可能失败，失败后事件无法投递；
+- 长时间运行后可能产生堆碎片；
+- 每个副本都要单独释放，所有权容易混乱；
+- 释放时机错误会导致泄漏、重复释放，或者对象已经归还却还有指针在用它，也就是 use-after-free。
+
+下图以 coact 为例对比两种路径：复制路径每经过一个环节就产生一份新数据；指针路径始终指向同一个事件块。
 
 ```mermaid
 flowchart LR
-    P["生产者<br/>alloc() 拿到 Event*"]:::prod
-    C["DispatchCoordinator<br/>submit()"]:::coord
-    D{"直发路径?"}:::dec
-    S["Staging 暂存队列<br/>只存 Event*"]:::stage
-    Q["Dispatcher<br/>批处理出队"]:::disp
-    A["AO<br/>Hsm::dispatch"]:::ao
-    G["event_gc<br/>引用归零回收"]:::gc
-    P --> C
-    C --> D
-    D --> A
-    D --> S
-    S --> Q
-    Q --> A
-    A --> G
-    classDef prod fill:#dbeafe,stroke:#2563eb
-    classDef coord fill:#e0e7ff,stroke:#4f46e5
-    classDef dec fill:#fef3c7,stroke:#ca8a04
-    classDef stage fill:#fee2e2,stroke:#dc2626
-    classDef disp fill:#f3e8ff,stroke:#9333ea
-    classDef ao fill:#dcfce7,stroke:#16a34a
-    classDef gc fill:#fef3c7,stroke:#d97706
+    subgraph COPY[反例：逐环节复制]
+        direction TB
+        E1["EventPool 事件"] --> C1["协调器副本"]
+        C1 --> C2["队列副本"]
+        C2 --> C3["AO 副本"]
+    end
+
+    subgraph PTR[coact：只传指针]
+        direction TB
+        E2["EventPool 事件"] --> P1["Event*"]
+        P1 --> P2["StagingSlot"]
+        P2 --> P3["AO handler"]
+    end
+
+    COPY ~~~ PTR
+
+    classDef copy fill:#fee2e2,stroke:#dc2626,stroke-width:2px,color:#111827
+    classDef ptr fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#111827
+    classDef pool fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111827
+    class E1,C1,C2,C3 copy
+    class P1,P2,P3 ptr
+    class E2 pool
 ```
 
-图中分岔对应直发的两个前提：目标 AO 空闲（执行租约处于 `Idle`，没有线程正在跑它），且调用方不在派发线程（派发线程内直发会在同一栈上内联执行，栈深无界）。任一不满足就入队。
+*图 1：coact 的两种事件传递方式。左侧是逐环节复制的反例，右侧是只传 `Event*` 的实现。*
 
-## 稳定存储与共享生命周期
+lwIP 和 libev 的选择正好对应这两种成本。lwIP 如果每个协议层都复制 pbuf，分片和转发会在每层产生一次 payload 复制；libev 如果把 payload 放进 watcher 或 pending 队列，事件循环就要为每个事件分配和复制数据。两者都选择只传描述符或通知，把数据留在原缓冲区。代价是生命周期管理从“复制后各自负责”变成“共享缓冲区，必须约定谁读、谁释放”。
 
-零拷贝要成立，先得保证事件有一块稳定、唯一的存储。如果每次投递都 `malloc` 一块新内存再 `memcpy` 内容，那恰恰是"有拷贝"。coact 用 `EventPool`（固定容量事件池）把这块存储预先锁定。
+因此，问题不只是“复制慢”，而是复制把存储、生命周期和所有权同时复杂化了。coact 需要的是另一种结构：事件只有一块存储，所有消费者共享它，最后由引用计数决定何时归还。
 
-池里的每个事件块就是一个带头的原始字节区，事件头 `Event` 只有四个字段：
+## 3. 一次构造与指针链路
 
-```
+**本章要点：池块保证地址不变，队列只保存事件指针等句柄，整条链路不复制 payload。**
+
+### 3.1 固定池块与事件布局
+
+零拷贝要成立，先要保证事件有一块稳定、唯一的存储。`EventPool` 用外部静态缓冲区初始化，按固定步长切成事件块，再用空闲链表串起来。分配时在空块上 placement-new 出事件头，返回 `Event*`；这块存储的地址在整个生命周期内不变。placement-new 是在一块已经准备好的内存上构造对象，不会再向堆申请空间。
+
+事件头只有四个字段：
+
+```cpp
 struct Event {
     uint16_t signal;   // Event signal.
     uint8_t pool_id;   // 0 for static events; otherwise a 1-based pool index.
@@ -58,11 +137,15 @@ struct Event {
 };
 ```
 
-`EventPool::init(void* storage, size_t bytes)` 接收一块外部静态缓冲区，按固定步长切成若干块，用空闲链表串起来。分配时 `alloc(signal)` 在空块上 placement-new 出 `Event`，返回 `Event*`。这块存储在整个生命周期里地址不变，所以指针可以安全地在 ISR、任务、派发线程之间传递，谁拿到都指向同一块物理内存。
+事件头字段的含义如下：
 
-对带 payload 的事件，`alloc_typed` 用组合布局把事件头、应用元数据、payload 塞进同一个块：
+- `signal`：事件类型；
+- `pool_id`：来自哪个池块，`0` 表示静态事件；
+- `ref_ctr`：还有几个使用者要这个事件。
 
-```
+带 payload 的事件使用组合布局，把事件头、应用元数据和 payload 放进同一个块：
+
+```cpp
 template <typename Meta, size_t PayloadBytes, size_t PayloadAlign>
 struct EventBlockLayout {
     Event event;
@@ -71,20 +154,83 @@ struct EventBlockLayout {
 };
 ```
 
-事件头和 payload 连续存放，一次 allocation 就位，之后移动指针即移动整个事件，无需任何二次拷贝。
+事件头和 payload 连续存放，一次分配就位。生产者把数据写入池块属于首次构造或填充；后续提交、排队、派发和回收不再复制 payload。事件块用 `std::byte` 和 `alignas` 固定布局，队列句柄用 `std::move` 移动；这些机制让事件和队列都不需要额外堆分配。
 
-池的空闲链表头是一个 32 位压缩字：低 16 位是空闲块索引，高 16 位是 ABA 标签。每次分配/回收都让标签自增，即使发生 ABA 竞争，陈旧操作也不会误判头节点。同步后端在编译期二选一：
+池的同步后端在编译期二选一：单核产品使用关中断临界区，多核验证环境使用 CAS。同步方式只影响池的并发实现，不改变“块地址稳定”这一前提。
 
-* `RttSingleCoreProfile`：单核 100MHz 产品，claim/reclaim/used/高水位全部在一条关中断临界区内完成，不做 CAS、不带 ABA 标签回退。
-* `HostSmpProfile`：SMP/TSan 验证语义，带 ABA 标签的 CAS + acquire/release 发布，要求 32 位无锁 CAS，热点以 32 字节 cache line 隔离。
+### 3.2 暂存队列只搬运句柄
 
-无论哪种后端，池的公共生命周期语义一致，只是内部同步算法不同。这个池是零拷贝的物理前提：块地址稳定，指针才敢跨线程、跨 ISR 传递而不失效。
+事件块地址固定后，队列中保存什么？暂存队列的槽位不保存事件内容，只保存目标、指针和时间戳：
 
-### 引用计数让多个目标共享同一事件
-
-零拷贝的第二个机制是引用计数（reference counting）。一个事件要同时投递给多个 AO 时，朴素的实现会为每个目标复制一份。coact 不复制，它让所有目标共享同一个 `Event*`，用 `ref_ctr` 计数：每多投递一个目标 `event_ref_inc` 加一，每个消费者处理完 `event_gc` 减一，最后一个减到零的那个消费者把块还给池。
-
+```cpp
+struct StagingSlot {
+    TargetId target;
+    Event* event;        // Owned reference transferred to the dispatcher.
+    uint64_t enqueue_ns; // Enqueue time used for low-priority aging.
+};
 ```
+
+`StagingSlot` 包含目标 AO、事件指针和入队时间。队列中保存的是这些句柄，不是事件内容。
+
+从协调器 `submit()` 入队，到派发器出队，再到 AO 的 `Hsm::dispatch` 处理，链路上流转的一直是 `Event*`。队列 push/pop 会移动 `StagingSlot` 本身，但移动的是几个标量字段，不是 payload。零拷贝指 payload 零复制，不是连指针都零移动。
+
+队列本身也不向堆申请内存；它预先分配固定大小的存储槽，push/pop 只在槽位中构造、移动或析构句柄。不同队列后端分别服务单核 ISR、单生产者单消费者和多生产者单消费者，同步方式不同，但都只搬运句柄。直发路径只是省掉队列；即使直发，payload 也不复制。
+
+下图给出一个事件从分配到回收的完整时序。
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P as 生产者
+    participant C as 协调器
+    participant Q as 暂存 / 派发
+    participant A as 目标 AO
+    participant E as EventPool
+
+    rect rgb(235, 248, 255)
+        Note over P,E: 事件块只构造一次
+        P->>E: alloc() / alloc_typed()
+        E-->>P: Event*
+        P->>C: submit(Event*)
+    end
+
+    rect rgb(255, 245, 245)
+        Note over C,A: 入队路径
+        C->>Q: enqueue(StagingSlot{Event*})
+        Q->>Q: 批处理出队
+        Q->>A: Hsm::dispatch(*e)
+    end
+
+    A->>E: event_gc(e)
+
+    alt ref_ctr == 0
+        E-->>E: 归还空闲链表
+    else ref_ctr > 0
+        E-->>E: 保留给其他消费者
+    end
+
+    Note over P,E: payload 始终在池块中，只移动 Event*
+```
+
+*图 2：coact 的入队路径只传递 `Event*`；引用计数归零后才归还池块。*
+
+## 4. 所有权模型：引用计数与回收
+
+**本章要点：coact 用侵入式引用计数表达共享所有权；这比 `shared_ptr` 更适合零堆和确定性场景。**
+
+### 4.1 为什么不用 shared_ptr 和 unique_ptr
+
+`std::shared_ptr` 表达共享所有权，但需要独立控制块。`make_shared` 可以把对象和控制块合在一次分配里，但仍然是堆分配；引用计数更新使用通用原子操作，删除器也带类型擦除。对 MCU 和 ISR 路径，这些成本和不确定性都不合适。
+
+`std::unique_ptr` 没有额外控制块，适合独占所有权；但它不能把一个事件同时交给多个 AO。把 `unique_ptr` move 进队列只适合单消费者场景，无法表达多目标共享。
+
+coact 采用侵入式引用计数：`ref_ctr` 直接放在 `Event` 里，不需要独立控制块，也不需要堆分配。它相当于一个最小化的侵入式智能指针语义，接口是 `event_ref_inc` 和 `event_gc`。
+
+### 4.2 引用计数与所有权转移
+
+一个事件投递给多个 AO 时，朴素实现会为每个目标复制一份。coact 让所有目标共享同一个 `Event*`，用 `ref_ctr` 记录共享引用数：每增加一个目标加一，每个消费者处理完减一，最后一个归零时归还池块。
+
+```cpp
 inline void event_ref_inc(Event* e) noexcept {
     if (e->pool_id != 0U) {   // Static events are never reclaimed.
         ++e->ref_ctr;
@@ -94,121 +240,57 @@ inline void event_ref_inc(Event* e) noexcept {
 inline void event_gc(Event* e) noexcept {
     if (e->pool_id == 0U) return;          // Static event.
     if (--e->ref_ctr == 0U) {
-        record->reclaim(e);                 // Return the zero-ref block to the free list.
+        record->reclaim(e);                 // Return the zero-ref block.
     }
 }
 ```
 
-`pool_id == 0` 表示静态事件（编译期就存在的常量事件），它不来自池、也永不回收。这个区分让"零堆"和"池回收"两条路径互不干扰。
+`pool_id == 0` 表示编译期就存在的静态事件；它不来自池，也永不回收。池事件从 `ref_ctr == 1` 开始，每多投递一个目标加一；每个消费者处理完调用一次 `event_gc`，最后一个把计数减到零的消费者负责归还池块。
 
-```mermaid
-flowchart LR
-    A["alloc<br/>ref_ctr = 1"]:::a
-    B["event_ref_inc ×2<br/>ref_ctr = 3"]:::b
-    C["两个消费者各 event_gc<br/>ref_ctr = 1"]:::c
-    D["owner event_gc<br/>ref_ctr = 0"]:::d
-    E["回收到 free list"]:::e
-    A --> B
-    B --> C
-    C --> D
-    D --> E
-    classDef a fill:#dbeafe,stroke:#2563eb
-    classDef b fill:#e0e7ff,stroke:#4f46e5
-    classDef c fill:#fef9c3,stroke:#ca8a04
-    classDef d fill:#fee2e2,stroke:#dc2626
-    classDef e fill:#dcfce7,stroke:#16a34a
-```
+这也是所有权契约的一部分：投递方在 `submit_*` 返回后不能再访问事件。事件已经被转移给协调器，后续由消费者和引用计数管理。多线程下这条契约主要靠接口约定和代码评审维持，没有运行期兜底。
 
-引用计数带来"最后一个消费者负责回收"的语义：投递方把所有权转移出去之后就不能再碰这个事件，否则会 double free。coact 在协调器接口上明确了这个契约，`submit_*` 返回后调用方不得再访问事件。
+### 4.3 所有权对照
 
-## 从提交到回收只传递指针
+第 1 节已经说明 lwIP 和 libev 的零拷贝位置；这里只比较所有权。lwIP pbuf 与 coact 都使用侵入式引用计数，最后一个 `pbuf_free`/`event_gc` 释放存储；libev watcher 不拥有 payload，生命周期由应用管理。coact 的 `Event*` 是拥有所有权的句柄，`StagingSlot` 转移所有权，最后一个消费者归还池块。
 
-有了唯一的池块和引用计数，就可以把"传指针"贯彻到底。看暂存队列的槽位结构 `StagingSlot`：
+| 机制 | 所有权 | 引用计数位置 | 存储来源 | 适用场景 |
+| --- | --- | --- | --- | --- |
+| coact | 转移式共享 | `Event::ref_ctr` | `EventPool` | 固定事件、多个 AO |
+| lwIP pbuf | 共享 | `pbuf::ref` | pool、RAM、外部 REF/ROM | 网络包分片与转发 |
+| libev watcher | 非拥有 | 无 | 应用缓冲区 | readiness 与通知 |
 
-```
-struct StagingSlot {
-    TargetId target;
-    Event* event;        // Owned reference transferred to the dispatcher.
-    uint64_t enqueue_ns; // Enqueue time used for low-priority aging.
-};
-```
+| 需求 | 更合适的机制 |
+| --- | --- |
+| 固定大小事件、多个 AO 共享、零堆 | coact |
+| 网络包分片、拼接、动态协议头 | lwIP pbuf |
+| 只关心 fd 可读/可写或跨线程通知 | libev |
 
-整个暂存队列里存的是 `Event*`（加目标 id 和时间戳），不是事件内容。事件从协调器 `submit()` 入队，到派发器出队，到 AO 的 `Hsm::dispatch` 处理，再到最后 `event_gc` 回收，这条链路上流转的一直是这个指针。payload 始终停在池块里未移动。
+## 5. 边界：何时不该零拷贝
 
-这里要区分两个"复制"。队列在 push/pop 时确实移动了 `StagingSlot` 本身，但那是三个标量字段（指针 + 目标 + 时间戳）的 move，是固定几字节的指针搬运，不是事件数据的复制。零拷贝指的是"事件 payload 零复制"，不是"连指针都零移动"。
+**本章要点：零拷贝用生命周期契约换复制成本，适合共享只读的小 payload，不适合每个消费者独立数据。**
 
-### 直发路径省去队列与线程切换
+### 5.1 类型约束
 
-队列路径已经零拷贝，但 coact 还有一条更短的路径：直发（direct dispatch）。当目标 AO 空闲、调用方不在派发线程、且嵌套深度未超限时，协调器不入队，直接在调用栈上跑完目标 handler。
+事件必须可平凡复制且可平凡析构。直白说，就是这块数据可以按字节复制，销毁时也不需要额外动作，比如释放锁、关闭文件。池回收只把块链回空闲链表，不调用 payload 的析构函数，因此带锁、持有资源或需要析构逻辑的对象不能放进池，通常由 `static_assert` 在编译期拦截。`static_assert` 是编译期检查，类型不满足就直接编译不过。
 
-```
-// coordinator.hpp: direct-dispatch predicate, excerpt.
-if (!from_isr
-    && !force_staging
-    && !PalT::in_dispatcher_thread()
-    && (pal_.current_context().direct_depth < StagingT::ConfigType::kMaxDirectDepth)
-    && ao->direct_eligible()
-    && target_breaker.direct_allowed(target)) {
-    if (AoRunState::Idle == ao->lease().state()) {
-        pal_.enter_direct();
-        const bool taken = ao->dispatch_direct(*e);   // Run the handler in place.
-        pal_.leave_direct();
-        if (taken) {
-            event_gc(e);                              // Reclaim after completion.
-            return {SubmitDisposition::Direct, 0U};
-        }
-    }
-}
-```
+### 5.2 容量约束
 
-直发路径里事件既不入队也不排空，从 `submit()` 到 handler 执行之间没有中间存储，也没有任何一次复制。它把零拷贝做到最短路径：连指针在队列里的进出都省了。这条路径只在任务上下文、目标空闲时成立，ISR 或竞争失败时自动回落到队列路径，语义不变。
+容量是编译期固定的。池耗尽时 `alloc` 返回 `nullptr`，队列满时入队失败，协调器按策略丢弃或拒绝。零拷贝换来了确定性，但必须预先估计事件数和队列深度；估小了会丢事件，估大了浪费 RAM。
 
-直发省掉的不只是拷贝。对比两条路径的完整步骤：队列路径要 `enqueue` 入队、`request_dispatcher_wake` 触发唤醒、PAL 发信号、派发线程醒来后 `dequeue` 出队、再抢 `RunningDispatcher` 租约、最后跑 handler；直发路径只有 `enter_direct`、`dispatch_direct`、`event_gc` 三步，没有跨线程交接，也没有唤醒信号。所以直发既省一次队列进出，也省一次线程调度，对实时控制类事件是关键的确定性来源。
+### 5.3 共享只读与计数上限
 
-直发只是协调器 `submit()` 的几种去向之一。完整的 `SubmitDisposition` 枚举列出所有去向：`Direct`（直发）、`Queued`（入队）、`Merged`（合并，v1 未实现）、`DroppedPolicy`/`DroppedRateLimit`/`DroppedOverload`（按策略/限流/过载丢弃）、`RejectedFull`/`RejectedState`（队列满/目标未绑定拒绝）。无论落到哪条路径，被接受的事件都只按指针流转，丢弃和拒绝时也只是 `event_gc` 一次，不存在"复制一份再处理"的分支。
+共享意味着耦合。多个消费者拿到同一个事件时，不能原地修改 payload，否则会影响其他消费者。需要每个消费者拥有不同数据时，按目标复制反而更简单，零拷贝不适用。
 
-## 有界队列只搬运句柄
+所有权契约在第 4 章已经说明；违反它会导致 use-after-free，当前没有运行期检查。`ref_ctr` 是 `uint8_t`，共享目标数也需要控制在 8 位计数能表示的范围内。
 
-即便走队列路径，coact 的队列本身也设计成"槽位就地构造、无堆"。三个队列后端共享同一个思路：预分配 `alignas` 对齐的原始字节槽，push 时 placement-new 构造对象，pop 时 `std::move` 取走再析构。
+因此，零拷贝适合 payload 较小、共享只读、生命周期短、吞吐和延迟敏感的 MCU/SoC 场景。需要每个消费者独立数据、或 payload 含非平凡析构时，复制是更简单且更安全的选择。coact 把零拷贝作为默认路径，把选择权交给容量和类型约束；完整实现见 [github.com/DeguiLiu/coact](https://github.com/DeguiLiu/coact)。
 
-```
-// Slot storage shared by queue.hpp and spsc_ring.hpp.
-template <typename T>
-struct alignas(alignof(T)) SlotStorage {
-    std::byte bytes[sizeof(T)];
-};
-```
+相关实现与文章：
 
-`BoundedMpscQueue`（SMP 多生产者单消费者）、`SingleCoreCriticalRing`（单核中断临界区保护）、`SpscRing`（无锁单生产者单消费者）三个后端的槽位里放的都是 `StagingSlot` 这样的轻量句柄。pop 时的 `std::move` 搬走的是几个标量字段，事件数据仍在池块里未移动。
-
-三个后端解决同一个问题（有界、无堆、只搬句柄），但同步手段按场景分化：
-
-```
-// BoundedMpscQueue cell: Writing is exclusive, then published as Ready.
-template <typename T>
-struct alignas(32) MpscCell {
-    SlotStorage<T> storage;
-    std::atomic<uint32_t> state{0U};   // Free / Writing / Ready / Consuming.
-    std::atomic<uint64_t> ticket{0U};
-};
-```
-
-* `BoundedMpscQueue` 面向 SMP 多生产者单消费者。每个单元有一个四态原子 `state`，生产者先 CAS 抢占一个 Free 单元进入 Writing，构造完 payload 再发布为 Ready；消费者扫描固定单元集，取最早 Ready 的发布。全程无锁。
-* `SingleCoreCriticalRing` 面向单核 ISR 生产者，注入关中断临界区（`rt_hw_interrupt_disable/enable`），在临界区内完成容量检查、payload move、水位读取，一步搞定，不做 CAS。
-* `SpscRing` 是无锁单生产者单消费者环，用两条单调递增的 `uint16_t` 序号（生产者 head、消费者 tail）对 2 的幂个槽取模，release 发布、acquire 观察，满条件 `head - tail == Capacity`，不浪费哨兵槽。
-
-这个设计还带来一个副产品：因为槽位是编译期定容的原始字节，队列全程不碰 `malloc`/`free`，配合事件池，整条链路实现了零堆分配。MCU/SoC 上既省了拷贝的开销，也消除了堆碎片和分配失败这两个实时隐患。
-
-## 所有权契约、容量边界与代价
-
-零拷贝不是免费的，它的成立建立在几个硬约束上。
-
-事件必须 trivially copyable 且 trivially destructible。池回收时不会调用 payload 的析构函数，因为回收路径只有"把块链回空闲链表"，没有"析构对象"这一步。所以放进池的事件和 payload 只能是平凡类型，靠 `static_assert` 在编译期把关，带析构逻辑（如持锁、持资源）的对象进不了池。
-
-所有权是转移式的。引用计数要求"最后一个消费者回收"，因此投递方在 `submit_*` 返回后不能再碰事件。多线程下这个契约靠纪律和注释维系，出错就是 use-after-free，没有运行时检查兜底。
-
-容量是编译期固定的。池耗尽时 `alloc` 返回 `nullptr`，队列满时入队返回 `false`，协调器按策略丢弃或拒绝。零拷贝换来了确定性，但必须预先估计事件和队列容量，估小了会丢事件，估大了浪费 RAM。
-
-共享即耦合。多目标共享一个事件意味着消费者不能原地修改 payload（否则影响其他消费者）。需要每个消费者各有不同数据时，就得回到复制，零拷贝不适用。
-
-所以零拷贝适合的是：事件 payload 相对小、共享只读、生命周期短、吞吐和延迟敏感的 MCU/SoC 场景。需要每个消费者独立数据、或 payload 含非平凡析构的场景，复制反而是更简单正确的选择。coact 把零拷贝做成默认路径，把选择权交给容量和类型约束，完整实现与选择理由见 [github.com/DeguiLiu/coact](https://github.com/DeguiLiu/coact)。
+- [coact GitHub 项目](https://github.com/DeguiLiu/coact)
+- [lwIP pbuf API](https://www.nongnu.org/lwip/2_1_x/group__pbuf.html)
+- [lwIP tcp_write 与 TCP_WRITE_FLAG_COPY](https://www.nongnu.org/lwip/2_1_x/group__tcp__raw.html)
+- [单线程事件循环的内核设计：libev 机制与 RT-Thread 移植](https://deguiliu.github.io/tech-notes/posts/architecture/event_loop_internals_and_rtthread_port/)
+- [libev 作为中断下半部](https://deguiliu.github.io/tech-notes/posts/practice/event_loop_as_bottom_half/)
+- [编译期 AOP：把横切不变式收进循环骨架](https://deguiliu.github.io/tech-notes/posts/pattern/compile_time_aop_invariants/)
+- [C++ 协程：优化阻塞型任务的调度性能](https://deguiliu.github.io/tech-notes/posts/performance/cpp_coroutine_waiting_task_scheduling/)
