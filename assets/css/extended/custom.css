@@ -1,3 +1,8 @@
+/* Wider reading column: 720px -> 960px (about 1.33x) */
+:root {
+  --main-width: 960px;
+}
+
 /* academic style for Chinese content */
 
 body {
