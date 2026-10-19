@@ -6,14 +6,14 @@
 
 ```
 architecture/       -- 架构设计 (26 篇公开, 6 篇草稿)
-performance/        -- 性能优化 (34 篇公开, 1 篇草稿)
+performance/        -- 性能优化 (35 篇公开, 1 篇草稿)
 practice/           -- 工程实践 (30 篇公开, 1 篇草稿)
 pattern/            -- 设计模式 (11 篇)
 interview/          -- 面试题 (2 篇)
 misc/               -- 杂项 (13 篇)
 ```
 
-共 **124** 篇文章 (116 篇公开, 8 篇草稿)
+共 **125** 篇文章 (117 篇公开, 8 篇草稿)
 
 ## 文章索引
 
@@ -54,10 +54,11 @@ misc/               -- 杂项 (13 篇)
 | [fpga_arm_soc_lidar_feasibility.md](architecture/fpga_arm_soc_lidar_feasibility.md) | FPGA + ARM 双核 SoC 处理激光雷达点云的可行性分析 | 2026-02-15T08:10:00 |
 | [dual_core_arm_rtthread_smp.md](architecture/dual_core_arm_rtthread_smp.md) | 双核 ARM SoC 上跑 RT-Thread SMP: MMU、Cache 与调度实战 | 2026-02-15T08:00:00 |
 
-### performance/ -- 性能优化 (34 篇)
+### performance/ -- 性能优化 (35 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [ptp_state_machine_field_troubleshooting.md](performance/ptp_state_machine_field_troubleshooting.md) | PTP 时间同步排查: 状态正常，业务时间为什么仍不可用 | 2026-10-19T03:30:00 |
 | [ptp_precision_optimization.md](performance/ptp_precision_optimization.md) | PTP 授时精度优化: 时间戳、链路不对称与系统干扰 | 2026-10-19T01:00:00 |
 | [qnx_ptpd_time_sync_accuracy.md](performance/qnx_ptpd_time_sync_accuracy.md) | QNX 上的 PTPD 授时精度验证: 从 8 ms 时间戳台阶到百微秒级 | 2026-10-18T23:30:00 |
 | [cpp_coroutine_waiting_task_scheduling.md](performance/cpp_coroutine_waiting_task_scheduling.md) | C++ 协程调度: 为什么等待密集型任务不必各占一个线程 | 2026-10-17 |
