@@ -37,7 +37,7 @@ misc/               -- 杂项 (13 篇)
 | [mcu_thread_heartbeat_liveness.md](architecture/mcu_thread_heartbeat_liveness.md) | MCU 任务监控: 怎样发现任务卡死并正确喂狗 | 2026-09-14T08:00:00 |
 | [event_loop_internals_and_rtthread_port.md](architecture/event_loop_internals_and_rtthread_port.md) | 单线程事件循环的内核设计: 机制、移植与适用边界 | 2026-09-08T08:00:00 |
 | [reactor_event_loop_fit_evaluation.md](architecture/reactor_event_loop_fit_evaluation.md) | Reactor 事件循环引入嵌入式模块: 适配性评估与冗余账 | 2026-09-08T08:00:00 |
-| [hardware_software_cache_coherence.md](architecture/hardware_software_cache_coherence.md) | 嵌入式软硬件缓存一致性: 从旁路写入到集中收敛 | 2026-08-27T08:00:00 |
+| [hardware_software_cache_coherence.md](architecture/hardware_software_cache_coherence.md) | 嵌入式软硬件缓存一致性: 配置缓存与寄存器的同步设计 | 2026-08-27T08:00:00 |
 | [dvp_image_output_principle.md](architecture/dvp_image_output_principle.md) | DVP 图像输出通路: 像素时序、模块分工与实现边界 | 2026-08-25T08:00:00 |
 | [uvc_vs_csi2_output_paths.md](architecture/uvc_vs_csi2_output_paths.md) | UVC 与 CSI-2 图像输出通路: 封装、标识与带宽取舍 | 2026-08-23T08:00:00 |
 | [cortex_m_memory_topology_sram_ccm.md](architecture/cortex_m_memory_topology_sram_ccm.md) | Cortex-M 内存寻路: SRAM 与 CCM 的拓扑、层次与工程取舍 | 2026-08-21T08:00:00 |
