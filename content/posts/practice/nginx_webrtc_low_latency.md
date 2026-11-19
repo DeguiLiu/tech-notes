@@ -4,18 +4,21 @@ date: 2026-09-10T08:00:00
 draft: false
 categories: ["practice"]
 tags: ["WebRTC", "RTMP", "nginx", "SRTP", "low-latency"]
-summary: "不引入独立 RTC 服务，在 nginx 框架内直接完成 RTMP 到 WebRTC 的转换，延迟从 RTMP/HLS 的 1 到 10 秒降到 0.5 秒以内。端到端实测首包约 560 ms，HTTP-FLV 分发保留作为兜底。"
+summary: "不引入独立 RTC 服务，在 nginx 框架内直接完成 RTMP 到 WebRTC 的转换。端到端实测首包约 560 ms，稳态播放的帧新鲜度中位数 45 ms；HTTP-FLV 分发保留作为兜底。"
 ShowToc: true
 TocOpen: true
 ---
+# 在 Nginx 里做 WebRTC 低延迟直播：从方案到落地
 
-在 nginx 框架内直接完成 RTMP 到 WebRTC 的转换，不引入 SRS 这样的独立 RTC 服务，端到端实测首包约 560 ms，延迟从 RTMP/HLS 的 1 到 10 秒降到 0.5 秒以内；视频 H264 761 包、362 KB，音频 Opus 389 包、67 KB，全链路可达。方案与实现开源：模块代码 [github.com/DeguiLiu/nginx-rtc-module](https://github.com/DeguiLiu/nginx-rtc-module)（纯 C，MIT），部署与示例 [github.com/DeguiLiu/nginx-rtc-example](https://github.com/DeguiLiu/nginx-rtc-example)。
+> 结论先行：不引入独立 RTC 服务，在 nginx 框架内直接完成 RTMP 到 WebRTC 的转换，端到端实测首包约 560 ms，稳态播放的帧新鲜度中位数 45 ms；视频 H264 761 包、362 KB，音频 Opus 389 包、67 KB，全链路可达。
+>
+> 方案与实现开源：模块代码 [github.com/DeguiLiu/nginx-rtc-module](https://github.com/DeguiLiu/nginx-rtc-module)（纯 C，MIT），部署与示例 [github.com/DeguiLiu/nginx-rtc-example](https://github.com/DeguiLiu/nginx-rtc-example)。
 
-## 延迟卡在 TCP 上
+## 1. 延迟卡在 TCP 上
 
-问题归结为两点：TCP 的重传与队头阻塞决定了延迟下界，客户端本地缓存决定了保密性。直播分发最常见的组合是 Nginx-rtmp 模块（支持 RTMP、HLS）和它的扩展 Nginx-http-flv-module，三条链路都绕不开码流走 TCP 这个前提。
+问题归结为两点：TCP 的重传与队头阻塞决定了延迟下界，客户端本地缓存决定了延迟上限。直播分发最常见的组合是 Nginx-rtmp 模块（支持 RTMP、HLS）和它的扩展 Nginx-http-flv-module，三条链路都绕不开码流走 TCP 这个前提。
 
-RTMP 是 Adobe 为 Flash 平台设计的应用层协议，靠 TCP 保证可靠传输，局域网内延迟一般在 1 到 3 秒；主流浏览器早已放弃 Flash，iOS 端还需要第三方解码器。HLS 走 HTTP/80，穿透防火墙没问题，但服务端要把流切成 ts 小文件、客户端按序播放，延迟普遍在 10 秒以上，还会产生海量小文件。Http-Flv 把 RTMP 码流重新封装成 HTTP 长连接流，浏览器免插件就能播，实时性与 RTMP 相当，底子仍是 TCP，1 到 3 秒的瓶颈没有解决，且客户端本地会缓存流媒体资源，保密性差。
+RTMP 是 Adobe 为 Flash 平台设计的应用层协议，靠 TCP 保证可靠传输，局域网内延迟一般在 1 到 3 秒；主流浏览器早已放弃 Flash，iOS 端还需要第三方解码器。HLS 走 HTTP/80，穿透防火墙没问题，但服务端要把流切成 ts 小文件、客户端按序播放，延迟普遍在 10 秒以上，还会产生海量小文件。Http-Flv 把 RTMP 码流重新封装成 HTTP 长连接流，浏览器免插件就能播，实时性与 RTMP 相当，底子仍是 TCP，1 到 3 秒的瓶颈没有解决，且客户端本地会缓存流媒体资源，保密性差。文中 RTMP 与 HLS 的延迟区间为业界经验值，非本文同口径实测；本文的实测数据见「实测效果与实现要点」一节。
 
 两条典型链路的形态如下：
 
@@ -49,7 +52,7 @@ flowchart LR
 
 WebRTC 基于 UDP，面向无连接，规避了 TCP 拥塞控制的开销，且为浏览器原生设计，免插件、免安装、不在播放端落盘。两个瓶颈各对症一半：UDP 压延迟，不落盘保保密性。
 
-## 整体架构与模块映射
+## 2. 整体架构与模块映射
 
 整体思路一句话：推流端照旧走 RTMP，播放端换成 WebRTC。
 
@@ -78,9 +81,9 @@ flowchart LR
 
 落地约束里最要紧的一条：桥接模块通过 `postconfiguration` 把处理器注册进 `cmcf->events[]`，不改动 nginx-http-flv-module 一行源码，HTTP-FLV 分发与 WebRTC 分发并行存在、互为兜底。
 
-## RTC 服务如何嵌进 nginx
+## 3. RTC 服务如何嵌进 nginx
 
-### 业务流程的扩展
+### 3.1 业务流程的扩展
 
 先看原 Nginx-rtmp 模块的工作流程，启动、初始化、握手、建通道、传数据、断开，六步线性：
 
@@ -149,7 +152,7 @@ flowchart TB
 
 落地实现与图 5 的对应：a 对应 stream/http/bridge 三个模块的 nginx 标准初始化钩子；b 对应 `/rtc/v1/play/` 信令；c、d、e 对应桥接模块订阅 `NGX_RTMP_MSG_VIDEO / NGX_RTMP_MSG_AUDIO` 事件后进入纯 C 核心的 RTP 封装与逐订阅者 SRTP 加密广播。
 
-### 配置项与加载顺序
+### 3.2 配置项与加载顺序
 
 RTC 配置按 nginx 的模块体系分配到 rtmp、http、stream 三个上下文，真实指令如下：
 
@@ -207,13 +210,13 @@ flowchart LR
 
 HTTP 播放接口按 nginx 自定义模块规范创建 `ngx_command_t`、`ngx_http_module_t`、`ngx_module_t` 注册进 http 体系；UDP 服务同理走 stream 体系。
 
-代码分两层，靠 addon `config` 脚本决定编译归属。纯 C 核心（rtp、sdp、stun、dtls、srtp、audio、rtcp、core）不引用 nginx 头文件、无全局可变状态，输入输出全部经参数传入，加解密与封装的回调由调用者持有 scratch buffer，因此可以脱离 nginx 在 host 上单测；nginx 胶水层只做"事件到纯 C 调用再到 socket 发送"的翻译，业务逻辑一律下沉。协议核心有 37 个 host 单测用例，覆盖 rtp/stun/sdp/rtcp/hsm/session_fsm，其中 B 帧识别的 Exp-Golomb 解析缺陷就是被单测断言拦下的。
+代码分两层，靠 addon `config` 脚本决定编译归属。纯 C 核心（rtp、sdp、stun、dtls、srtp、audio、rtcp、core）不引用 nginx 头文件、无全局可变状态，输入输出全部经参数传入，加解密与封装的回调由调用者持有 scratch buffer，因此可以脱离 nginx 在 host 上单测；nginx 胶水层只做"事件到纯 C 调用再到 socket 发送"的翻译，业务逻辑一律下沉。协议核心当前有 183 个 host 单测用例（默认组 158 个，另加四组专题用例 10 / 5 / 5 / 5），覆盖 rtp/stun/sdp/rtcp/hsm/session_fsm，其中 B 帧识别的 Exp-Golomb 解析缺陷就是被单测断言拦下的。
 
 媒体热路径没有引入协程和自建线程与队列，全部跑在 nginx 单事件循环内：桥接（生产者）与 stream（消费者）同处一个地址空间，每个 session 挂在 source 的订阅者队列上，RTP 到达时直接遍历订阅者逐个 SRTP 加密发送，回收交给 `ngx_event_timer` 周期 reap。这正是"在 nginx 框架内完成转换、不引入独立 RTC 服务"定位的直接结果。唯一的例外是 AAC 转 Opus 转码：FFmpeg 解码加 libopus 编码是 CPU 密集操作，同步跑在事件循环里会让多路推流互相挤压，因此每路转码放独立 pthread，nginx worker 只负责投递裸 AAC 帧、取回 Opus 帧，中间用有界环衔接。
 
-## 建链与桥接
+## 4. 建链与桥接
 
-### 与播放客户端建链
+### 4.1 与播放客户端建链
 
 一次 WebRTC 播放要跨三个协议面：HTTP 信令交换 SDP、STUN 做 ICE 连通性检查、DTLS 建安全通道，最后才是 SRTP 媒体。建链时序如下。注意 session 创建与 answer 生成都收敛在 HTTP 信令模块一次完成，udp 侧只负责按 ICE ufrag 匹配 session：
 
@@ -251,7 +254,7 @@ sequenceDiagram
 3. 播放端解析 answer 发起 STUN binding，udp 服务按 ICE ufrag 匹配到 session 返回成功。匹配键是 answer 下发的 ufrag，所以 answer 必须携带 media 级 `a=candidate`，否则播放器（实测 werift）根本不会发起 STUN，表现为信令成功但零媒体；
 4. DTLS 握手完成后导出 SRTP 密钥，session 订阅到对应 source，进入订阅者列表，由 udp 服务推送加密后的音视频码流。
 
-### RTMP 到 RTC 桥接
+### 4.2 RTMP 到 RTC 桥接
 
 这一步的关键是：不改 nginx-rtmp 的分发主干，只在推送码流前插一个旁路。
 
@@ -282,13 +285,15 @@ flowchart LR
 
 落地实现中，这一步对应 `ngx_rtmp_rtc_bridge_module`（`NGX_RTMP_MODULE` 类型）：它在 `postconfiguration` 阶段把视频与音频处理器注册进 `cmcf->events[]` 的 `NGX_RTMP_MSG_VIDEO / NGX_RTMP_MSG_AUDIO` 事件数组，只在 `publishing` 会话上激活，不改动 nginx-http-flv-module 源码。产出的明文 RTP 以 source 级共享（一份缓存、N 个订阅者），每个 session 加密前拷贝到自身缓冲并重写本 session 协商的 payload type。SRTP 密文逐 session 不同（DTLS 导出密钥独立），这是协议决定的拷贝下界。
 
-## 实测效果与实现要点
+## 5. 实测效果与实现要点
 
 端到端实测（单 worker，局域网口径）：
 
 | 指标 | 结果 |
 | --- | --- |
-| 首包延迟 | 约 560 ms（对比 RTMP/Http-Flv 1~3 s、HLS 10 s 以上） |
+| 首包延迟 | 约 560 ms（启动口径，含 ICE/DTLS 握手与等首个 IDR） |
+| 稳态帧新鲜度 | 中位数 45 ms，修正后真值约 70 ms（无头播放端口径，非用户感知延迟） |
+| 横向对比 | RTMP/Http-Flv 1~3 s、HLS 10 s 以上（业界经验值，非同口径实测） |
 | 视频链路 | H264 转 RTP 761 包 / 362 KB，含 B 帧过滤与 FU-A 分片 |
 | 音频链路 | AAC 转 Opus 389 包 / 67 KB |
 | 信令鉴权 | 正确 stream key 返回 `code=0`，RTMP/HTTP-FLV/WebRTC 三路同源鉴权 |
@@ -298,13 +303,13 @@ flowchart LR
 
 骨架部分照方案实现没有意外，卡时间的是两类东西：协议细节，和弱网与规模化的补课。
 
-### 三个最容易踩的协议坑
+### 5.1 三个最容易踩的协议坑
 
 1. session 不能用 request pool 分配。session 生命周期跨越 HTTP 请求，返回 answer 之后还要在 UDP 侧完成 DTLS/SRTP。用 `r->pool` 会在响应返回后内存失效，后续 STUN 匹配读到垃圾。正确做法是 `ngx_alloc` 从进程堆分配，配合空闲 reap 定时器回收。
 2. DTLS server 要显式 `SSL_set_accept_state`。OpenSSL 不会因为用了 `DTLS_server_method()` 就自动进入 accept 状态，漏掉这一步报 `ssl_read_internal:uninitialized`，握手无感知失败。
 3. STUN username 的顺序不一定是 RFC 里那个。UDP 侧要靠 ICE ufrag 从 username 里匹配 session，标准写法是 `client_ufrag:server_ufrag`，但实测 werift 发出来的是 `server_ufrag:client_ufrag`，前半是服务端 ufrag。取错一半，STUN 永远匹配不到 session，媒体零包且没有任何报错。
 
-### 推流端没有 RTC 上行，QoS 得自己造
+### 5.2 推流端没有 RTC 上行，QoS 得自己造
 
 RTMP 推流是 TCP 可靠输入，播放端唯一能给出的反馈就是 RTCP。推流端不是浏览器编码器，PLI（关键帧请求）无处可送，因此用"缓存最近一个 GOP 加订阅即发"替代：source 内 2048 槽环形缓存明文 RTP，新订阅者在 DTLS/SRTP 就绪时先回放最近一个 GOP（从最新 IDR 的 STAP-A 起），不用等下一个自然关键帧，首帧延迟压到一个关键帧间隔以内。
 
@@ -312,10 +317,16 @@ RTMP 推流是 TCP 可靠输入，播放端唯一能给出的反馈就是 RTCP�
 
 TWCC、GCC、REMB 这些上行带宽估计在本场景不适用：单向播放没有上行媒体，服务端也没有可下调码率的编码器，明确不做。
 
-### 多 worker 与多分辨率
+### 5.3 多 worker 与多分辨率
 
 多 worker：信令落在 worker A、UDP 落在 worker B 时，进程内注册表查不到 session。解法是把跨 worker 必需的身份信息（name、SSRC/PT、seq/ts、SPS/PPS、ufrag/pwd、就绪标志、owner worker）放进 `ngx_shm_zone` 加 `ngx_slab_pool`，媒体数据走 per-worker 环形队列，eventfd 在 master fork 前创建、所有 worker 继承后互相唤醒，owner worker 消费环并做 SRTP 加密发送。一条硬约束贯穿始终：DTLS/SRTP/转码器这些私有句柄绝不进 shm，共享结构只放可以 memcpy 进 slab 的字段。
 
 多分辨率：模块内不引 x264（GPL 风险），转码档用一路外部 ffmpeg 级联完成：拉源流转 1080p/720p/540p/360p 四档推回服务器成独立流，每档独立鉴权，播放端改流名即可切档。x264 侧 `zerolatency + bf=0` 保证每一档都保持 WebRTC 可播的无 B 帧低延迟码流；`fps=30` 滤镜放在滤镜链首，否则 testsrc 源经转码后帧率会翻倍。
 
 更多实现细节（状态机、GOP 环结构、shm 布局、单测清单）见模块源码 [github.com/DeguiLiu/nginx-rtc-module](https://github.com/DeguiLiu/nginx-rtc-module) 与部署示例 [github.com/DeguiLiu/nginx-rtc-example](https://github.com/DeguiLiu/nginx-rtc-example)。
+
+## 延伸阅读
+
+- [为什么 RTMP/HTTP-FLV 难以做到 500ms 以内：我们在 Nginx 里把媒体面重写了](https://deguiliu.github.io/tech-notes/posts/practice/nginx_http_flv_latency/)
+- [RTPSRTP over UDP 在 Nginx 里怎么跑起来：ICE、STUN 与 DTLS 落地笔记](https://deguiliu.github.io/tech-notes/posts/practice/nginx_webrtc_media_plane_ice_dtls/)
+- [不接 SRS，只用 Nginx 做 WebRTC 播放：架构与踩坑](https://deguiliu.github.io/tech-notes/posts/practice/nginx_webrtc_architecture_pitfalls/)

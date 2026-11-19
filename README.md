@@ -7,13 +7,13 @@
 ```
 architecture/       -- 架构设计 (27 篇公开, 6 篇草稿)
 performance/        -- 性能优化 (36 篇公开, 1 篇草稿)
-practice/           -- 工程实践 (30 篇公开, 1 篇草稿)
+practice/           -- 工程实践 (33 篇公开, 1 篇草稿)
 pattern/            -- 设计模式 (11 篇)
 interview/          -- 面试题 (2 篇)
 misc/               -- 杂项 (13 篇)
 ```
 
-共 **127** 篇文章 (119 篇公开, 8 篇草稿)
+共 **130** 篇文章 (122 篇公开, 8 篇草稿)
 
 ## 文章索引
 
@@ -97,10 +97,13 @@ misc/               -- 杂项 (13 篇)
 | [armv8_crc32_hardware_vs_neon_benchmark.md](performance/armv8_crc32_hardware_vs_neon_benchmark.md) | ARMv8 CRC 性能实测: 硬件指令快 8 倍, NEON 反而更慢 | 2026-02-15T08:50:00 |
 | [arm_linux_lock_contention_benchmark.md](performance/arm_linux_lock_contention_benchmark.md) | ARM-Linux 锁竞争性能实测: Spinlock/Mutex/ConcurrentQueue 对比 | 2026-02-15T08:40:00 |
 
-### practice/ -- 工程实践 (30 篇)
+### practice/ -- 工程实践 (33 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [nginx_http_flv_latency.md](practice/nginx_http_flv_latency.md) | 为什么 RTMP/HTTP-FLV 难以做到 500ms 以内: 我们在 Nginx 里把媒体面重写了 | 2026-11-19T08:00:00 |
+| [nginx_webrtc_architecture_pitfalls.md](practice/nginx_webrtc_architecture_pitfalls.md) | 不接 SRS, 只用 Nginx 做 WebRTC 播放: 架构与踩坑 | 2026-11-19T08:00:00 |
+| [nginx_webrtc_media_plane_ice_dtls.md](practice/nginx_webrtc_media_plane_ice_dtls.md) | RTPSRTP over UDP 在 Nginx 里怎么跑起来: ICE、STUN 与 DTLS 落地笔记 | 2026-11-19T08:00:00 |
 | [ztask_scheduler.md](practice/ztask_scheduler.md) | ztask: 不依赖操作系统、无堆无锁的定时任务调度器 | 2026-10-16T21:30:00 |
 | [display_pipeline_atomic_reconfigure.md](practice/display_pipeline_atomic_reconfigure.md) | 运行期重配输出链路: 哪些状态要一起改、失败了怎么退 *(草稿)* | 2026-10-12T10:00:00 |
 | [mcu_periodic_service_concurrency.md](practice/mcu_periodic_service_concurrency.md) | MCU 周期服务的共享状态: 读改写原子性、拒绝重入与锁的位置 | 2026-09-22T08:00:00 |
