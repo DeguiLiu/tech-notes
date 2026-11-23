@@ -1,15 +1,15 @@
 ---
-title: "V4L2 内核机制: ioctl 分发、缓冲流转与内存共享"
+title: "V4L2 内核机制: ioctl 分发、缓冲流转与内存共享选型"
 date: 2026-11-23T07:30:00
 draft: false
 categories: ["architecture"]
 tags: ["Linux", "V4L2", "videobuf2", "DMA-BUF", "Linux Kernel"]
-summary: "从应用的一次 ioctl 往下追：V4L2 core 如何校验并分发命令，videobuf2 如何管理缓冲并回调驱动，一帧如何从传感器走到应用，以及多路摄像头场景下带宽与内存共享该怎么查。"
+summary: "从应用的一次 ioctl 往下追：V4L2 core 如何校验并分发命令，videobuf2 如何管理缓冲并回调驱动，一帧如何从传感器走到应用，以及共享内存、/dev/mem 与 DMA-BUF 三种共享做法各自的代价与选型。"
 ShowToc: true
 TocOpen: true
 ---
 
-概述：V4L2 的应用侧接口容易上手，难点在它背后那套内核机制。这篇面向写驱动的读者，从一次 ioctl 往下追四件事：命令怎么被校验与分发，缓冲怎么在应用、驱动和 DMA 之间流转，一帧如何从传感器走到应用，以及帧要跨设备共享时该用共享内存还是 DMA-BUF。应用与框架侧的视角见另一篇 [《SoC 视频取流四件事》](/posts/architecture/soc_video_pipeline_v4l2_dma_buf/)，那篇讲设备节点、`io-mode`、DMA-BUF 的使用与 GStreamer、UVC 的分工，这篇讲内核侧怎么实现。
+概述：V4L2 的应用侧接口容易上手，难点在它背后那套内核机制。这篇面向写驱动的读者，从一次 ioctl 往下追四件事：命令怎么被校验与分发，缓冲怎么在应用、驱动和 DMA 之间流转，一帧如何从传感器走到应用，以及内存共享该怎么选。最后一件事展开得最多：共享内存、`/dev/mem`、DMA-BUF 三种做法解决的是不同问题，代价也完全不同，选错的典型症状是画面偶发错位或丢帧，却查不出任何驱动错误。应用与框架侧的视角见另一篇 [《SoC 视频取流四件事》](/posts/architecture/soc_video_pipeline_v4l2_dma_buf/)，那篇讲设备节点、`io-mode`、DMA-BUF 的使用与 GStreamer、UVC 的分工，这篇讲内核侧怎么实现。
 
 ## 1. 整体架构与数据链路
 
@@ -58,7 +58,7 @@ flowchart TB
 
 ### 1.3 帧要跨设备时
 
-采集到的帧常常还要交给别的设备：硬件编码器压成 MJPEG 或 H.264，显示或 GPU 消费，UVC gadget 往 USB 上送。这时帧不能靠 CPU 复制，而要共享同一块内存，办法就是 DMA-BUF：buffer 导出成 fd，各设备 import 同一块底层内存。官方语义见 [dmabuf.html](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dmabuf.html) 与 [dma-buf.html](https://www.kernel.org/doc/html/latest/driver-api/dma-buf.html)。
+采集到的帧常常还要交给别的设备：硬件编码器压成 MJPEG 或 H.264，显示或 GPU 消费，UVC gadget 往 USB 上送。这时帧不能靠 CPU 复制，而要共享同一块内存。主流做法是 DMA-BUF：buffer 导出成 fd，各设备 import 同一块底层内存；也有人走 `/dev/mem` 直读物理地址的捷径，第 4 章会把这三种做法的代价摊开比较。官方语义见 [dmabuf.html](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dmabuf.html) 与 [dma-buf.html](https://www.kernel.org/doc/html/latest/driver-api/dma-buf.html)。
 
 ## 2. ioctl 的内核响应机制
 
@@ -158,7 +158,7 @@ flowchart LR
 | `read()` / `write()` | 驱动 | 不能 | 最简单；官方说明驱动既可能用 CPU 拷贝，也可能直接 DMA 到用户内存，所以效率不一定低，**真正的劣势是不带帧计数与时间戳等元信息** |
 | `mmap` | 驱动 | 不能 | 最常用；应用 `QUERYBUF` 取偏移后 `mmap` 映射，直接读写 |
 | `userptr` | 应用 | 不能 | 内存由应用分配，驱动固定并映射给设备 |
-| `dmabuf` | 分配器驱动 | 能 | 外部提供 fd，驱动导入供设备 DMA，适合跨模块共享 |
+| `dmabuf` | 分配器驱动 | 能 | 外部提供 fd，驱动导入供设备 DMA，适合跨模块共享，代价见第 4 章 |
 
 四种方式的官方定义见 [io.html](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/io.html)。`dmabuf` 还要驱动声明 `V4L2_BUF_CAP_SUPPORTS_DMABUF`，`REQBUFS` 传 `V4L2_MEMORY_DMABUF` 返回 `EINVAL` 就说明这个设备不支持导入。
 
@@ -178,39 +178,78 @@ flowchart LR
 2. **再算带宽**。每路 `分辨率 × 帧率 × 每像素字节数`，多路相加；然后对照 CSI 链路、ISP 像素率、DDR 带宽、USB 或网口的预算。
 3. **最后查硬件限制与实测**。CSI 接收器路数、ISP 吞吐、编解码算力、散热降频都要看；用压测复现，观察丢帧、延迟与温度。
 
-## 4. 共享内存与 DMA-BUF 的差别
+## 4. 内存共享：共享内存、/dev/mem 与 DMA-BUF
 
-### 4.1 解决的是不同问题
+### 4.1 三种做法的定位
+
+一条视频链路上往往同时需要几种共享：多个进程要看同一份帧，采集设备要把帧交给编码器，硬件要把帧写进一块内存。三种做法解决的问题不同，不能混着谈。
 
 ```mermaid
-%%{init: {'theme':'base','flowchart':{'nodeSpacing':26,'rankSpacing':40,'curve':'linear'}}}%%
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':26,'rankSpacing':48,'curve':'linear'}}}%%
 flowchart TB
-  subgraph SH["共享内存：进程间共享同一组页"]
-    direction TB
-    S1["进程 A 与进程 B<br/>mmap 同一 fd，MAP_SHARED"]:::sh --> S2["同一组物理页<br/>进程间 0 次 CPU 拷贝"]:::sh --> S3["设备仍要各自 dma_map<br/>格式不一致仍要转换"]:::sh
+  subgraph SH["共享内存：跨进程"]
+    direction LR
+    S1["进程 A 与进程 B<br/>shm_open + mmap"]:::sh --> S2["内核分配的<br/>同一组物理页"]:::sh --> S3["进程间 0 次拷贝<br/>物理地址不可见"]:::sh
   end
-  subgraph DB["DMA-BUF：跨设备共享同一块缓冲"]
-    direction TB
-    D1["分配器分配 DMA 内存<br/>导出 dma-buf fd"]:::db --> D2["各设备 import fd<br/>dma_buf_map 得到自己的 DMA 地址"]:::db --> D3["fence 保证同步<br/>链路兼容时可 0 拷贝"]:::db
+  subgraph MEM["/dev/mem：跨设备直读"]
+    direction LR
+    M1["FPGA / DMA 引擎<br/>按物理地址写内存"]:::mem --> M2["用户态 mmap<br/>同一物理地址直读"]:::mem --> M3["地址契约靠约定<br/>内核数据路径不参与"]:::mem
   end
+  subgraph DB["DMA-BUF：跨设备共享"]
+    direction LR
+    D1["分配器分配 DMA 内存<br/>导出 dma-buf fd"]:::db --> D2["各设备 import fd<br/>dma_buf_map 取 DMA 地址"]:::db --> D3["fence 保证顺序<br/>多消费者可共享"]:::db
+  end
+  SH -->|"设备要用，仍需自己 dma_map<br/>且不能共享给别的设备"| MEM
+  MEM -->|"把地址知识收回内核<br/>只通过受限接口暴露"| DB
   classDef sh fill:#E8F1FB,stroke:#3B82C4,color:#17324D
+  classDef mem fill:#FFF4E0,stroke:#D99A2B,color:#5A3B00
   classDef db fill:#FFE3E3,stroke:#C0392B,color:#5A1A14
 ```
 
-两者常被混为一谈，其实解决的问题不同。
+一句话区分：**共享内存是跨进程，`/dev/mem` 是跨设备直读物理地址，DMA-BUF 是跨设备共享同一块内存。**
 
-**共享内存**解决进程之间的数据共享。进程 A 与进程 B 映射同一组物理页，数据只写一次，两边都能看到。这是 POSIX 层面的机制，它不负责设备 DMA 映射，也不负责硬件同步。
+### 4.2 /dev/mem 这条路：最短路径与它的代价
 
-**DMA-BUF** 解决跨驱动、跨硬件设备的共享。内存由分配器驱动分配并导出成 fd，各设备 import 这个 fd，用 `dma_buf_map()` 映射出各自的 DMA 地址，用 fence 表达完成顺序。内核侧的机制见 [dma-buf.html](https://www.kernel.org/doc/html/latest/driver-api/dma-buf.html)。
+FPGA 直连 DDR 时常用这条捷径：FPGA 的 DMA 引擎作为总线主设备按物理地址把数据写进 DDR，用户态用 `/dev/mem` 把同一段物理内存映射进来直接读，中间没有数据拷贝；双方能对上，靠的是事先约定的物理地址。
 
-一句话：**共享内存是「跨进程」，DMA-BUF 是「跨设备」**。V4L2 侧的导入导出见 [dmabuf.html](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dmabuf.html) 与 [vidioc-expbuf.html](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/vidioc-expbuf.html)。
+```mermaid
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':30,'rankSpacing':42,'curve':'linear'}}}%%
+flowchart LR
+  FPGA["FPGA / DMA 引擎<br/>作为总线主设备按物理地址写内存"]:::hw -->|"写入"| MEM["DDR 物理内存<br/>约定基址起的包缓冲<br/>N 个等长槽位"]:::buf
+  PROC["用户态进程<br/>mmap(/dev/mem, 物理基址)<br/>直接读槽位"]:::app
+  PROC -->|"读取"| MEM
+  FPGA -->|"写索引 +1"| PROC
+  PROC -->|"回写读索引"| FPGA
+  classDef hw fill:#FDE8E8,stroke:#C0392B,color:#5A1A14
+  classDef buf fill:#FFF7E6,stroke:#E0A800,color:#5A3B00
+  classDef app fill:#E8F1FB,stroke:#3B82C4,color:#17324D
+```
 
-### 4.2 拷贝次数与对齐
+环形队列用两个各自单向递增的计数器表示读写进度，因此不需要锁。
+
+这条路的零拷贝做得并不差，问题在于它把**物理地址、内存序、cache 与协议版本**四类知识全部摊给了用户态，靠约定而不是靠内核保证：
+
+1. **安全**：需要 `CAP_SYS_RAWIO`，映射之后可以读写任意物理地址。`VM_PFNMAP` 映射背后没有 `struct page`，不走缺页处理，越界访问不会崩，会静默写坏别的内存。
+2. **正确性**：cache 一致性要手工维护，默认按 non-cached 映射以避开脏数据与预取；FPGA 写与 CPU 读之间的可见性靠双方自觉加屏障。
+3. **可维护与可移植**：物理基址、寄存器偏移、槽位长度与数量都是跨侧常量，换 FPGA 版本或换项目要同步改两处；缓存标志与 cache 维护 ioctl 属于平台扩展。
+4. **功能缺失**：没有队列记账，没有 fence 表达跨设备顺序，没有格式与能力协商；多读端要自己引入原子操作或分区。
+
+替代路径有三条，共同点是把物理地址的知识收回内核，只通过有约束的接口对外暴露：内核保留一段内存加自研驱动；udmabuf 或 DMA-BUF；需要隔离时用 VFIO 一类带 IOMMU 的通道。
+
+### 4.3 DMA-BUF：把地址契约收回内核
+
+DMA-BUF 是内核里共享缓冲区的通用机制，官方定义见 [dma-buf.html](https://www.kernel.org/doc/html/latest/driver-api/dma-buf.html)。它有三个原语：`dma-buf` 是一段可被 DMA 访问的内存，以文件描述符的形式暴露；`dma-fence` 表达异步操作的完成顺序；`dma-resv` 管理挂在同一个 dma-buf 上的 fence 集合。
+
+V4L2 侧有两个方向。导入是 `REQBUFS` 传 `V4L2_MEMORY_DMABUF`，再在 `QBUF` 时把 fd 带上；导出是 `VIDIOC_EXPBUF`，把 mmap 缓冲变成 dma-buf fd 给别的设备。驱动收到 fd 后用 `dma_buf_map()` 映射出自己的 DMA 地址，因此跨设备也不需要拷贝，顺序交给 fence。详见 [dmabuf.html](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dmabuf.html) 与 [vidioc-expbuf.html](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/vidioc-expbuf.html)。
+
+与 `/dev/mem` 的差别是根本性的：物理地址由内核决定，用户态只拿得到 fd；越界、权限与生命周期由内核兜住；多个消费者可以共享同一个 dma-buf 对象。
+
+### 4.4 拷贝次数与对齐
 
 - **拷贝次数**：同一个缓冲被多处共享时，通常是 0 次 CPU 拷贝。但这是有条件的：像素格式、stride、plane 布局或设备的 DMA 能力不一致时，仍然要重新分配并转换，产生一次或多次拷贝。共享内存同样如此，只是它的转换发生在用户态。
 - **对齐要求**：要同时满足页对齐、DMA 地址与长度对齐、图像格式的 stride 与 plane size 对齐，以及硬件的 burst 对齐。实际开发优先用 DMA API 或子系统提供的分配接口，不要自己算偏移。
 
-### 4.3 怎么选
+### 4.5 怎么选
 
 | 需求 | 选择 |
 |---|---|
@@ -218,9 +257,16 @@ flowchart TB
 | 帧要交给另一个设备处理 | DMA-BUF |
 | 设备之间链路兼容、格式一致 | DMA-BUF，零拷贝 |
 | 格式不一致，或要跨设备重排 | DMA-BUF 加一次转换，转换放在硬件里最省 |
+| 硬件与用户态要共享一段固定物理地址，且双方都是自研 | `/dev/mem` 或内核保留内存加自研驱动 |
+| 需要硬件隔离、不想让用户态碰物理地址 | VFIO 一类带 IOMMU 的通道 |
 | 只是简单抓几帧 | `read()` 足够 |
 
-另外，`V4L2_EXPBUF` 只能把 **mmap 缓冲**导出成 DMA-BUF fd，不能把已经是 DMA-BUF 的缓冲再导回 mmap；反过来，DMA-BUF 缓冲也能直接用 `mmap` 映射给应用看，只是那样就退化成普通内存访问了。
+两个常见误解要澄清：
+
+- **零拷贝不等于零成本**。DMA-BUF 的 fd 传递与生命周期、各设备 `dma_buf_map()` 的开销、fence 同步都要设计；只有链路兼容、格式一致时才是真正的零拷贝。
+- **无锁是应用层协议，与 DMA-BUF 无关**。`/dev/mem` 方案里的环形队列用两个索引寄存器实现无锁，那是双方约定的协议；用 DMA-BUF 时，跨设备的先后顺序交给 fence，不必自己维护索引寄存器。
+
+另外，`VIDIOC_EXPBUF` 只能把 **mmap 缓冲**导出成 DMA-BUF fd，不能把已经是 DMA-BUF 的缓冲再导回 mmap；反过来，DMA-BUF 缓冲也能直接用 `mmap` 映射给应用看，只是那样就退化成普通内存访问了。
 
 ## 5. 与另一篇的分工
 
@@ -228,4 +274,4 @@ flowchart TB
 |---|---|---|
 | 视角 | 驱动与内核 | 应用与管线 |
 | 关键对象 | `video_device`、`vb2_queue`、`vb2_ops`、subdev | `/dev/videoX`、`io-mode`、GStreamer 元素 |
-| 典型问题 | 命令怎么分发、缓冲怎么流转、共享怎么对齐 | 选哪个节点、怎么零拷贝、UVC 怎么协商 |
+| 典型问题 | 命令怎么分发、缓冲怎么流转、三种共享怎么选 | 选哪个节点、怎么零拷贝、UVC 怎么协商 |
