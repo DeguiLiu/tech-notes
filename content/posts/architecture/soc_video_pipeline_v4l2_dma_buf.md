@@ -442,6 +442,32 @@ UVC 是 USB 设备类规范，规定摄像头怎样用描述符自述能力、�
 
 也就是说：SoC 内部是 V4L2，跨 USB 是 UVC，主机内部又是 V4L2。两端的 V4L2 互不相识，中间的契约是 UVC。主机换成 Windows 就没有 V4L2 这一层，走的是 `usbvideo.sys` 与 DirectShow，应用侧换成 Media Foundation，UVC 契约不变。
 
+用一张图把这三段分清楚：
+
+```mermaid
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':28,'rankSpacing':56,'curve':'linear'}}}%%
+flowchart TB
+  subgraph SOC["SoC 内部：V4L2"]
+    direction LR
+    S1["传感器"]:::soc --> S2["V4L2 采集节点<br/>/dev/video0"]:::soc --> S3["UVC gadget<br/>f_uvc"]:::soc
+  end
+  subgraph LINK["跨机：UVC 协议"]
+    direction LR
+    U["USB"]:::usb
+  end
+  subgraph HOST["主机内部：V4L2"]
+    direction LR
+    H1["uvcvideo 驱动"]:::host --> H2["V4L2 节点<br/>/dev/videoX"]:::host --> H3["主机应用<br/>GStreamer / FFmpeg"]:::app
+  end
+  SOC -->|"USB 视频负载 ↓"| LINK
+  LINK -->|"UVC 描述符与控制请求 ↑"| HOST
+  classDef soc fill:#E8F1FB,stroke:#3B82C4,color:#17324D
+  classDef usb fill:#FFF4E0,stroke:#D99A2B,color:#5A3B00
+  classDef host fill:#E7F7EE,stroke:#2F9E63,color:#14532D
+  classDef app fill:#E7F7EE,stroke:#2F9E63,color:#14532D
+```
+图里最容易被忽略的是中间那一格：USB 这一段跑的是 UVC，不是 V4L2。SoC 里的 V4L2 节点与主机里的 V4L2 节点没有直接的函数调用关系，帧是通过 USB 上的 UVC 负载搬过去的。
+
 ```mermaid
 %%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
 flowchart TB
@@ -452,7 +478,7 @@ flowchart TB
     H3["uvcvideo 驱动<br/>解析 UVC 描述符"]:::drv
     H4["USB 主机控制器"]:::hw
   end
-  subgraph DEV["设备侧 红外 SoC"]
+  subgraph DEV["设备侧 SoC"]
     direction LR
     D1["UVC 设备描述符<br/>声明能力与格式"]:::dev
     D2["UVC 协议处理<br/>Probe / Commit"]:::dev
@@ -537,7 +563,7 @@ flowchart TB
 
 ### 4.6 一块板子上的完整通路
 
-把前面几件事放到一块 RISC-V SoC 上：设备侧跑 Linux 之后，视频通路会变成什么样。
+把前面几件事放到一块跑 Linux 的 SoC 上，视频通路会变成什么样。
 
 一块 SoC 跑起 Linux 之后，设备侧会自己长出一套 V4L2 栈：板端应用、内核里的采集与编码、USB gadget、硬件，外加主机侧通过 `uvcvideo` 接管的一端。
 
@@ -548,7 +574,7 @@ flowchart TB
     A1["录像 / RTSP 服务<br/>打开板端 /dev/video0"]:::app
     A2["GStreamer 管线 / OpenCV<br/>取流与转换"]:::app
   end
-  subgraph KERNEL["Linux 内核层（RISC-V 板端）"]
+  subgraph KERNEL["Linux 内核层（SoC 板端）"]
     K4["① sensor / ISP 子设备<br/>media entity 拓扑"]:::sensor
     K1["② V4L2 视频节点<br/>video_device + vb2_queue"]:::drv
     K2["③ mem2mem 编码<br/>YUV 转 MJPEG / H.264"]:::core
@@ -593,7 +619,7 @@ flowchart TB
 - 主机侧不需要专用上位机。PC 上用 `v4l2-ctl` 或 OpenCV 就能采，设备侧格式转换交给内核的 mem2mem 编码器。
 - 时间戳统一。vb2 的 `timestamp` 有明确的时钟源与打点位置定义，多路流与外部授时对齐有共同基准。
 - 零拷贝可以贯穿设备。采集、编码、显示之间改用 DMA-buf 传同一块内存，CPU 不参与搬运。
-- 代价在实时性与内存一致性。RISC-V 平台上的 DMA 一致性、cache 属性、缓冲深度与帧间隔给出的时延窗，都要在通用内核调度下重新核对。
+- 代价在实时性与内存一致性。不同架构上的 DMA 一致性、cache 属性、缓冲深度与帧间隔给出的时延窗，都要在通用内核调度下重新核对。
 
 ### 4.7 用户态编排: GStreamer 与 FFmpeg
 
@@ -662,5 +688,5 @@ ffmpeg -f v4l2 -input_format mjpeg -i /dev/video2 -c copy rtsp://...
 ### 5.2 本文边界
 
 - 本文只写模型与用法，字段级语义以官方章节为准。
-- 4.6 节的板级形态是把前面几节拼起来的推演，还没有在目标板上验证。
+- 4.6 节给出的是一个通用形态，具体平台的节点划分、缓冲区布局与编解码能力仍要按硬件核对。
 - 文中 `v4l2-ctl` 与 `media-ctl` 的输出是特定平台的实例，保留它们作为格式示例。
