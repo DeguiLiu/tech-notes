@@ -5,7 +5,7 @@
 ## 目录结构
 
 ```
-architecture/       -- 架构设计 (27 篇公开, 6 篇草稿)
+architecture/       -- 架构设计 (28 篇公开, 6 篇草稿)
 performance/        -- 性能优化 (36 篇公开, 1 篇草稿)
 practice/           -- 工程实践 (33 篇公开, 1 篇草稿)
 pattern/            -- 设计模式 (11 篇)
@@ -13,14 +13,15 @@ interview/          -- 面试题 (2 篇)
 misc/               -- 杂项 (13 篇)
 ```
 
-共 **130** 篇文章 (122 篇公开, 8 篇草稿)
+共 **131** 篇文章 (123 篇公开, 8 篇草稿)
 
 ## 文章索引
 
-### architecture/ -- 架构设计 (27 篇)
+### architecture/ -- 架构设计 (28 篇)
 
 | 文件 | 标题 | 日期 |
 |------|------|------|
+| [soc_video_pipeline_v4l2_dma_buf.md](architecture/soc_video_pipeline_v4l2_dma_buf.md) | SoC 视频取流四件事: 设备节点、缓冲队列、DMA-buf 与零拷贝管线 | 2026-11-23T06:00:00 |
 | [automotive_mcu_cdd_design_safety_os.md](architecture/automotive_mcu_cdd_design_safety_os.md) | 复杂驱动 CDD 设计: Safety OS 上的架构边界与传感器接入 | 2026-11-07T08:00:00 |
 | [gnss_ptp_time_sync_principles.md](architecture/gnss_ptp_time_sync_principles.md) | GNSS 与 PTP 时间同步原理: 嵌入式软件工程师视角 | 2026-10-18T22:50:00 |
 | [ptp_network_module_design.md](architecture/ptp_network_module_design.md) | PTP 网络模块设计: 车载传感器的授时链路 | 2026-10-18T20:35:00 |
