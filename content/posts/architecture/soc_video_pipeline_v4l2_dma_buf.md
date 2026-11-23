@@ -122,6 +122,10 @@ flowchart TB
 
 主设备号 81 归 V4L2 字符设备族，从设备号 0 到 63 区分族内不同设备实例。
 
+节点本身不是「设备」，而是应用进入内核的入口。驱动注册 `video_device` 之后，内核把对应的字符设备登记到设备模型，由 devtmpfs 与 udev 在文件系统里生成 `/dev/videoX`；应用 `open()` 它得到一个文件描述符，之后所有 `ioctl` 都作用在这个描述符上，内核据此找回 `video_device` 与它的缓冲队列。
+
+这样设计的目的只有一个：让同一套接口覆盖所有视频来源。USB 摄像头、MIPI CSI 传感器、DVP 并口摄像头、采集卡在应用看来都是 `/dev/videoX`，差别被压在各自的驱动里。节点还顺带提供了权限控制与热插拔生命周期，设备拔出时 udev 把节点删掉。
+
 能力位由 `VIDIOC_QUERYCAP` 返回，放在 `struct v4l2_capability` 的 `capabilities` 字段：
 
 | 能力位 | 含义 | 用途 |
@@ -472,7 +476,7 @@ flowchart TB
 #### 4.5.2 主机侧 uvcvideo 驱动做了什么
 
 - 枚举阶段读设备描述符，把 UVC 的格式与帧描述符翻译成 V4L2 的能力与格式枚举。
-- 注册 `video_device`，暴露成 `/dev/videoX`，缓冲交给 videobuf2 管理。
+- 注册 `video_device`，缓冲交给 videobuf2 管理；内核随后在**主机**上生成 `/dev/videoX`，这就是 PC 侧应用能打开 UVC 摄像头的原因。
 - Probe 与 Commit 落到 `VIDIOC_G_FMT` 和 `VIDIOC_S_FMT`。
 - 支持把端点缓冲导出成 DMA-buf fd（`VIDIOC_EXPBUF`），供零拷贝管线使用。
 
