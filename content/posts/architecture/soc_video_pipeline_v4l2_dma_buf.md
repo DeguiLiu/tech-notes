@@ -438,6 +438,10 @@ ioctl: VIDIOC_ENUM_FMT
 
 UVC 是 USB 设备类规范，规定摄像头怎样用描述符自述能力、怎样协商格式与帧率、视频负载如何分帧与加时间戳；V4L2 是主机内核框架，规定应用如何通过 `/dev/videoX` 和 ioctl 使用视频设备。两者通过内核 `uvcvideo` 驱动衔接。
 
+两端的框架分工要先说清楚。SoC 迁到 Linux 之后，板上有一套完整的 V4L2 栈（core、videobuf2、媒体控制器）管内部管线：传感器出帧进采集节点，编码器、显示都从 V4L2 节点取。同时板上还有 UVC gadget（`f_uvc`）管对外那一段，它是 USB 设备功能，不是 V4L2 节点，靠打开本机的 V4L2 采集节点当取帧来源。主机侧如果也是 Linux，`uvcvideo` 驱动把 USB 设备注册成 V4L2 节点，主机上同样有一套 V4L2 栈。
+
+也就是说：SoC 内部是 V4L2，跨 USB 是 UVC，主机内部又是 V4L2。两端的 V4L2 互不相识，中间的契约是 UVC。主机换成 Windows 就没有 V4L2 这一层，走的是 `usbvideo.sys` 与 DirectShow，应用侧换成 Media Foundation，UVC 契约不变。
+
 ```mermaid
 %%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
 flowchart TB
