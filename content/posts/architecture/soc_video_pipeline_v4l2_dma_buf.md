@@ -126,6 +126,8 @@ flowchart TB
 
 这样设计的目的只有一个：让同一套接口覆盖所有视频来源。USB 摄像头、MIPI CSI 传感器、DVP 并口摄像头、采集卡在应用看来都是 `/dev/videoX`，差别被压在各自的驱动里。节点还顺带提供了权限控制与热插拔生命周期，设备拔出时 udev 把节点删掉。
 
+**两台机器上的 `/dev/videoX` 不是一对。** V4L2 是每个 Linux 内核各自实现的一套接口，不是跨机协议。SoC 侧的节点供 SoC 上的进程使用（板端录像、RTSP 服务，或作为 UVC gadget 的取帧来源）；主机侧的节点是 `uvcvideo` 为那台远程设备登记的本地句柄。两边跑的是同一套 `VIDIOC_*`，中间相连的却是 UVC over USB，不是 V4L2。两边的节点编号也没有对应关系：主机上的 `/dev/video0` 未必就是 SoC 上的 `/dev/video0`。
+
 能力位由 `VIDIOC_QUERYCAP` 返回，放在 `struct v4l2_capability` 的 `capabilities` 字段：
 
 | 能力位 | 含义 | 用途 |
