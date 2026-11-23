@@ -68,48 +68,48 @@ flowchart TB
 
 一条带是一层，带内的方框是该层的组成部分，带与带之间的箭头是调用方向与交互内容。
 
+这张图画的是**两侧**：SoC 侧 Linux 与主机侧 Linux 各有一套 V4L2 栈，中间那一段是 USB，跑的是 UVC 协议。
+
 ```mermaid
-%%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':30,'rankSpacing':52,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
 flowchart TB
-  subgraph L0["用户层"]
-    APP["应用程序<br/>open / ioctl(VIDIOC_*)"]:::app
-    LIB["GStreamer v4l2src<br/>libv4l / OpenCV"]:::app
-    TOOL["v4l2-ctl / media-ctl"]:::app
+  subgraph SOC["SoC 侧 Linux：内部是 V4L2"]
+    direction LR
+    S1["图像传感器 / ISP<br/>DMA 帧缓冲内存"]:::hw
+    S2["sensor subdev 驱动<br/>摄像头驱动"]:::drv
+    S3["V4L2-core<br/>video_device + vb2_queue<br/>v4l2_subdev_ops"]:::core
+    S4["UVC gadget<br/>f_uvc 封装帧头"]:::dev
+    S1 -->|"帧数据"| S2
+    S2 -->|"media bus 帧"| S3
+    S3 -->|"成帧缓冲"| S4
   end
-  subgraph L1["内核框架层 V4L2-core"]
-    FS["v4l2_dev<br/>字符设备 /dev/videoX"]:::core
-    CORE["v4l2_device<br/>v4l2-subdev"]:::core
-    VB2["videobuf2-core<br/>缓冲与映射"]:::core
+  subgraph LINK["跨机：UVC 协议"]
+    direction LR
+    U["USB 传输<br/>帧数据 ↓ · 控制请求 ↑"]:::usb
   end
-  subgraph L2["驱动层 SoC 视频驱动"]
-    VDEV["video_device<br/>fops / ioctl_ops"]:::drv
-    VQ["vb2_queue<br/>缓冲队列"]:::buf
-    SD["sensor subdev<br/>传感器驱动"]:::hw
+  subgraph HOST["主机侧 Linux：内部也是 V4L2"]
+    direction LR
+    H1["USB 主机控制器"]:::hw
+    H2["uvcvideo 驱动<br/>解析 UVC 描述符"]:::drv
+    H3["V4L2-core<br/>v4l2_dev · v4l2_device<br/>videobuf2-core"]:::core
+    H4["应用程序<br/>GStreamer / OpenCV / v4l2-ctl"]:::app
+    H1 --> H2
+    H2 --> H3
+    H3 --> H4
   end
-  subgraph L3["硬件层"]
-    SENS["Sensor / 图像处理 IP"]:::hw
-    DMA["DMA 帧缓冲内存"]:::buf
-  end
-  APP -->|"open / ioctl"| FS
-  LIB -->|"ioctl"| FS
-  TOOL -->|"ioctl / 拓扑查询"| FS
-  FS -->|"v4l2_ioctl_ops 分发"| CORE
-  FS -->|"mmap / poll"| VB2
-  CORE -->|"video_device 注册"| VDEV
-  CORE -->|"v4l2_subdev_call()"| SD
-  VB2 -->|"vb2_ops 回调"| VQ
-  SD -->|"寄存器 / 中断"| SENS
-  VQ -->|"DMA 搬运"| DMA
-  DMA -.->|"帧数据经 mmap 交回应用"| FS
+  SOC ==>|"USB 视频负载"| LINK
+  LINK ==>|"UVC 描述符与控制请求"| HOST
   classDef app fill:#E8F1FB,stroke:#3B82C4,color:#17324D
   classDef core fill:#E7F7EE,stroke:#2F9E63,color:#14532D
   classDef drv fill:#F3E8FF,stroke:#8B5CF6,color:#3B1D6E
-  classDef buf fill:#FFF7E6,stroke:#E0A800,color:#5A3B00
+  classDef dev fill:#FFF4E0,stroke:#D99A2B,color:#5A3B00
   classDef hw fill:#FDE8E8,stroke:#C0392B,color:#5A1A14
+  classDef usb fill:#FFF7E6,stroke:#E0A800,color:#5A3B00
 ```
 
-三个要点：
+几个要点：
 
+- 两侧的 `V4L2-core` 是同一套内核代码的两个实例，各管各的设备。中间那段不归任何一边，只跑 UVC。
 - `/dev/videoX` 是字符设备，内核用 `v4l2_file_operations` 接管 `open`、`read`、`mmap`、`poll`，`unlocked_ioctl` 转到 V4L2 的命令分发。
 - `video_device` 绑定自己的 `v4l2_ioctl_ops`，`VIDIOC_*` 最终落到驱动实现的函数指针上。驱动要访问具体芯片时，经 `v4l2_subdev_ops` 和 `v4l2_subdev_call()` 调 subdev。
 - 帧缓冲不在 `video_device` 里，而是挂在 `video_device->queue` 指向的 `vb2_queue` 上，由 videobuf2 负责分配、排队与映射。
@@ -254,16 +254,16 @@ V4L2 有两套接口，方向相反：
 ```mermaid
 %%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
 flowchart TB
-  subgraph CFG["配置阶段"]
+  subgraph CFG["配置阶段（应用侧）"]
     CF["① REQBUFS 申请缓冲 count 回写实际数量<br/>② QUERYBUF 取每个缓冲的偏移与长度<br/>③ mmap 把缓冲映射到用户态<br/>④ STREAMON 启动采集"]:::app
   end
-  subgraph LOOP["取流循环"]
+  subgraph LOOP["取流循环（应用侧）"]
     LP["① QBUF 把空缓冲投回内核<br/>② poll 等待就绪<br/>③ DQBUF 取出成帧缓冲<br/>④ 处理帧，按 bytesused 截取<br/>⑤ QBUF 归还缓冲，回到 ②"]:::app
   end
-  subgraph VB["内核 videobuf2 队列状态"]
+  subgraph VB["内核 videobuf2 队列状态（内核侧）"]
     VB1["输入队列：等待填充的空缓冲<br/>→ 硬件填充帧，DMA 写入<br/>→ 输出队列：可出队的成帧缓冲"]:::buf
   end
-  subgraph FIN["退出阶段"]
+  subgraph FIN["退出阶段（应用侧）"]
     FI["① STREAMOFF 停流<br/>② munmap 解除映射<br/>③ close 关闭设备"]:::app
   end
   CFG -->|"缓冲就绪，开始取流"| LOOP
@@ -272,6 +272,7 @@ flowchart TB
   LOOP -->|"停止采集"| FIN
   classDef app fill:#E8F1FB,stroke:#3B82C4,color:#17324D
   classDef buf fill:#FFF7E6,stroke:#E0A800,color:#5A3B00
+
 ```
 
 `poll()` 的等待语义见官方函数参考（[func-poll.html](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/func-poll.html)）。调试时常用到两点：未调用 `VIDIOC_STREAMON`，或已 `STREAMON` 但还没 `QBUF`，`poll()` 都返回成功并置 `POLLERR`。
@@ -486,30 +487,9 @@ UVC 是 USB 设备类规范，规定摄像头怎样用描述符自述能力、�
 
 也就是说：SoC 内部是 V4L2，跨 USB 是 UVC，主机内部又是 V4L2。两端的 V4L2 互不相识，中间的契约是 UVC。主机换成 Windows 就没有 V4L2 这一层，走的是 `usbvideo.sys` 与 DirectShow，应用侧换成 Media Foundation，UVC 契约不变。
 
-用一张图把这三段分清楚：
+用一张图把这三段分清楚（见 1.3 节的两侧分层图）：SoC 侧是 V4L2 栈，USB 那一段是 UVC 协议，主机侧又是一套 V4L2 栈。
 
-```mermaid
-%%{init: {'theme':'base','flowchart':{'nodeSpacing':28,'rankSpacing':56,'curve':'linear'}}}%%
-flowchart TB
-  subgraph SOC["SoC 内部：V4L2"]
-    direction LR
-    S1["传感器"]:::soc --> S2["V4L2 采集节点<br/>/dev/video0"]:::soc --> S3["UVC gadget<br/>f_uvc"]:::soc
-  end
-  subgraph LINK["跨机：UVC 协议"]
-    direction LR
-    U["USB"]:::usb
-  end
-  subgraph HOST["主机内部：V4L2"]
-    direction LR
-    H1["uvcvideo 驱动"]:::host --> H2["V4L2 节点<br/>/dev/videoX"]:::host --> H3["主机应用<br/>GStreamer / FFmpeg"]:::app
-  end
-  SOC -->|"USB 视频负载 ↓"| LINK
-  LINK -->|"UVC 描述符与控制请求 ↑"| HOST
-  classDef soc fill:#E8F1FB,stroke:#3B82C4,color:#17324D
-  classDef usb fill:#FFF4E0,stroke:#D99A2B,color:#5A3B00
-  classDef host fill:#E7F7EE,stroke:#2F9E63,color:#14532D
-  classDef app fill:#E7F7EE,stroke:#2F9E63,color:#14532D
-```
+
 图里最容易被忽略的是中间那一格：USB 这一段跑的是 UVC，不是 V4L2。SoC 里的 V4L2 节点与主机里的 V4L2 节点没有直接的函数调用关系，帧是通过 USB 上的 UVC 负载搬过去的。
 
 ```mermaid
