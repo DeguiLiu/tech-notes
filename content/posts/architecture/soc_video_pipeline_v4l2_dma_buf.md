@@ -9,17 +9,16 @@ ShowToc: true
 TocOpen: true
 ---
 
-概述：在 SoC 上用 Linux V4L2 取流，本质是四件事：找到设备节点、拿到缓冲、把缓冲交给别的设备、整条链路不拷贝。
+概述：
 
-**设备节点。** 图像处理、编码器、解码器各占一个 `/dev/videoX`，选哪个决定拿到原始帧还是压缩流。能力看 `VIDIOC_QUERYCAP`，格式用 `VIDIOC_S_FMT` 协商后回读。
+1. V4L2 是 Linux 主机侧的视频设备框架。在 SoC 上用 Linux V4L2 取流，本质是四件事：找到设备节点、拿到缓冲、把缓冲交给别的设备、整条链路不拷贝
+2. 设备节点。图像处理、编码器、解码器各占一个 `/dev/videoX`，选哪个决定拿到原始帧还是压缩流。能力看 `VIDIOC_QUERYCAP`，格式用 `VIDIOC_S_FMT` 协商后回读。
+3. 缓冲队列。帧在 videobuf2 的 `vb2_queue` 里循环。逐帧看四个字段：`bytesused` 定帧长，`sequence` 判丢帧，`timestamp` 做同步，`flags` 标错帧。队列深度决定可容忍时延，等于深度乘帧间隔，超窗就丢帧。
+4. DMA-buf。跨设备流转靠 fd 共享一块内存：`VIDIOC_EXPBUF` 导出，`REQBUFS` 传 `V4L2_MEMORY_DMABUF` 后在 `QBUF` 带 fd 导入。代价是分配器与 fence 同步。
+5. 零拷贝管线。有了 dma-buf，采集、编码、显示共用一块内存。GStreamer 用 `v4l2src io-mode=dmabuf` 串起，FFmpeg 同一套接口。跨 USB 归 UVC：设备侧 `f_uvc` 封装帧头，主机侧 `uvcvideo` 还原成普通 V4L2 设备
+6. SoC 也可以是 USB 摄像头：设备侧用 UVC gadget，主机侧由 `uvcvideo` 驱动接管，主机与设备两端都落在 V4L2 生态里。
 
-**缓冲队列。** 帧在 videobuf2 的 `vb2_queue` 里循环。逐帧看四个字段：`bytesused` 定帧长，`sequence` 判丢帧，`timestamp` 做同步，`flags` 标错帧。队列深度决定可容忍时延，等于深度乘帧间隔，超窗就丢帧。
-
-**DMA-buf。** 跨设备流转靠 fd 共享一块内存：`VIDIOC_EXPBUF` 导出，`REQBUFS` 传 `V4L2_MEMORY_DMABUF` 后在 `QBUF` 带 fd 导入。代价是分配器与 fence 同步。
-
-**零拷贝管线。** 有了 dma-buf，采集、编码、显示共用一块内存。GStreamer 用 `v4l2src io-mode=dmabuf` 串起，FFmpeg 同一套接口。跨 USB 归 UVC：设备侧 `f_uvc` 封装帧头，主机侧 `uvcvideo` 还原成普通 V4L2 设备。
-
-## 1. 设备节点: 多节点 SoC 上怎么找到该用的那个
+## 1. V4L2 是什么，以及怎么找到该用的设备节点
 
 ### 1.1 V4L2 是什么
 
@@ -40,7 +39,7 @@ SoC 上的视频通路通常由多颗硬件模块串成：图像传感器 → �
 先把整条链路摆出来，后面各节都只是在这张图上展开细节。图中左半边在一块 SoC 上，右半边在主机上，中间是 USB。
 
 ```mermaid
-%{init: {'theme':'base','flowchart':{'nodeSpacing':26,'rankSpacing':64,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':26,'rankSpacing':64,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
 flowchart TB
   subgraph HOST["主机侧"]
     direction LR
@@ -70,7 +69,7 @@ flowchart TB
 一条带是一层，带内的方框是该层的组成部分，带与带之间的箭头是调用方向与交互内容。
 
 ```mermaid
-%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
 flowchart TB
   subgraph L0["用户层"]
     APP["应用程序<br/>open / ioctl(VIDIOC_*)"]:::app
@@ -203,7 +202,7 @@ flowchart TB
 ### 2.2 videobuf2 与帧生命周期
 
 ```mermaid
-%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
 flowchart TB
   subgraph CFG["配置阶段"]
     CF["① REQBUFS 申请缓冲 count 回写实际数量<br/>② QUERYBUF 取每个缓冲的偏移与长度<br/>③ mmap 把缓冲映射到用户态<br/>④ STREAMON 启动采集"]:::app
@@ -258,8 +257,6 @@ flowchart TB
 
 ## 3. DMA-buf: 一块内存，多个设备
 
-## 3. DMA-buf: 一块内存，多个设备
-
 DMA-buf 是内核里共享缓冲区的通用机制。官方定义（[dma-buf.html](https://www.kernel.org/doc/html/latest/driver-api/dma-buf.html) 原文）：
 
 > The dma-buf subsystem provides the framework for sharing buffers for hardware (DMA) access across multiple device drivers and subsystems, and for synchronizing asynchronous hardware access.
@@ -305,7 +302,7 @@ int buffer_queue(int v4lfd, int index, int dmafd)
 一条典型的 SoC 内部通路长这样：ISP 把帧写进一块共享缓冲区，编码器与显示各自导入同一个 fd，读的是同一块内存，中间没有 CPU 参与搬运。在 GStreamer 一侧，这就是 `v4l2src io-mode=dmabuf` 与 `dmabuf-import` 的用法。
 
 ```mermaid
-%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
 flowchart TB
   subgraph USR["用户态"]
     U1["分配器驱动 dma_heap 分配缓冲区<br/>导出 dma-buf fd<br/>应用或 GStreamer 只传 fd，不复制像素"]:::app
@@ -351,10 +348,10 @@ subdev 通常是内核内部对象。实现了 media device API 的驱动，subd
 
 ### 4.2 一条真实拓扑
 
-下面是 `media-ctl -p /dev/media0` 的真实输出重绘成的分层拓扑，实体名做了脱敏。`dvp_rx_0` 是 DVP 接收端，做的是 subdev；`video_node_0` 是视频节点，落在 `/dev/video0`。
+下面是 `media-ctl -p /dev/media0` 的分层拓扑。`dvp_rx_0` 是 DVP 接收端，做的是 subdev；`video_node_0` 是视频节点，落在 `/dev/video0`。
 
 ```mermaid
-%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
 flowchart TB
   subgraph HW["硬件层"]
     SENS["图像传感器<br/>DVP 并口输出"]:::hw
@@ -435,10 +432,8 @@ ioctl: VIDIOC_ENUM_FMT
 
 UVC 是 USB 设备类规范，规定摄像头怎样用描述符自述能力、怎样协商格式与帧率、视频负载如何分帧与加时间戳；V4L2 是主机内核框架，规定应用如何通过 `/dev/videoX` 和 ioctl 使用视频设备。两者通过内核 `uvcvideo` 驱动衔接。
 
-主机侧与设备侧的关系如下，带之间的两条箭头分别是主机发起的请求与设备返回的数据。
-
 ```mermaid
-%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':24,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
 flowchart TB
   subgraph HOST["主机侧 Linux"]
     direction LR
@@ -464,12 +459,71 @@ flowchart TB
   classDef hw fill:#FFF7E6,stroke:#E0A800,color:#5A3B00
 ```
 
-由此得到四条结论：
+#### 4.5.1 UVC 规范讲了什么
 
-- UVC 设备按规范应答枚举与控制请求，主机侧 `uvcvideo` 把它注册成 V4L2 设备，应用于是用同一套接口访问 UVC 摄像头、MIPI 摄像头或采集卡。
-- 说「UVC 是 V4L2 支持的一种设备类型」成立，说「UVC 是 V4L2 的一部分」不成立。后者把设备侧协议和主机侧框架混成了一层。
-- 设备侧也有对称的一套实现。Linux 用 USB gadget 提供 UVC 设备功能，源码在 [drivers/usb/gadget/function/f_uvc.c](https://github.com/torvalds/linux/tree/master/drivers/usb/gadget/function/f_uvc.c)。SoC 跑在 Linux 上时，可以在设备侧用 gadget 把自己变成 UVC 设备。
-- 主机侧的应用有 `FFmpeg`、`OpenCV`、`MPlayer` 等，官方另有 [libv4l](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/libv4l.html) 提供 V4L1 兼容与格式转换封装。
+规范原文见 [USB Video Class 1.5](https://www.usb.org/sites/default/files/USB_Video_Class_1_5.zip)（USB-IF 发布）。与取流直接相关的有五件事：
+
+1. **接口划分**：VideoControl 接口管理设备能力与状态，VideoStreaming 接口负责数据，两者通常由接口关联描述符绑定成一个视频功能。
+2. **能力自述**：格式描述符列出支持的负载格式（未压缩 YUV、MJPEG、H.264 等），帧描述符给出每个格式下的分辨率与帧率范围。
+3. **运行时协商**：Probe 问设备支持什么，Commit 锁定最终参数并让设备开始出流。
+4. **数据面格式**：每帧负载带帧头，含起始标记、时间戳（PTS 与 SCR）与帧尾 EOF 标记。
+5. **传输方式**：等时端点保带宽保时延，批量端点按总线调度发送，时延不保证。
+
+#### 4.5.2 主机侧 uvcvideo 驱动做了什么
+
+- 枚举阶段读设备描述符，把 UVC 的格式与帧描述符翻译成 V4L2 的能力与格式枚举。
+- 注册 `video_device`，暴露成 `/dev/videoX`，缓冲交给 videobuf2 管理。
+- Probe 与 Commit 落到 `VIDIOC_G_FMT` 和 `VIDIOC_S_FMT`。
+- 支持把端点缓冲导出成 DMA-buf fd（`VIDIOC_EXPBUF`），供零拷贝管线使用。
+
+源码：[drivers/media/usb/uvcvideo](https://github.com/torvalds/linux/tree/master/drivers/media/usb/uvcvideo)。
+
+#### 4.5.3 V4L2 统一了哪些物理链路
+
+UVC 只是 V4L2 支持的一类设备。同一个 `/dev/videoX` 接口，背后可以是 USB 摄像头、MIPI CSI 传感器、DVP 并口摄像头，也可以是 HDMI 采集卡。应用层看到的是同一套 ioctl 与同一套缓冲模型。
+
+```mermaid
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':26,'rankSpacing':44,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
+flowchart TB
+  subgraph APP["用户层"]
+    A1["应用程序<br/>open / read / write / ioctl"]:::app
+  end
+  subgraph CORE["V4L2 核心层"]
+    C1["v4l2-dev<br/>统一命令分发、格式协商、缓冲管理"]:::core
+  end
+  subgraph DRV["驱动层：同一套 V4L2 接口，三类物理链路"]
+    D1["uvcvideo 驱动<br/>USB 摄像头"]:::dev
+    D2["MIPI CSI 摄像头驱动<br/>i2c-csi + 传感器 subdev"]:::dev
+    D3["DVP 摄像头驱动<br/>并口接收器 + 传感器 subdev"]:::dev
+  end
+  A1 -->|"ioctl(VIDIOC_*)"| C1
+  C1 -->|"v4l2_ioctl_ops · vb2_ops"| D1
+  C1 --> D2
+  C1 --> D3
+  classDef app fill:#E8F1FB,stroke:#3B82C4,color:#17324D
+  classDef core fill:#E7F7EE,stroke:#2F9E63,color:#14532D
+  classDef dev fill:#FFF4E0,stroke:#D99A2B,color:#5A3B00
+```
+三种链路的差别全部收敛在驱动层：UVC 走 USB 协议栈，MIPI CSI 与 DVP 走 SoC 内部的视频接收器，应用侧感知不到。这也是 V4L2 存在的意义，用一套接口盖住所有视频来源。
+
+#### 4.5.4 UVC 与 V4L2 的概念对照
+
+| UVC | V4L2 | 说明 |
+|---|---|---|
+| VideoStreaming 接口 | 视频节点 `/dev/videoX` | 一个流接口通常对应一个视频节点 |
+| 格式描述符与帧描述符 | `VIDIOC_ENUM_FMT`、`VIDIOC_ENUM_FRAMESIZES` | 同样都是先枚举能力再选参数 |
+| `VS_PROBE_CONTROL` | `VIDIOC_G_FMT`、`VIDIOC_TRY_FMT` | 问能力与范围，不改变驱动状态 |
+| `VS_COMMIT_CONTROL` | `VIDIOC_S_FMT` | 锁定参数并启动，返回值同样要回读 |
+| 负载头 PTS / SCR / EOF | `v4l2_buffer` 的 `timestamp`、`bytesused` | 时间戳与帧边界都来自设备侧 |
+| 等时或批量端点 | `vb2_queue` 与 DMA-buf | 端点缓冲在 V4L2 里是队列里的一个缓冲 |
+
+#### 4.5.5 边界与常见坑
+
+- **UVC 只覆盖 USB 视频**。MIPI CSI、DVP、HDMI 各有自己的驱动，V4L2 是它们统一的接口。
+- **UVC 跨平台免驱，V4L2 是 Linux 专有**。同一台设备在 Windows 上走 `usbvideo.sys`，在 Linux 上走 `uvcvideo`，应用侧的接口却一样。
+- **描述符与实际负载不一致会花屏**。设备若用 YUY2 描述符却装 Y16 或 NV12 的负载，主机侧会按描述符解释每一帧，结果是颜色错乱或行错位。
+- **带宽是硬约束**。等时端点可用带宽等于每帧字节数乘帧率，超出预约就丢帧；批量端点不预约带宽，但突发时延不受控。
+- **能力以描述符为准**。描述符声明的分辨率或帧率若大于设备实际能力，主机侧表现为拿到截断的帧，而不是一次明确的 ioctl 失败。
 
 ### 4.6 一块板子上的完整通路
 
@@ -478,7 +532,7 @@ flowchart TB
 一块 SoC 跑起 Linux 之后，设备侧会自己长出一套 V4L2 栈：板端应用、内核里的采集与编码、USB gadget、硬件，外加主机侧通过 `uvcvideo` 接管的一端。
 
 ```mermaid
-%{init: {'theme':'base','flowchart':{'nodeSpacing':26,'rankSpacing':48,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':26,'rankSpacing':48,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
 flowchart TB
   subgraph APP["板端应用层"]
     A1["录像 / RTSP 服务<br/>打开板端 /dev/video0"]:::app
@@ -548,7 +602,7 @@ flowchart TB
 `v4l2src` 的 `io-mode` 属性直接对应 V4L2 的几种 I/O 方法，对照关系见 2.1 节。换成 FFmpeg 也是同一套接口，只是走命令行：
 
 ```mermaid
-%{init: {'theme':'base','flowchart':{'nodeSpacing':26,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%
+%%{init: {'theme':'base','flowchart':{'nodeSpacing':26,'rankSpacing':46,'curve':'linear','subGraphTitleMargin':{'top':8,'bottom':8}},'themeVariables':{'primaryColor':'#E8F1FB','primaryTextColor':'#17324D','primaryBorderColor':'#3B82C4','lineColor':'#5B6B7C'}}}%%
 flowchart LR
   V["V4L2 设备节点<br/>/dev/video2<br/>硬件编码器的压缩流"]:::drv
   G1["GStreamer<br/>v4l2src io-mode=dmabuf"]:::gst --> G2["capsfilter<br/>video/x-raw,memory:DMABUF"]:::gst --> G3["videoconvert<br/>videoscale"]:::gst --> G4["编码器<br/>x264enc"]:::enc --> G5["mp4mux"]:::mux --> G6["filesink 落盘<br/>appsink 推流"]:::app
