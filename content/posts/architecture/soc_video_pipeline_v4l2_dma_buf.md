@@ -114,7 +114,51 @@ flowchart TB
 - `video_device` 绑定自己的 `v4l2_ioctl_ops`，`VIDIOC_*` 最终落到驱动实现的函数指针上。驱动要访问具体芯片时，经 `v4l2_subdev_ops` 和 `v4l2_subdev_call()` 调 subdev。
 - 帧缓冲不在 `video_device` 里，而是挂在 `video_device->queue` 指向的 `vb2_queue` 上，由 videobuf2 负责分配、排队与映射。
 
-### 1.4 设备节点与能力位
+### 1.4 驱动侧的回调：内核怎么把控制权交给驱动
+
+V4L2 有两套接口，方向相反：
+
+| 方向 | 形式 | 谁实现 |
+|---|---|---|
+| 应用 → 内核 | `open`、`ioctl(VIDIOC_*)`、`mmap`、`read`、`poll` | 应用 |
+| 内核 → 驱动 | `fops`、`ioctl_ops`、`vb2_ops`、`subdev_ops` 里的函数指针 | 驱动 |
+
+驱动把函数指针填进 ops 表并注册 `video_device` 或 `v4l2_subdev`，之后内核在恰当的时机调用它们。V4L2 core 本身不认识具体硬件，只做三件事：解析命令、校验参数、记账缓冲队列。
+
+常用的回调表：
+
+| 结构体 | 挂在哪里 | 何时被调用 |
+|---|---|---|
+| `v4l2_file_operations` | `video_device.fops` | `open`、`release`、`read`、`poll`、`mmap` 被 VFS 调用时 |
+| `v4l2_ioctl_ops` | `video_device.ioctl_ops` | 每个 `VIDIOC_*` 命令分发时 |
+| `vb2_ops` | `vb2_queue.ops` | `STREAMON` 与 `STREAMOFF` 时 |
+| `v4l2_subdev_ops` | `v4l2_subdev.ops` | 别的驱动用 `v4l2_subdev_call()` 调它时 |
+
+一次取流里回调的顺序：
+
+1. `open()` → 驱动 `fops->open`：初始化设备、准备缓冲。
+2. `VIDIOC_S_FMT` → `ioctl_ops` 对应函数：写寄存器，协商格式。
+3. `VIDIOC_STREAMON` → `vb2_ops->start_streaming`：把缓冲地址写给 DMA 引擎、开中断、启动硬件。
+4. 硬件出一帧 → 中断 → 驱动调内核的 `vb2_buffer_done()`，vb2 标记完成并唤醒在 `poll` 上等待的进程。
+5. `poll()` 返回 → VFS 回调 `fops->poll`；应用 `VIDIOC_DQBUF` 取走这一帧的描述符。
+6. `VIDIOC_STREAMOFF` → `vb2_ops->stop_streaming`：停 DMA、断中断。
+
+三条边界要看清楚：
+
+- **回调不搬数据**。像素永远由 DMA 硬件直接写进 buffer，CPU 不参与。
+- **V4L2 只记账**。帧状态、字节数、时间戳由 vb2 与驱动维护，框架本身不碰像素。
+- **方向会变**。第 4 步是驱动主动调内核（`vb2_buffer_done()`），其余都是内核调驱动。
+
+为什么这样设计：
+
+1. **通用与专用分开**。参数校验、缓冲记账、事件通知各家相同，内核做一次；写寄存器、配 DMA 各家不同，交给驱动。
+2. **只有内核知道时机**。缓冲何时就绪、流何时启停、中断何时到来，内核掌握全局状态，由它决定何时敲驱动。
+3. **应用不直接碰硬件**。寄存器地址与板型对应用不可见，所有动作经内核转手。
+4. **统一前后置处理**。每个命令前做参数检查、加锁、引用计数，后生成事件，不必每个驱动重写一遍。
+
+只写应用的人可以跳过这一节：回调全在内核侧，应用看到的只有 ioctl 返回值与 `v4l2_buffer` 里的字段。
+
+### 1.5 设备节点与能力位
 
 主次设备号的约定见采集接口章节（[dev-capture.html](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dev-capture.html) 原文）：
 
@@ -138,7 +182,7 @@ flowchart TB
 | `V4L2_CAP_READWRITE` | 支持 `read()` / `write()` | 简单抓单帧 |
 | `V4L2_CAP_DEVICE_CAPS` | 能力需再查 `device_caps` | 多接口设备按流类型二次过滤 |
 
-### 1.5 格式协商: S_FMT 的官方语义
+### 1.6 格式协商: S_FMT 的官方语义
 
 格式协商最容易写错。官方对 `VIDIOC_S_FMT` 的定义（[vidioc-g-fmt.html](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/vidioc-g-fmt.html) 原文）说明驱动会检查并调整参数，并把当前生效的参数回填给应用：
 
@@ -146,7 +190,7 @@ flowchart TB
 
 由此得到两条规则：`S_FMT` 之后必须回读结构体，请求值只是意向；I/O 进行中或资源不可用时 `S_FMT` 返回 `EBUSY`。`TRY_FMT` 与 `S_FMT` 语义相同，但不改变驱动状态，也不返回 `EBUSY`，适合先探测再提交。
 
-### 1.6 官方文档地图
+### 1.7 官方文档地图
 
 规范按章拆分渲染，遇到问题直接定位到章，比在总目录里翻快。
 
@@ -171,7 +215,7 @@ flowchart TB
 
 驱动作者视角的总体介绍在 [v4l2-intro.html](https://www.kernel.org/doc/html/latest/driver-api/media/v4l2-intro.html)，它解释了 V4L2 设备为何普遍由多颗 IC 组成、为什么会暴露多个 `/dev` 节点。
 
-### 1.7 先纠正几个常见说法
+### 1.8 先纠正几个常见说法
 
 这些说法在入门资料里很常见，但与官方文档对不上。
 
