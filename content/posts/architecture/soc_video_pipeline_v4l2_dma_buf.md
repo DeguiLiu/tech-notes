@@ -47,7 +47,7 @@ flowchart TB
   end
   subgraph DEV["SoC 设备侧：每个硬件模块各占一个 V4L2 节点"]
     direction LR
-    S1["图像传感器"]:::hw --> S2["ISP 采集节点<br/>/dev/video0"]:::drv --> S3["硬件编码节点<br/>/dev/video2 · mem2mem"]:::core --> S4["UVC gadget<br/>f_uvc 封装帧头与时间戳"]:::dev --> S5["USB 端点 FIFO"]:::buf
+    S1["图像传感器"]:::hw --> S2["ISP 采集节点<br/>/dev/video0"]:::drv --> S3["M2M 编码节点<br/>/dev/video2 · 硬件编码器"]:::core --> S4["UVC gadget<br/>f_uvc 封装帧头与时间戳"]:::dev --> S5["USB 端点 FIFO"]:::buf
   end
   DEV ==>|"USB 视频负载：帧数据"| HOST
   HOST -->|"控制面：读描述符、格式协商"| DEV
@@ -361,7 +361,7 @@ flowchart TB
   subgraph DEV["内核设备层：同一个 fd 被多处导入"]
     direction LR
     D1["ISP 采集节点<br/>QBUF 导入 fd"]:::drv
-    D2["编码器 mem2mem<br/>导入同一 fd"]:::core
+    D2["M2M 编码节点<br/>导入同一 fd"]:::core
     D3["显示或 DRM<br/>导入同一 fd"]:::dev
   end
   subgraph MEM["共享的 DMA 内存"]
@@ -601,7 +601,7 @@ flowchart TB
   subgraph KERNEL["Linux 内核层（SoC 板端）"]
     K4["① sensor / ISP 子设备<br/>media entity 拓扑"]:::sensor
     K1["② V4L2 视频节点<br/>video_device + vb2_queue"]:::drv
-    K2["③ mem2mem 编码<br/>YUV 转 MJPEG / H.264"]:::core
+    K2["③ M2M 编码节点<br/>硬件编码器 YUV 转 MJPEG / H.264"]:::core
     K3["④ UVC gadget<br/>f_uvc 协议处理"]:::usb
     K4 -->|"采集帧进入节点"| K1
     K1 -->|"取帧缓冲"| K2
@@ -636,16 +636,38 @@ flowchart TB
 - 视频节点用 `video_device` 注册，缓冲交给 `vb2_queue`，内存用 DMA API 分配。
 - 需要跨设备共享帧时改用 DMA-buf：ISP、编码器、显示各自导入同一个 fd，帧在设备之间不再经过 CPU。
 - 出口用 USB gadget 的 UVC 功能（`f_uvc.c`），主机侧免驱枚举。
-- 需要压缩时走 V4L2 内存到内存接口，官方章节在 [dev-mem2mem.html](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dev-mem2mem.html)。
+- 需要压缩时走 V4L2 的 M2M（内存到内存）接口，官方章节在 [dev-mem2mem.html](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dev-mem2mem.html)。
 
 这样做的收益与代价：
 
-- 主机侧不需要专用上位机。PC 上用 `v4l2-ctl` 或 OpenCV 就能采，设备侧格式转换交给内核的 mem2mem 编码器。
+- 主机侧不需要专用上位机。PC 上用 `v4l2-ctl` 或 OpenCV 就能采，设备侧格式转换交给内核的 M2M 编码节点。
 - 时间戳统一。vb2 的 `timestamp` 有明确的时钟源与打点位置定义，多路流与外部授时对齐有共同基准。
 - 零拷贝可以贯穿设备。采集、编码、显示之间改用 DMA-buf 传同一块内存，CPU 不参与搬运。
 - 代价在实时性与内存一致性。不同架构上的 DMA 一致性、cache 属性、缓冲深度与帧间隔给出的时延窗，都要在通用内核调度下重新核对。
 
-### 4.7 用户态编排: GStreamer 与 FFmpeg
+### 4.7 硬件块与 V4L2 节点：M2M 怎么参与
+
+以 ASIC 硬件节点的前提看，一块 SoC 上的视频处理单元在 Linux 里对应的身份是这样的：
+
+| 硬件块 | Linux 下的 V4L2 身份 |
+|---|---|
+| 传感器与 ISP 采集 | 采集节点（`/dev/video0`）加 sensor subdev |
+| ISP 的裁剪、缩放、格式重组 | 多半是 subdev，或内嵌在采集节点的管线里 |
+| 硬件编码器 | M2M 节点，分无状态与有状态两种 |
+| 硬件解码器 | M2M 节点 |
+| UVC 输出 | USB gadget 功能，不是 V4L2 节点 |
+
+M2M（Video Memory-To-Memory）是 V4L2 的一类节点，把一段视频数据在内存里从一种格式加工成另一种格式再交回去。典型例子是编解码器、缩放器、去隔行器、格式转换器，能力位是 `V4L2_CAP_VIDEO_M2M` 或 `V4L2_CAP_VIDEO_M2M_MPLANE`。
+
+它与普通节点最大的不同是同时干两件事：既有输出队列，把帧送进硬件；又有采集队列，把处理后的帧收回来。应用要为两边分别建立流式 I/O，最后对两个队列都调 `VIDIOC_STREAMON`，硬件才真正开始跑。数据全程在内存与 DMA 缓冲之间搬，天然零拷贝。
+
+另一个差异是共享资源。同一个 M2M 节点可以打开多次，每个文件描述符各设各的参数，驱动负责仲裁并在切换时重配硬件；而普通视频节点的属性是设备全局的，改一个句柄另一个立刻能看见。官方章节见 [dev-mem2mem.html](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dev-mem2mem.html)。
+
+有状态与无状态的区别在于帧之间有没有依赖。有状态的编解码器要维护参考帧，带 NULL、READY、PAUSED、PLAYING、DRAIN 这样的状态机；无状态的每帧独立处理，不需要状态机。
+
+零拷贝链路因此是连起来的：采集节点取到原始帧，交给 M2M 编码节点，编码结果再交给 UVC gadget 或 RTSP 服务，中间每一段都是同一块 DMA 内存，应用不参与搬运。
+
+### 4.8 用户态编排: GStreamer 与 FFmpeg
 
 **为什么值得单独讲 GStreamer。** 1.1 节的场景假设是 SoC 上有硬件图像处理与硬件编解码，这些模块各占一个 V4L2 节点，于是同一台机器上会同时出现原始帧节点、编码流节点、解码输出节点。真正麻烦的不是「怎么打开节点」，而是：选哪个节点、拿到的是原始帧还是压缩流、帧要不要在用户态再转一次格式、能不能整条链路都不拷贝。这几件事在 GStreamer 里是一个管线的事：`v4l2src` 负责取流，`videoconvert`、`videoscale` 负责格式与尺寸，编码器与封装器负责输出，`io-mode` 负责选内存路径。换成自己写 ioctl，这些都得自己拼。
 
